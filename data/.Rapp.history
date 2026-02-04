@@ -1,0 +1,5 @@
+load("/Users/davidbernstein/Library/CloudStorage/Dropbox/Research/BP2018(SFcode)/sfa/data/panel89.rda")
+load("/Users/davidbernstein/Library/CloudStorage/Dropbox/Research/BP2018(SFcode)/sfa/data/Erwidodo.rda")
+load("/Users/davidbernstein/Library/CloudStorage/Dropbox/Research/BP2018(SFcode)/sfa/data/Forest.rda")
+head(Forrest)
+head(Forest)

@@ -1,0 +1,22 @@
+Package: sfa
+Version: 1.0.4
+Date: 2026-01-15
+Title: Stochastic Frontier Analysis 
+Type: Package
+Authors@R: c(person("David", "Bernstein",
+                     email = "davebernstein1@gmail.com", role = c("aut", "cre"), 
+                     comment = c(ORCID = "0000-0002-2267-5741")),
+              person("Christopher", "Parmeter", role = c("aut")),
+              person("Alexander", "Stead", role = c("aut")))
+Maintainer: David Bernstein <davebernstein1@gmail.com> 
+Description:  Provides a user-friendly framework for estimating a wide variety of cross-sectional and panel stochastic frontier models. Suitable for a broad range of applications, the implementation offers extensive flexibility in specification and estimation techniques. 
+Suggests: knitr, MASS, rmarkdown, pracma, testthat
+Imports: devtools, pso, cubature, moments, readxl, haven, fdrtool, numDeriv, gsl, Hmisc, plm, minqa, randtoolbox, matrixStats, frontier, Jmisc, mnormt, truncnorm, tmvtnorm, Formula, methods
+Depends: R (>= 4.4.0)
+License: GPL (>= 2)
+Language: en-US
+URL: https://www.davidharrybernstein.com/software
+LazyLoad: yes
+NeedsCompilation: yes
+Archs: i386, x64
+VignetteBuilder: knitr
