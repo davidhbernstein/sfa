@@ -429,8 +429,8 @@ start_feval <- Opt.Psoptim$start_feval
 opt00       <- Opt.Psoptim$opt00
 
 differ  <- 1
-if(model_name == "TRE_Z"){lower1   <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ )}
-if(model_name == "GTRE_Z"){lower1  <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,3) , start_v[-c(1:3)] -differ)}
+if(model_name == "TRE_Z"){ lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)}
+if(model_name == "GTRE_Z"){lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,3) , start_v[-c(1:3)] -differ)}
 
 Opt.Optim <- opt.optim(fn = fn, start_v = start_v, lower.optim =lower1 ,upper.optim=c(start_v+differ), 
           maxit.optim=maxit.optim, opt.TF = optHessian, method=Method, optHessian= optHessian,verbose = verbose)

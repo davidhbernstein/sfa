@@ -188,10 +188,9 @@ summary.sfareg <- function(object, ...){
   cat("Total time:", object$total_time, "\n")
   cat("Model Output:\n")
   print(object$out)
-  
+  if(is.numeric(object$opt$value)){cat("log likelihood:", -object$opt$value, "\n")}
   ## return original object 
-  invisible(object) }
-
+  invisible(object)}
 
 print.sfareg <- function(x, ...) {
   # Perform specific summary calculations and formatting
@@ -199,5 +198,7 @@ print.sfareg <- function(x, ...) {
   cat("Formula:", deparse(x$formula), "\n")
   cat("Total time:", x$total_time, "\n")
   cat("Model Output:\n")
-  print(x$out)}
+  
+  print(x$out)
+  if(is.numeric(x$opt$value)){cat("log likelihood:", -x$opt$value, "\n")}}
 

@@ -1,5 +1,5 @@
 opt.bobyqa    <- function(fn, start_v, lower.bobyqa, maxit.bobyqa, bob.TF, rhobeg = NA, rhoend  =NA, verbose=verbose){
-start_feval   <-  fn(start_v)
+start_feval   <- fn(start_v)
 bob1          <- NULL 
 if(isTRUE(bob.TF==TRUE)){  
 
@@ -12,14 +12,14 @@ bob1   <- bobyqa(par = start_v,
                                 rhoend = rhoend))
 
 if(isTRUE(start_feval > bob1$fval )) {start_v <- bob1$par
-start_feval   <-  fn(start_v)} }
+start_feval   <-  fn(start_v)}}
 
 results        <- list(start_v,start_feval,   bob1)   
 names(results) <-  c("start_v","start_feval","bob1")  
 return(results)}
 
 opt.optim     <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose=verbose){
-  start_feval   <-  fn(start_v)
+  start_feval   <- fn(start_v)
   opt           <- NULL 
   if(isTRUE(opt.TF ==TRUE)){
   
