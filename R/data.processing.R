@@ -150,14 +150,34 @@ if(length(unlist(form_parts))>4){
 }
 
 
+# 1. Identify rows that are complete across all variables in the original data
+# Find all column names present in your generated dataframes
+all_cols <- unique(c(
+  colnames(data_x), 
+  if(!is.null(data_z)) colnames(data_z), 
+  if(!is.null(data_zp)) colnames(data_zp)
+))
+
+# Filter out intercepts or calculated columns not found in the original data
+valid_orig_cols <- intersect(all_cols, colnames(data))
+
+# Get the logical vector of complete cases based on the original data rows
+is_complete <- complete.cases(data[, valid_orig_cols, drop = FALSE])
+
+# 2. Re-run data_conform using ONLY the complete rows from the original data
+data_x <- data_conform(formula = formula_x, data = data[is_complete, , drop = FALSE])
+
+if (!is.null(data_z))  {data_z <- data_conform(formula = formula_z, data = data[is_complete, , drop = FALSE])}
+if (!is.null(data_zp)) {data_zp <- data_conform(formula = formula_zp, data = data[is_complete, , drop = FALSE])}
+
 result  <-  list(data_orig, form_parts, formula_x, y_var, model_name, data_x, intercept, inefdec_n, inefdec_TF,
                                        x_vars_vec, n_x_vars, x_vars, x_x_vec, fancy_vars,fancy_vars_z,n_z_vars,N,
-                 formula_z, z_vars, data_z, intercept_z, z_vars_vec, z_z_vec, n_z_vars, data_z, formula_zp, 
+                 formula_z, z_vars, data_z, intercept_z, z_vars_vec, z_z_vec, n_z_vars, formula_zp, 
                  data_zp, zp_vars, intercept_zp, zp_vars_vec, n_zp_vars, zp_zp_vec, fancy_vars_zp, formula)
 
 names(result)<- c("data_orig", "form_parts", "formula_x", "y_var", "model_name","data_x", "intercept", "inefdec_n",
                   "inefdec_TF","x_vars_vec", "n_x_vars", "x_vars", "x_x_vec", "fancy_vars","fancy_vars_z","n_z_vars","N",
-                  "formula_z", "z_vars", "data_z", "intercept_z", "z_vars_vec", "z_z_vec", "n_z_vars","data_z", "formula_zp",
+                  "formula_z", "z_vars", "data_z", "intercept_z", "z_vars_vec", "z_z_vec", "n_z_vars", "formula_zp",
                   "data_zp", "zp_vars", "intercept_zp", "zp_vars_vec", "n_zp_vars", "zp_zp_vec", "fancy_vars_zp","formula")
 return(result)  }
 
