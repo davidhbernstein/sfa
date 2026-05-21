@@ -69,13 +69,13 @@ names(result)  <- c("data", "Y","data_i_vars")
 
 if (model_name %in% c("GTRE", "TRE")) {result <- c(result, result_gtre_tre)}
 
-return(result)
-
-}
+return(result)  }
 
 ## Inital Data cleaning and Processing 
 data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
-data_z     <- NULL
+data_z  <- formula_z <- z_vars <- intercept_z <- z_vars_vec <- z_z_vec <- n_z_vars <- formula_zp <- data_zp <- zp_vars <- 
+intercept_zp <- zp_vars_vec <- n_zp_vars <- zp_zp_vec <- fancy_vars_zp <- NULL
+n_z_vars  <- NA  ## maybe make condition here making this default to null
 data_orig  <- data
 form_parts <- base::strsplit(as.character(formula), "|", fixed = TRUE)
 
@@ -84,17 +84,38 @@ y_var     <- gsub(" ", "", noquote(as.character( unlist( strsplit( deparse(formu
 formula_x <- paste(form_parts[[2]], "~",form_parts[[3]][1], sep = "")
 y_var     <- gsub(" ", "", noquote(as.character( unlist(strsplit( formula_x, "~", fixed = TRUE))[[1]])))}
 
-if(length(unlist(form_parts))>3){
+if(model_name %in% c("TTNE","TTHN")){
+  formula0 <- .format_formula(formula)
+  formula  <-  formula0 
+  form_parts <- base::strsplit(as.character(formula), "|", fixed = TRUE)
+}
+
+if(length(unlist(form_parts))>3 ){
 formula_z <- paste(form_parts[[2]], "~",form_parts[[3]][2], sep = "")
 z_vars    <- as.character(gsub(" ", "", noquote(as.character(unlist(form_parts)[[4]])))) 
 z_vars    <- noquote(gsub("+", " ", z_vars, fixed=TRUE))
 z_vars    <- unlist(strsplit(z_vars, " "))
-data_z    <- data_conform(formula = formula_z, data = data)
+data_z    <- data_conform(formula = formula_z, data = data)  
 if(model_name=="NHN"){ model_name <- "NHN_Z"}
 if(model_name=="NE"){  model_name <- "NE_Z"}
-if(model_name=="GTRE"){model_name <- "GTRE_Z"}
+if(model_name == "GTRE"){
+model_name <- "GTRE_Z"
+formula0 <- .format_formula(formula)  ## redefine formula for GTRE_Z
+formula  <-  formula0 
+form_parts <- base::strsplit(as.character(formula), "|", fixed = TRUE)
+}
 if(model_name=="TRE"){ model_name <- "TRE_Z"}
-if(model_name %in% c("THT","NTN","CHC","NU")){return(c("Currently building this functionality"))}}#else{z_vars <- NULL}
+if(model_name %in% c("THT","NTN","CHC","NU")){return(c("Currently building this functionality"))}#else{z_vars <- NULL}
+}
+
+if(length(unlist(form_parts))>4){
+  formula_zp <- paste(form_parts[[2]], "~",form_parts[[3]][3], sep = "")
+  zp_vars    <- as.character(gsub(" ", "", noquote(as.character(unlist(form_parts)[[5]])))) 
+  zp_vars    <- noquote(gsub("+", " ", zp_vars, fixed=TRUE))
+  zp_vars    <- unlist(strsplit(zp_vars, " "))
+  data_zp    <- data_conform(formula = formula_zp, data = data)         }
+
+
 
 data_x    <- data_conform(formula = formula_x, data = data)
 
@@ -111,27 +132,34 @@ fancy_vars_z   <- NULL
 N <- NULL 
 if(isTRUE(individual==NULL)){}else{N  <- length(unique(data[,c(individual)])) }
 
-n_z_vars       <- NA  ## maybe make condition here making this default to null
-formula_z <- z_vars <- intercept_z <- z_vars_vec <- z_z_vec <- n_z_vars <- NULL
-
 if(length(unlist(form_parts))>3){    
 intercept_z    <- if(isTRUE(grepl(-1, gsub("[[:space:]]", "",as.character(formula_z))))) {0} else{1}
 z_vars_vec     <- if(model_name %in% c("TFE","FD") & intercept_z==1){colnames(data_z)[-c(1)]}else {colnames(data_z)}
 n_z_vars       <- length(z_vars_vec)
 z_vars         <- z_vars_vec
 z_z_vec        <- rep(0,length= n_z_vars)
-fancy_vars_z   <- setdiff(colnames(data_z),colnames(data))
+fancy_vars_z   <- setdiff(colnames(data_z),colnames(data)) }
+
+if(length(unlist(form_parts))>4){ 
+  intercept_zp    <- if(isTRUE(grepl(-1, gsub("[[:space:]]", "",as.character(formula_zp))))) {0} else{1}
+  zp_vars_vec     <- if(model_name %in% c("TFE","FD") & intercept_zp==1){colnames(data_zp)[-c(1)]}else {colnames(data_zp)}
+  n_zp_vars       <- length(zp_vars_vec)
+  zp_vars         <- zp_vars_vec
+  zp_zp_vec       <- rep(0,length= n_zp_vars)
+  fancy_vars_zp   <- setdiff(colnames(data_zp),colnames(data))  
 }
+
 
 result  <-  list(data_orig, form_parts, formula_x, y_var, model_name, data_x, intercept, inefdec_n, inefdec_TF,
                                        x_vars_vec, n_x_vars, x_vars, x_x_vec, fancy_vars,fancy_vars_z,n_z_vars,N,
-                 formula_z, z_vars, data_z, intercept_z, z_vars_vec, z_z_vec, n_z_vars, data_z)
+                 formula_z, z_vars, data_z, intercept_z, z_vars_vec, z_z_vec, n_z_vars, data_z, formula_zp, 
+                 data_zp, zp_vars, intercept_zp, zp_vars_vec, n_zp_vars, zp_zp_vec, fancy_vars_zp, formula)
 
 names(result)<- c("data_orig", "form_parts", "formula_x", "y_var", "model_name","data_x", "intercept", "inefdec_n",
                   "inefdec_TF","x_vars_vec", "n_x_vars", "x_vars", "x_x_vec", "fancy_vars","fancy_vars_z","n_z_vars","N",
-                  "formula_z", "z_vars", "data_z", "intercept_z", "z_vars_vec", "z_z_vec", "n_z_vars","data_z")
-return(result)
-}
+                  "formula_z", "z_vars", "data_z", "intercept_z", "z_vars_vec", "z_z_vec", "n_z_vars","data_z", "formula_zp",
+                  "data_zp", "zp_vars", "intercept_zp", "zp_vars_vec", "n_zp_vars", "zp_zp_vec", "fancy_vars_zp","formula")
+return(result)  }
 
 ## lm code for data   
 data_conform <- function (formula, data,na.action, method = "qr", 

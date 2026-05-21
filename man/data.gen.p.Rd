@@ -31,7 +31,7 @@
  \item \code{y_fd} Output variable for the first difference model (see Wang and Ho, 2010).
  \item \code{x_fd} Explanatory variable for the \code{y_fd} model.
  \item \code{u_fd_star, z_fd, r_fd, u_fd} Components used to generate \code{y_fd}.
- \item \code{u_gtre, z_gtre, y_gtre_z, y_tre_z} Variables for models with heteroskedastic inefficiency (\eqn{\sigma_{u,i} = \exp(0.9 + 0.6 Z_{i}))}.
+ \item \code{u_gtre, z_gtre, zp_gtre, y_gtre_z,y_gtre_zz,y_tre_z} Variables for models with heteroskedastic inefficiency (\eqn{\sigma_{u,i} = \exp(0.33 + 0.61 Z_{i}))}.  Variables for models with heteroskedastic persistent inefficiency (\eqn{\sigma_{h,i} = \exp(0.25 + 0.21 Z_{i}))}.
  }
   The data is generated based on standard Stochastic Frontier Analysis (SFA) formulations, primarily for a **Production Frontier** where the one-sided error component \eqn{u_{it}} is subtracted:
 
@@ -40,7 +40,8 @@
    \item \code{y_tre}: TRE model: \eqn{y_{it} = \beta_0 + \beta_1 x_{1,it} + \beta_2 x_{2,it} + r_i + v_{it} - u_{it}}
    \item \code{y_pcs}: PCS model: \eqn{y_{it} = \beta_0 + \beta_1 x_{1,it} + \beta_2 x_{2,it} + v_{it} - u_{it}}
    \item \code{y_tfe}: TFE model: \eqn{y_{it} = \beta_1 x_{1,it}^w + \beta_2 x_{2,it}^w + r_i + v_{it} - u_{it}}
-   \item \code{y_gtre_z}: GTRE with Heteroskedastic \eqn{u_{it}}: \eqn{\sigma_{u,i} = \exp(0.9 + 0.6 Z_i)}.
+   \item \code{y_gtre_z}: GTRE with Heteroskedastic \eqn{u_{it}}: \eqn{\sigma_{u,i} = \exp(0.33 + 0.61 Z_i)}.
+   \item \code{y_gtre_zz}: GTRE with Heteroskedastic \eqn{u_{it}}: \eqn{\sigma_{u,i} = \exp(0.33 + 0.61 Z_i)} and \eqn{\sigma_{h,i} = \exp(0.25 + 0.21 Z_{i})}.
  }
 
  For **Cost Frontier** models, the one-sided error component \eqn{u_{it}} is added (e.g., \code{c_gtre}).

@@ -53,20 +53,25 @@ set.seed(rand)}
     c_tre_nc  <- r     +        beta1*x1    + beta2*x2   + v + u
     c_pcs_nc  <-                beta1*x1    + beta2*x2   + v + u
     
-    ## GTRE-Z
-    u_gtre         <- rep(0,n)
-    z_gtre         <- runif(n,1,2)
-    ## u_it half-normal error term with z var and cons
-    for (i in 1:n) {
-      u_gtre[i]      <- abs(rnorm(1,0, exp(0.9 + 0.6*z_gtre[i] )))   
-    }
+    ## GTRE-Z on u and with u and h 
+    u_gtre    <- rep(0,n)
+    h_gtre    <- rep(0,N)
+    z_gtre    <- runif(n,1,2)
+    zp_gtreN  <- runif(N,0.5,1.5)
+    zp_gtre   <- rep(zp_gtreN, each = t)
     
-    y_gtre_z   <-         r  - h  +  cons + beta1*x1    + beta2*x2   + v - u_gtre
+    ## u_it and h_i half-normal error term with z var and cons
+    u_gtre <- abs(rnorm(n, 0, sqrt(exp(0.33 + 0.61 * z_gtre))))
+    h_gtre <- abs(rnorm(N, 0, sqrt(exp(0.25 + 0.21 * zp_gtreN))))
+    
+    h_z     <- rep(h_gtre, each = t)
+    
+    y_gtre_z  <-          r  - h  +  cons + beta1*x1    + beta2*x2   + v - u_gtre
+    y_gtre_zz <-          r  - h_z+  cons + beta1*x1    + beta2*x2   + v - u_gtre
     y_tre_z   <-          r       +  cons + beta1*x1    + beta2*x2   + v - u_gtre
     
-    data_trial <- as.data.frame(cbind(name,  year,  cons,  x1,  x1_w,  x2,  x2_w,  u,  v,  r,  y_gtre,  y_tre,  y_tfe,  h,  y_gtre_nc,  y_tre_nc,  y_pcs,  y_pcs_nc,  c_gtre,  c_tre, c_tfe,   c_gtre_nc,   c_tre_nc,   c_pcs,   c_pcs_nc,  y_fd,   x_fd,  u_fd_star,   z_fd,   r_fd,   u_fd,  u_gtre,  z_gtre,  y_gtre_z,   y_tre_z )) 
-    colnames(data_trial) <- c(       "name","year","cons","x1","x1_w","x2","x2_w","u","v","r","y_gtre","y_tre","y_tfe","h","y_gtre_nc","y_tre_nc","y_pcs","y_pcs_nc","c_gtre","c_tre","c_tfe","c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc","y_fd", "x_fd","u_fd_star", "z_fd", "r_fd", "u_fd","u_gtre","z_gtre","y_gtre_z", "y_tre_z")
+    data_trial <- as.data.frame(cbind(name,  year,  cons,  x1,  x1_w,  x2,  x2_w,  u,  v,  r,  y_gtre,  y_tre,  y_tfe,  h,  y_gtre_nc,  y_tre_nc,  y_pcs,  y_pcs_nc,  c_gtre,  c_tre, c_tfe,   c_gtre_nc,   c_tre_nc,   c_pcs,   c_pcs_nc,  y_fd,   x_fd,  u_fd_star,   z_fd,   r_fd,   u_fd,  u_gtre,  z_gtre,  y_gtre_z,   y_tre_z , y_gtre_zz,    zp_gtre)) 
+    colnames(data_trial) <- c(       "name","year","cons","x1","x1_w","x2","x2_w","u","v","r","y_gtre","y_tre","y_tfe","h","y_gtre_nc","y_tre_nc","y_pcs","y_pcs_nc","c_gtre","c_tre","c_tfe","c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc","y_fd", "x_fd","u_fd_star", "z_fd", "r_fd", "u_fd","u_gtre","z_gtre","y_gtre_z", "y_tre_z", "y_gtre_zz", "zp_gtre")
     data_rand           <- pdata.frame(data_trial,    c("name","year"))
     
-    return(data_rand) 
-  }
+    return(data_rand)  }
