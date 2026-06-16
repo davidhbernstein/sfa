@@ -24,6 +24,7 @@ model_name    <- match.arg(model_name)
   
 DR1 <- data_proc(formula, data, model_name, individual, inefdec)
 
+if(1==1){
 formula      <- DR1$formula
 data_orig    <- DR1$data_orig
 form_parts   <- DR1$form_parts
@@ -87,7 +88,7 @@ DR2 <- data_proc2(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
 
 data         <- DR2$data
 Y            <- DR2$Y
-data_i_vars  <- DR2$data_i_vars
+data_i_vars  <- DR2$data_i_vars}
 
 if(model_name %in% c("GTRE","TRE")){
   
@@ -321,7 +322,671 @@ class(results)  <- "sfareg"
 names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U", "coefficients", "std.errors", "t.values", "call")}
 
 return(results)}   
-if(model_name ==     "GTRE_Z")     {
+if(model_name ==     "GTRE_Z"){ 
+## Default starting values for variance equations
+    delta   <- rep(0.1, length(z_vars))
+    delta_p <- rep(0.1, length(zp_vars))
+    
+    ## Starting vector
+    if(isTRUE(is.numeric(start_val))){
+      start_v <- start_val
+    } else {
+      start_v <- if(is.na(beta_0_st)){
+        unname(c(sigma_v, sigma_r, beta_hat, delta, delta_p))
+      } else {
+        unname(c(sigma_v, sigma_r, beta_0, beta_hat, delta, delta_p))
+      }
+    }
+    
+    ## Output label matrix
+    out           <- matrix(0, nrow = 3, ncol = length(start_v))
+    rownames(out) <- c("par", "st_err", "t-val")
+    colnames(out) <- c("sigv", "sigr", colnames(data[, x_vars_vec, drop = FALSE]), z_vars, zp_vars)
+    
+    ## Number of simulation draws
+    R <- if(isTRUE(is.numeric(halton_num))) halton_num else ceiling(sqrt(nrow(data))) + 100
+    
+    ## Halton draws
+    R_H <- randtoolbox::halton(
+      R + .SFA_CONSTANTS$HALTON_DISCARD,
+      2,
+      start = 1,
+      normal = FALSE)[-c(1:.SFA_CONSTANTS$HALTON_DISCARD), c(1:2)]
+    
+    ## First column: standard normal via qnorm
+    ## Second column: half-normal via inverse error function
+    R_H <- cbind(qnorm(R_H[,1]), sqrt(2) * pracma::erfinv(R_H[,2]))
+    
+    if(!is.null(rand.gtre)){
+      set.seed(rand.gtre)}
+    
+    ## Optional decorrelation step retained from current code
+    mat <- matrix(0, nrow = R, ncol = 9999)
+    for(v in 1:9999){
+      mat[,v] <- sample(R_H[,1])
+    }
+    
+    cor_vec <- matrix(0, 9999, 1)
+    for(v in 1:9999){
+      cor_vec[v] <- abs(cor(mat[,v], R_H[,2]))
+    }
+    
+    R_H <- cbind(mat[, which(cor_vec == min(cor_vec))[1]], R_H[,2])
+    rm(mat, cor_vec, v)
+    
+    ## Build firm-level lists
+    indiv <- noquote(as.vector(unique(data[, individual])))
+    t_vec <- rep(0, N)
+    
+    data_i       <- vector("list", N)
+    Y            <- vector("list", N)
+    data_i_vars  <- vector("list", N)
+    data_z_vars  <- vector("list", N)
+    data_zp_vars <- vector("list", N)
+    R_h1         <- vector("list", N)
+    R_h2         <- vector("list", N)
+    
+    for(ii in seq_len(N)){
+      data_i[[ii]]       <- data[which(data[, individual] == indiv[ii]), , drop = FALSE]
+      t_vec[ii]          <- nrow(data_i[[ii]])
+      R_h1[[ii]]         <- t(matrix(rep(R_H[,1], t_vec[[ii]]), R, t_vec[[ii]]))
+      R_h2[[ii]]         <- abs(t(matrix(rep(R_H[,2], t_vec[[ii]]), R, t_vec[[ii]])))
+      Y[[ii]]            <- matrix(rep(data_i[[ii]][, y_var], R), t_vec[[ii]], R)
+      data_i_vars[[ii]]  <- data.frame(data_i[[ii]][, x_vars_vec, drop = FALSE])
+      data_z_vars[[ii]]  <- data.frame(data_i[[ii]][, z_vars, drop = FALSE])
+      data_zp_vars[[ii]] <- data.frame(data_i[[ii]][, zp_vars, drop = FALSE])
+    }
+    
+    prep <-  list(
+      data         = data,                  n_z_vars     = length(z_vars),   t            = t_vec,
+      individual   = individual,            n_zp_vars    = length(zp_vars),  data_i       = data_i,
+      y_var        = y_var,                 N            = N,                Y            = Y,
+      x_vars_vec   = x_vars_vec,            R            = R,                data_i_vars  = data_i_vars,
+      z_vars       = z_vars,                start_v      = start_v,          data_z_vars  = data_z_vars,
+      zp_vars      = zp_vars,               out_template = out,              data_zp_vars = data_zp_vars,
+      n_x_vars     = n_x_vars,              indiv        = indiv,            R_h1         = R_h1,
+      R_h2         = R_h2,
+      formula      = formula)
+  
+    t            <-  t_vec  
+    n_z_vars     <-  length(z_vars)
+    n_zp_vars    <-  length(zp_vars)
+    out_template <-  out
+  
+    ## GTRE simulated negative log-likelihood
+    fn <-  function(x){
+      
+      beta_start   <- 3
+      beta_end     <- beta_start + n_x_vars - 1
+      
+      delta_start  <- beta_end + 1
+      delta_end    <- delta_start + n_z_vars - 1
+      
+      deltap_start <- delta_end + 1
+      deltap_end   <- deltap_start + n_zp_vars - 1
+      
+      beta         <- x[beta_start:beta_end]
+      
+      delta        <- x[delta_start:delta_end]
+      delta_p      <- x[deltap_start:deltap_end]
+      
+      sig_v        <- x[1]
+      sig_r        <- x[2]
+      
+      ## Enforce positivity on sigma_v and sigma_r
+      sig_v <- max(sig_v, .SFA_CONSTANTS$MIN_POSITIVE)
+      sig_r <- max(sig_r, .SFA_CONSTANTS$MIN_POSITIVE)
+      
+      ## Bound the variance linear predictors before exponentiating.
+      eta_bound <- 40
+      
+      ## One firm-level log-likelihood contribution
+      ll_i <- function(ii){
+        
+        Ti <- t[ii]
+        
+        ## Persistent inefficiency scale for firm i
+        ## IMPORTANT:
+        ## This is computed inside the firm-specific contribution,
+        ## not outside, so it is truly unit-specific.
+        sigma_h_fun <- if(n_zp_vars > 1){
+          eta_h_i <- as.numeric(as.matrix(data_zp_vars[[ii]]) %*% delta_p)
+          if(any(!is.finite(eta_h_i))){
+            return((.SFA_CONSTANTS$MAX_VALUE)^0.1)}
+          eta_h_i <- pmin(pmax(eta_h_i, -eta_bound), eta_bound)
+          mean(sqrt(exp(eta_h_i)))
+        } else {
+          eta_h_i <- x[deltap_end]
+          if(!is.finite(eta_h_i)){return((.SFA_CONSTANTS$MAX_VALUE)^0.1)}
+          eta_h_i <- pmin(pmax(eta_h_i, -eta_bound), eta_bound)
+          sqrt(exp(eta_h_i))}
+        
+        
+        ## Construct epsilon_it draw-by-draw
+        eps_ii <- Y[[ii]] - sig_r * R_h1[[ii]] + sigma_h_fun * R_h2[[ii]] * inefdec_n
+        
+        ## Remove frontier mean
+        for(qq in seq_len(n_x_vars)){
+          eps_ii <- eps_ii - beta[qq] *
+            matrix(rep(data_i_vars[[ii]][, qq], R), Ti, R)
+        }
+        
+        eps_ii <- inefdec_n * eps_ii
+        
+        ## Transient inefficiency scale
+        sigma_u_fun <- if(n_z_vars > 1){
+          eta_u_i <- as.numeric(as.matrix(data_z_vars[[ii]]) %*% delta)
+          if(any(!is.finite(eta_u_i))){
+            return((.SFA_CONSTANTS$MAX_VALUE)^0.1)
+          }
+          eta_u_i <- pmin(pmax(eta_u_i, -eta_bound), eta_bound)
+          sqrt(exp(eta_u_i))
+        } else {
+          eta_u_i <- x[delta_end]
+          if(!is.finite(eta_u_i)){return((.SFA_CONSTANTS$MAX_VALUE)^0.1)}
+          eta_u_i <- pmin(pmax(eta_u_i, -eta_bound), eta_bound)
+          sqrt(exp(eta_u_i))
+        }
+        
+        sigma_fun <- sqrt(sig_v^2 + sigma_u_fun^2)
+        lamb_fun  <- sigma_u_fun / sig_v
+        
+        ## Expand firm-level sigma objects across draws
+        sigma_mat <- matrix(rep(sigma_fun, R), Ti, R)
+        lamb_mat  <- matrix(rep(lamb_fun,  R), Ti, R)
+        
+        ## Simulated likelihood contribution:
+        ##   average over R draws of the product across t
+        sim_terms <- (2 / sigma_mat) *
+          dnorm(eps_ii / sigma_mat) *
+          pmax(
+            pnorm(-eps_ii * lamb_mat / sigma_mat),
+            eps_ii * 0 + .SFA_CONSTANTS$MIN_POSITIVE)
+        prod_vec_n <- log(mean(colProds(sim_terms)))
+        -prod_vec_n
+      }
+      
+      ll_vec <- unlist(lapply(seq_len(N), ll_i))
+      
+      ll_vec[which(ll_vec == Inf)]  <-  (.SFA_CONSTANTS$MAX_VALUE)^0.1
+      ll_vec[which(ll_vec == -Inf)] <- -(.SFA_CONSTANTS$MAX_VALUE)^0.1
+      
+      sum(ll_vec[is.finite(ll_vec)])
+    }
+    
+  ## Staged optimization for GTRE
+    Start.Time <- start.time()
+    
+    lower.BOB <- .generate_sfa_bounds(formula, prep)  # default to -Inf 
+    
+    ## ---- Stage 1: bobyqa
+    Opt.Bobyqa <- opt.bobyqa(
+      fn = fn,
+      start_v = start_v,
+      lower.bobyqa = lower.BOB,
+      maxit.bobyqa = maxit.bobyqa,
+      bob.TF = TRUE,
+      verbose = verbose
+    )
+    
+    start_v     <- Opt.Bobyqa$start_v
+    start_feval <- Opt.Bobyqa$start_feval
+    bob1        <- Opt.Bobyqa$bob1
+    
+    ## ---- Stage 2: psoptim
+    differ <- 10
+    # lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE, 2), start_v[-c(1:2)] - differ)
+    lower1 <- .generate_sfa_bounds(formula, prep , inf_sub = min(start_v[-c(1:2)])-differ )   
+    Opt.Psoptim <- opt.psoptim(
+      fn = fn,
+      start_v,
+      lower.psoptim = lower1,
+      upper.psoptim = c(start_v + differ),
+      rand.psoptim = rand.psoptim,
+      maxit.psoptim = maxit.psoptim,
+      psopt.TF = PSopt,
+      verbose = verbose
+    )
+    
+    start_v     <- Opt.Psoptim$start_v
+    start_feval <- Opt.Psoptim$start_feval
+    opt00       <- Opt.Psoptim$opt00
+    
+    ## ---- Stage 3: optim
+    differ <- 1
+    # lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE, 2), start_v[-c(1:2)] - differ)
+    lower1 <- .generate_sfa_bounds(formula, prep , inf_sub = min(start_v[-c(1:2)])-differ )   
+    
+    Opt.Optim <- opt.optim(
+      fn = fn,
+      start_v = start_v,
+      lower.optim = lower1,
+      upper.optim = c(start_v + differ),
+      maxit.optim = maxit.optim,
+      opt.TF = optHessian,
+      method = Method,
+      optHessian = optHessian,
+      verbose = verbose
+    )
+    
+    start_v     <- Opt.Optim$start_v
+    start_feval <- Opt.Optim$start_feval
+    opt         <- Opt.Optim$opt
+    
+    End.Time <- end.time(Start.Time)
+    
+    ## Preserve current fallback logic
+    if(optHessian == FALSE && PSopt == FALSE){
+      opt <- bob1}
+    
+    if(optHessian == FALSE && PSopt == TRUE){
+      opt <- opt00}
+    
+  
+  
+  ## ------------------------------------------------------------
+  ## Post-estimation GTRE technical efficiency recovery
+  ##
+  ## This uses the refactored TE code we developed earlier.
+  ## ------------------------------------------------------------
+  .gtre_te <- function(opt, prep, inefdec_n){
+    
+    ## Basic dimensions and indexing
+    n       <- sum(t)
+    id_obs  <- rep(seq_len(N), t)
+    t_cum   <- cumsum(t)
+    t_start <- c(1, head(t_cum, -1) + 1)
+    
+    ## Build variance-design matrices
+    Z_mat  <- .make_var_design(data, z_vars,  rows = NULL,    int_name = "int_u")
+    Zp_mat <- .make_var_design(data, zp_vars, rows = t_start, int_name = "int_h")
+    
+    # n_z_eff  <- ncol(Z_mat)
+    # n_zp_eff <- ncol(Zp_mat)
+    
+    ## Parameter indexing
+    beta_start   <- 3
+    beta_end     <- beta_start + n_x_vars - 1
+    
+    delta_start  <- beta_end + 1
+    delta_end    <- delta_start + n_z_vars - 1
+    
+    deltap_start <- delta_end + 1
+    deltap_end   <- deltap_start + n_zp_vars - 1
+    
+    beta    <- opt$par[beta_start:beta_end]
+    delta   <- opt$par[delta_start:delta_end]
+    delta_p <- opt$par[deltap_start:deltap_end]
+    
+    sig_v <- max(opt$par[1], 1e-8)
+    sig_r <- max(opt$par[2], 1e-8)
+    
+    min_sd    <- 1e-8
+    eta_bound <- 40
+    
+    ## Compute and check the variance linear predictors before exp().
+    ## The earlier pmax() guard only protected against near-zero standard
+    ## deviations.  It did not protect against overflow from exp(Z %*% delta),
+    ## which can produce Inf values and cause the posterior covariance system
+    ## to fail later in .safe_inverse().
+    eta_u <- as.numeric(Z_mat  %*% delta)
+    eta_h <- as.numeric(Zp_mat %*% delta_p)
+    
+    if(any(!is.finite(eta_u)) || any(!is.finite(eta_h))){
+      stop(
+        "Non-finite variance linear predictor in .gtre_te(). Check Z*delta and Zp*delta_p.",
+        call. = FALSE
+      )
+    }
+    
+    ## Bound before exponentiating to prevent numerical overflow.
+    eta_u <- pmin(pmax(eta_u, -eta_bound), eta_bound)
+    eta_h <- pmin(pmax(eta_h, -eta_bound), eta_bound)
+    
+    sig_u_all <- pmax(sqrt(exp(eta_u)), min_sd)
+    sig_h_all <- pmax(sqrt(exp(eta_h)), min_sd)
+    
+    if(any(!is.finite(sig_u_all)) || any(!is.finite(sig_h_all))){
+      stop(
+        "Non-finite sigma_u or sigma_h values in .gtre_te(). Check bounded variance predictors.",
+        call. = FALSE
+      )
+    }
+    
+    sig_u_split <- split(sig_u_all, id_obs)
+    
+    ## Residual vectors epsilon_i
+    e_i <- Map(
+      f = function(Yi, Xi){
+        pmin(
+          inefdec_n * (Yi[,1] - rowSums(t(t(Xi) * beta))),
+          Yi[,1] * 0
+        )
+      },
+      Yi = Y,
+      Xi = data_i_vars
+    )
+    
+    ## Firm-level matrices
+    A_i <- lapply(t, function(Ti) -cbind(rep(1, Ti), diag(Ti)))
+    
+    SIG <- lapply(
+      t,
+      function(Ti) sig_v^2 * diag(Ti) + sig_r^2 * tcrossprod(rep(1, Ti))
+    )
+    
+    VEE <- Map(
+      f = function(sig_h_i, sig_u_i){
+        Ti <- length(sig_u_i)
+        rbind(
+          c(sig_h_i^2, rep(0, Ti)),
+          cbind(rep(0, Ti), diag(sig_u_i^2, nrow = Ti, ncol = Ti))
+        )
+      },
+      sig_h_i = sig_h_all,
+      sig_u_i = sig_u_split
+    )
+    
+    ## Build posterior covariance objects one firm at a time so that
+    ## any numerical failure reports the offending firm and panel length.
+    ## This makes failures much easier to debug than a generic Map/mapply
+    ## traceback.
+    post_obj <- lapply(seq_len(N), function(ii){
+      if(any(!is.finite(VEE[[ii]])) || any(!is.finite(A_i[[ii]])) || any(!is.finite(SIG[[ii]]))){
+        stop(
+          sprintf(
+            "Non-finite input matrix in .gtre_te() for firm %s (Ti = %s).",
+            ii, t[ii]
+          ),
+          call. = FALSE
+        )
+      }
+      
+      tryCatch(
+        .safe_linear_combo(
+          VEE_i      = VEE[[ii]],
+          A_i        = A_i[[ii]],
+          SIG_i      = SIG[[ii]],
+          base_ridge = 1e-10,
+          ridge_mult = 10,
+          max_tries  = 8
+        ),
+        error = function(e){
+          stop(
+            sprintf(
+              "Failed to compute GTRE posterior matrices in .gtre_te() for firm %s (Ti = %s): %s",
+              ii, t[ii], conditionMessage(e)
+            ),
+            call. = FALSE
+          )
+        }
+      )
+    })
+    
+    LAM <- lapply(post_obj, `[[`, "LAM")
+    ARR <- lapply(post_obj, `[[`, "ARR")
+    
+    ridge_report <- data.frame(
+      firm        = seq_len(N),
+      ridge_VEE   = sapply(post_obj, `[[`, "ridge_VEE"),
+      ridge_SIG   = sapply(post_obj, `[[`, "ridge_SIG"),
+      ridge_K     = sapply(post_obj, `[[`, "ridge_K"),
+      method_VEE  = sapply(post_obj, `[[`, "invVEE_method"),
+      method_SIG  = sapply(post_obj, `[[`, "invSIG_method"),
+      method_K    = sapply(post_obj, `[[`, "invK_method")
+    )
+    
+    ## Persistent TE
+    res_d <- mapply(
+      FUN = function(Ti, ARR_i, e_i, LAM_i){
+        ptmvnorm(
+          lowerx = rep(0, Ti + 1),
+          upperx = rep(Inf, Ti + 1),
+          mean   = as.numeric(ARR_i %*% e_i),
+          sigma  = LAM_i
+        )[1]
+      },
+      Ti       = t,
+      ARR_i    = ARR,
+      e_i      = e_i,
+      LAM_i    = LAM,
+      SIMPLIFY = FALSE
+    )
+    
+    res_n <- mapply(
+      FUN = function(Ti, ARR_i, e_i, LAM_i){
+        shift_vec <- c(-1, rep(0, Ti))
+        ptmvnorm(
+          lowerx = rep(0, Ti + 1),
+          upperx = rep(Inf, Ti + 1),
+          mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
+          sigma  = LAM_i
+        )[1]
+      },
+      Ti       = t,
+      ARR_i    = ARR,
+      e_i      = e_i,
+      LAM_i    = LAM,
+      SIMPLIFY = FALSE
+    )
+    
+    H <- mapply(
+      FUN = function(Ti, ARR_i, e_i, LAM_i, rd, rn){
+        shift_vec <- c(-1, rep(0, Ti))
+        (max(rn, .SFA_CONSTANTS$MIN_POSITIVE) /
+            max(rd, .SFA_CONSTANTS$MIN_POSITIVE)) *
+          exp(
+            t(shift_vec) %*% ARR_i %*% e_i +
+              0.5 * t(shift_vec) %*% LAM_i %*% shift_vec
+          )
+      },
+      Ti    = t,
+      ARR_i = ARR,
+      e_i   = e_i,
+      LAM_i = LAM,
+      rd    = res_d,
+      rn    = res_n
+    )
+    
+    H <- pmin(H, 1)
+    
+    ## Transient TE
+    U_list <- mapply(
+      FUN = function(Ti, ARR_i, e_i, LAM_i, rd){
+        
+        sapply(seq_len(Ti), function(j){
+          
+          shift_vec <- rep(0, Ti + 1)
+          shift_vec[j + 1] <- -1
+          
+          rn_t <- ptmvnorm(
+            lowerx = rep(0, Ti + 1),
+            upperx = rep(Inf, Ti + 1),
+            mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
+            sigma  = LAM_i
+          )[1]
+          
+          (max(rn_t, .SFA_CONSTANTS$MIN_POSITIVE) /
+              max(rd, .SFA_CONSTANTS$MIN_POSITIVE)) *
+            exp(
+              t(shift_vec) %*% ARR_i %*% e_i +
+                0.5 * t(shift_vec) %*% LAM_i %*% shift_vec
+            )
+        })
+      },
+      Ti       = t,
+      ARR_i    = ARR,
+      e_i      = e_i,
+      LAM_i    = LAM,
+      rd       = res_d,
+      SIMPLIFY = FALSE
+    )
+    
+    U <- unlist(U_list, use.names = FALSE)
+    U <- pmin(U, 1)
+    
+    list(
+      U = U,
+      H = H,
+      ridge_report = ridge_report
+    )
+  }
+  
+  
+  ## ------------------------------------------------------------
+  ## Finalize GTRE result object
+  ##
+  ## Handles:
+  ##   - standard errors
+  ##   - t-values
+  ##   - result labeling
+  ##   - sfareg return object
+  ## ------------------------------------------------------------
+  .gtre_finalize <- function(opt_obj,
+                             prep,
+                             data,
+                             formula,
+                             model_name,
+                             call,
+                             U,
+                             H){
+    
+    # opt <- opt
+    out <- out_template
+    
+    ## Standard errors
+    if(isTRUE(any(opt$hessian == 0))){
+      st_err <- rep(NA, length(opt$par))
+    } else if(is.null(opt$hessian)) {
+      st_err <- rep(NA, length(opt$par))
+    } else {
+      st_err <- suppressWarnings(
+        sqrt(pmax(diag(solve(opt$hessian)), 0))
+      )
+    }
+    
+    t_val   <- opt$par / st_err
+    out[1,] <- opt$par
+    out[2,] <- st_err
+    out[3,] <- t_val
+    
+    ## Rename intercept labels if needed
+    if(length(colnames(out)[which(colnames(out) == "(Intercept)")]) > 2){
+      colnames(out)[which(colnames(out) == "(Intercept)")] <-
+        c("(Intercept x)", "(Intercept u)", "(Intercept h)")
+    }
+    
+    total_time  <- End.Time
+    
+    results <- list(
+      t(out),
+      c(opt),
+      data,
+      total_time,
+      start_v,
+      model_name,
+      formula,
+      U,
+      H,
+      out["par",],
+      out["st_err",],
+      out["t-val",],
+      call
+    )
+    
+    class(results) <- "sfareg"
+    names(results) <- c(
+      "out",
+      "opt",
+      "data",
+      "total_time",
+      "start_v",
+      "model_name",
+      "formula",
+      "U",
+      "H",
+      "coefficients",
+      "std.errors",
+      "t.values",
+      "call"
+    )
+    
+    results
+  }
+  
+  
+  ## ------------------------------------------------------------
+  ## Main internal GTRE wrapper
+  ##
+  ## This is the single entry point for the GTRE branch.
+  ##
+  ## Recommended usage:
+  ##   results <- .gtre(...)
+  ##
+  ## Then the higher-level package code can dispatch by model_name.
+  ## ------------------------------------------------------------
+  .gtre <- function(data,
+                    individual,
+                    y_var,
+                    x_vars_vec,
+                    z_vars,
+                    zp_vars,
+                    n_x_vars,
+                    beta_hat,
+                    beta_0,
+                    beta_0_st,
+                    sigma_v,
+                    sigma_r,
+                    start_val,
+                    halton_num,
+                    rand.gtre,
+                    N,
+                    inefdec_n,
+                    maxit.bobyqa,
+                    rand.psoptim,
+                    maxit.psoptim,
+                    PSopt,
+                    maxit.optim,
+                    optHessian,
+                    Method,
+                    formula,
+                    call,
+                    verbose = FALSE){
+    
+    # ## 2. Optimization
+    # opt_obj <- .gtre_optimize(
+    #   prep          = prep,
+    #   inefdec_n     = inefdec_n,
+    #   maxit.bobyqa  = maxit.bobyqa,
+    #   rand.psoptim  = rand.psoptim,
+    #   maxit.psoptim = maxit.psoptim,
+    #   PSopt         = PSopt,
+    #   maxit.optim   = maxit.optim,
+    #   optHessian    = optHessian,
+    #   Method        = Method,
+    #   verbose       = verbose
+    # )
+    
+    ## 3. Post-estimation technical efficiency
+    te_obj <- .gtre_te(
+      opt       = opt,
+      prep      = prep,
+      inefdec_n = inefdec_n
+    )
+    
+    ## 4. Finalize result object
+    .gtre_finalize(
+      opt_obj    = opt_obj,
+      prep       = prep,
+      data       = data,
+      formula    = formula,
+      model_name = "GTRE_Z",
+      call       = call,
+      U          = te_obj$U,
+      H          = te_obj$H
+    )
+  }
+  
   results <- .gtre(
     data          = data,
     individual    = individual,
@@ -353,7 +1018,7 @@ if(model_name ==     "GTRE_Z")     {
   )
   return(results)
 }
-if(model_name ==     "TRE_Z")      {
+if(model_name ==     "TRE_Z"){
 
 delta          <- rep(0.1,length(z_vars))
 delta_p        <- rep(0.1,length(zp_vars))
@@ -552,51 +1217,117 @@ if(model_name == "GTRE_Z"){
   .safe_inverse <- function(M,
                             base_ridge = 1e-10,
                             ridge_mult = 10,
-                            max_tries = 8,
-                            name = "matrix") {
+                            max_tries = 12,
+                            name = "matrix",
+                            scale_matrix = TRUE) {
     
     M <- .safe_symmetrize(M)
+    
+    if(!is.matrix(M)){
+      M <- as.matrix(M)
+    }
+    
+    if(nrow(M) != ncol(M)){
+      stop(sprintf("%s is not square.", name), call. = FALSE)
+    }
+    
+    if(any(!is.finite(M))){
+      stop(sprintf("%s contains non-finite values before inversion.", name), call. = FALSE)
+    }
+    
     p <- nrow(M)
     I_p <- diag(p)
     
-    ## First: Cholesky path
+    if(scale_matrix){
+      d <- diag(M)
+      
+      if(any(!is.finite(d))){
+        stop(sprintf("%s has non-finite diagonal.", name), call. = FALSE)
+      }
+      
+      scale_d <- sqrt(pmax(abs(d), .Machine$double.eps))
+      S <- diag(1 / scale_d, p)
+      
+      M_work <- .safe_symmetrize(S %*% M %*% S)
+    } else {
+      S <- diag(1, p)
+      M_work <- M
+    }
+    
+    if(any(!is.finite(M_work))){
+      stop(sprintf("%s became non-finite after scaling.", name), call. = FALSE)
+    }
+    
+    ## First try Cholesky with progressive ridge on the scaled
     for(k in 0:max_tries){
       
       ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-      M_try <- if(ridge == 0) M else M + ridge * I_p
+      M_try <- if(ridge == 0) M_work else M_work + ridge * I_p
       
       chol_obj <- tryCatch(chol(M_try), error = function(e) NULL)
       
       if(!is.null(chol_obj)){
-        M_inv <- chol2inv(chol_obj)
+        inv_scaled <- chol2inv(chol_obj)
+        M_inv <- S %*% inv_scaled %*% S
+        
+        if(any(!is.finite(M_inv))){
+          next
+        }
+        
         return(list(
           value   = .safe_symmetrize(M_inv),
           ridge   = ridge,
           success = TRUE,
-          method  = if(ridge == 0) "chol" else "chol_ridge"
+          method  = if(ridge == 0) "scaled_chol" else "scaled_chol_ridge"
         ))
       }
     }
     
-    ## Second: direct solve fallback
+    ## ----------------------------------------------------------
+    ## Direct solve fallback, again on the scaled system.
+    ## ----------------------------------------------------------
     for(k in 0:max_tries){
       
       ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-      M_try <- if(ridge == 0) M else M + ridge * I_p
+      M_try <- if(ridge == 0) M_work else M_work + ridge * I_p
       
-      sol <- tryCatch(solve(M_try), error = function(e) NULL)
+      sol_scaled <- tryCatch(solve(M_try), error = function(e) NULL)
       
-      if(!is.null(sol)){
+      if(!is.null(sol_scaled)){
+        M_inv <- S %*% sol_scaled %*% S
+        
+        if(any(!is.finite(M_inv))){
+          next
+        }
+        
         return(list(
-          value   = .safe_symmetrize(sol),
+          value   = .safe_symmetrize(M_inv),
           ridge   = ridge,
           success = TRUE,
-          method  = if(ridge == 0) "solve" else "solve_ridge"
+          method  = if(ridge == 0) "scaled_solve" else "scaled_solve_ridge"
         ))
       }
     }
     
-    stop(sprintf("Unable to invert %s even after ridging.", name))
+    ## ----------------------------------------------------------
+    ## Final diagnostic: report the scale of the failed matrix.
+    ## This is much more useful than a generic inversion failure.
+    ## ----------------------------------------------------------
+    eigvals <- tryCatch(eigen(M_work, symmetric = TRUE, only.values = TRUE)$values,
+                        error = function(e) NA_real_)
+    
+    stop(sprintf(
+      paste0(
+        "Unable to invert %s even after scaled ridging. ",
+        "diag range before scaling = [%s, %s]; ",
+        "scaled eigenvalue range = [%s, %s]."
+      ),
+      name,
+      signif(min(diag(M), na.rm = TRUE), 4),
+      signif(max(diag(M), na.rm = TRUE), 4),
+      signif(min(eigvals, na.rm = TRUE), 4),
+      signif(max(eigvals, na.rm = TRUE), 4)
+    ), call. = FALSE)
   }
   
   ## ----------------------------------------------------------
@@ -611,7 +1342,7 @@ if(model_name == "GTRE_Z"){
   .safe_linear_combo <- function(VEE_i, A_i, SIG_i,
                                  base_ridge = 1e-10,
                                  ridge_mult = 10,
-                                 max_tries = 8,
+                                 max_tries = 12,
                                  name = "posterior system") {
     
     invVEE <- .safe_inverse(VEE_i,
@@ -626,7 +1357,19 @@ if(model_name == "GTRE_Z"){
                             max_tries  = max_tries,
                             name       = "SIG_i")
     
+    if(any(!is.finite(invVEE$value))){
+      stop("invVEE contains non-finite values.", call. = FALSE)
+    }
+    
+    if(any(!is.finite(invSIG$value))){
+      stop("invSIG contains non-finite values.", call. = FALSE)
+    }
+    
     K <- .safe_symmetrize(invVEE$value + t(A_i) %*% invSIG$value %*% A_i)
+    
+    if(any(!is.finite(K))){
+      stop("Posterior system K contains non-finite values.", call. = FALSE)
+    }
     
     invK <- .safe_inverse(K,
                           base_ridge = base_ridge,
@@ -635,6 +1378,10 @@ if(model_name == "GTRE_Z"){
                           name       = name)
     
     ARR <- invK$value %*% t(A_i) %*% invSIG$value
+    
+    if(any(!is.finite(ARR))){
+      stop("ARR contains non-finite values after posterior calculation.", call. = FALSE)
+    }
     
     list(
       LAM = .safe_symmetrize(invK$value),

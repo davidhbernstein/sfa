@@ -73,6 +73,10 @@ return(result)  }
 
 ## Inital Data cleaning and Processing 
 data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
+  
+  if(model_name == "GTRE_Z"){
+    formula <- .format_formula(formula)  }
+  
 data_z  <- formula_z <- z_vars <- intercept_z <- z_vars_vec <- z_z_vec <- n_z_vars <- formula_zp <- data_zp <- zp_vars <- 
 intercept_zp <- zp_vars_vec <- n_zp_vars <- zp_zp_vec <- fancy_vars_zp <- NULL
 n_z_vars  <- NA  ## maybe make condition here making this default to null

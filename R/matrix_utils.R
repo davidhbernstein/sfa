@@ -176,7 +176,8 @@
   # 4. Delta Section 
   # If "1", it's 1 param. If variables, it's n_z_eff params.
   if (parts[2] == "1") {
-    lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
+    # lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
+    lower_bounds <- c(lower_bounds, inf_sub)
   } else {
     lower_bounds <- c(lower_bounds, rep(inf_sub, prep$n_z_vars))
   }
@@ -184,7 +185,8 @@
   # 5. Delta_p Section 
   # If "1", it's 1 param. If variables, it's n_zp_eff params.
   if (parts[3] == "1") {
-    lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
+    # lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
+    lower_bounds <- c(lower_bounds, inf_sub)
   } else {
     lower_bounds <- c(lower_bounds, rep(inf_sub, prep$n_zp_vars))
   }
