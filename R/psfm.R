@@ -322,7 +322,7 @@ class(results)  <- "sfareg"
 names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U", "coefficients", "std.errors", "t.values", "call")}
 
 return(results)}   
-if(model_name ==     "GTRE_Z"){ 
+if(model_name ==     "GTRE_Z")     { 
 ## Default starting values for variance equations
     delta   <- rep(0.1, length(z_vars))
     delta_p <- rep(0.1, length(zp_vars))
@@ -1018,18 +1018,16 @@ if(model_name ==     "GTRE_Z"){
   )
   return(results)
 }
-if(model_name ==     "TRE_Z"){
+if(model_name ==     "TRE_Z")      {
 
 delta          <- rep(0.1,length(z_vars))
-delta_p        <- rep(0.1,length(zp_vars))
-      
+
 if(isTRUE(is.numeric(start_val))){start_v <- start_val}
-if(isTRUE(model_name == "GTRE_Z") & isFALSE(is.numeric(start_val))){start_v <- if(is.na(beta_0_st)){unname(c(sigma_v,sigma_r,beta_hat,delta,delta_p))} else{unname(c(sigma_v,sigma_r,beta_0,beta_hat,delta,delta_p))}}
-if(isTRUE(model_name == "TRE_Z")  & isFALSE(is.numeric(start_val))){start_v <- if(is.na(beta_0_st)){unname(c(sigma_v,sigma_r,beta_hat,delta,delta_p))} else{unname(c(sigma_v,sigma_r,beta_0,beta_hat,delta,delta_p))}}
+if(isFALSE(is.numeric(start_val))){start_v <- if(is.na(beta_0_st)){unname(c(sigma_v,sigma_r,beta_hat,delta))} else{unname(c(sigma_v,sigma_r,beta_0,beta_hat,delta))}}
 
 out            <- matrix(0,nrow = 3,ncol = length(start_v))
 rownames(out)  <- c("par","st_err","t-val") 
-colnames(out)  <- if(model_name=="GTRE_Z"){c("sigv","sigr",colnames(data_x),z_vars,zp_vars)} else{c("sigv","sigr",colnames(data_x),z_vars,zp_vars)} 
+colnames(out)  <- c("sigv","sigr",colnames(data_x),z_vars)
       
 if (isTRUE(is.numeric(start_val))){ start_v <- start_val}
 if (isTRUE(is.numeric(halton_num))){R       <- halton_num}else{R <- ceiling(sqrt(nrow(data)))+100 }  ## Integral reps  
@@ -1052,7 +1050,7 @@ rm(cor,v,mat)
       
       indiv           <- noquote(as.vector(unique(data[,c(individual)])))
       t               <- rep(0, N)
-      data_i <- Y <- eps <- data_i_vars <- data_z_vars <- data_zp_vars <- R_h1 <- R_h2 <- as.list(rep(0,N))
+      data_i <- Y <- eps <- data_i_vars <- data_z_vars <- R_h1 <- R_h2 <- as.list(rep(0,N))
       
       for (ii in 1:N) {
         data_i[[ii]]        <-  data[which(data[,c(individual)]==indiv[ii]),]
@@ -1062,30 +1060,17 @@ rm(cor,v,mat)
         Y[[ii]]             <-  matrix(rep(data_i[[ii]][,y_var],R),t[[ii]],R)
         data_i_vars[[ii]]   <-  data.frame(data_i[[ii]][,c(x_vars_vec)] )
         data_z_vars[[ii]]   <-  data.frame(data_i[[ii]][,c(z_vars)])
-        data_zp_vars[[ii]]  <-  data.frame(data_i[[ii]][,c(zp_vars)])    } 
+        } 
       
 fn <-  function(x){
-if(model_name == "GTRE_Z"){      
-x_x_vec    <- x[3:as.numeric(n_x_vars + 2)]
-z_z_vec    <- x[as.numeric(n_x_vars + 3):as.numeric(n_x_vars + 2 + n_z_vars)]
-zp_zp_vec  <- x[as.numeric(n_x_vars + 3 + n_z_vars):as.numeric(n_x_vars + 2 + n_z_vars + n_zp_vars)]}
-      
-if(model_name == "TRE_Z"){  
 x_x_vec    <- x[3:as.numeric(n_x_vars + 2)]
 
 for (qq in 1:n_z_vars){
 v              <- qq  + 2 + n_x_vars
-z_z_vec[qq]    <- x[v]}       }
+z_z_vec[qq]    <- x[v]} 
   
 fn1 = function(ii){ 
-  
-  sigma_h_fun    <- mean(sqrt(exp(as.matrix(data_zp_vars[[ii]])%*%zp_zp_vec)))  
-  
-  if(model_name == "GTRE_Z"){
-   eps[[ii]]     <- Y[[ii]]  - x[2]*R_h1[[ii]]  + sigma_h_fun*R_h2[[ii]] * inefdec_n}
-  
-  if(model_name == "TRE_Z"){   
-   eps[[ii]]     <- Y[[ii]]  - x[2]*R_h1[[ii]]   }
+  eps[[ii]]     <- Y[[ii]]  - x[2]*R_h1[[ii]] 
   
   for (qq in 1:n_x_vars) {
   eps[[ii]] <- eps[[ii]] - x_x_vec[qq]*matrix(rep(data_i_vars[[ii]][,qq],R),t[[ii]],R)  }
@@ -1111,18 +1096,14 @@ fn1_apply[which(fn1_apply==-Inf)]  <- -(.SFA_CONSTANTS$MAX_VALUE)^.1
 return( sum( fn1_apply[is.finite(fn1_apply)] ) )} 
 
 Start.Time <- start.time()
-# differ<- 15
-# if(model_name == "TRE_Z"){ lower1   <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2), start_v[-c(1:2)] -differ)}
-# if(model_name == "GTRE_Z"){lower1   <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2), start_v[-c(1:2)] -differ)}    
-        
+
 Opt.Bobyqa  <- opt.bobyqa(fn=fn, start_v=start_v, lower.bobyqa=-Inf, maxit.bobyqa=maxit.bobyqa, bob.TF=TRUE,verbose = verbose)      
 start_v     <- Opt.Bobyqa$start_v
 start_feval <- Opt.Bobyqa$start_feval
 bob1        <- Opt.Bobyqa$bob1 
 
 differ<- 10
-if(model_name == "TRE_Z"){lower1    <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)}
-if(model_name == "GTRE_Z"){lower1   <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)}  
+lower1    <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)
 
 Opt.Psoptim <- opt.psoptim(fn=fn, start_v, lower.psoptim=lower1, upper.psoptim=c(start_v+differ), 
                            rand.psoptim=rand.psoptim,
@@ -1132,8 +1113,7 @@ start_feval <- Opt.Psoptim$start_feval
 opt00       <- Opt.Psoptim$opt00
 
 differ  <- 1
-if(model_name == "TRE_Z"){ lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)}
-if(model_name == "GTRE_Z"){lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)}
+lower1 <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2) , start_v[-c(1:2)] -differ)
 
 Opt.Optim <- opt.optim(fn = fn, start_v = start_v, lower.optim =lower1 ,upper.optim=c(start_v+differ), 
           maxit.optim=maxit.optim, opt.TF = optHessian, method=Method, optHessian= optHessian,verbose = verbose)
@@ -1154,494 +1134,10 @@ t_val      <- opt$par/st_err
 out[1,]    <- opt$par
 out[2,]    <- st_err
 out[3,]    <- t_val
-if(length(colnames(out)[which(colnames(out) == "(Intercept)")])>2){
-colnames(out)[which(colnames(out) == "(Intercept)")] <- c("(Intercept x)", "(Intercept u)", "(Intercept h)")  }
+if(length(colnames(out)[which(colnames(out) == "(Intercept)")]) == 2){
+colnames(out)[which(colnames(out) == "(Intercept)")] <- c("(Intercept x)" , "(Intercept u)")  }
       
 ## TE Measurements       
-if(model_name == "GTRE_Z"){
-  ## ----------------------------------------------------------
-  ## Helper: construct variance-design matrices
-  ##
-  ## If vars is empty, return an intercept-only design so the
-  ## same code path nests the homoskedastic 2016 model.
-  ##
-  ## Arguments:
-  ##   data      : full stacked data.frame
-  ##   vars      : character vector of variable names
-  ##   rows      : optional row indices (e.g. one row per firm)
-  ##   int_name  : name for fallback intercept column
-  ##
-  ## Returns:
-  ##   numeric design matrix
-  ## ----------------------------------------------------------
-  make_var_design <- function(data, vars, rows = NULL, int_name = "int"){
-    if(length(vars) == 0){
-      n_rows <- if(is.null(rows)) nrow(data) else length(rows)
-      out <- matrix(1, nrow = n_rows, ncol = 1)
-      colnames(out) <- int_name
-      return(out)
-    }
-    
-    out <- as.matrix(data[, vars, drop = FALSE])
-    
-    if(!is.null(rows)){
-      out <- out[rows, , drop = FALSE]
-    }
-    
-    out
-  }
-  
-  ## ----------------------------------------------------------
-  ## Helper: force symmetry numerically
-  ##
-  ## Even when a matrix is theoretically symmetric, finite
-  ## precision can introduce small asymmetries.
-  ## ----------------------------------------------------------
-  .safe_symmetrize <- function(M){
-    0.5 * (M + t(M))
-  }
-  
-  ## ----------------------------------------------------------
-  ## Helper: safe inverse for covariance-type matrices
-  ##
-  ## Strategy:
-  ##   1. symmetrize matrix
-  ##   2. try Cholesky inverse
-  ##   3. if needed, add ridge progressively
-  ##   4. if still needed, fall back to solve()
-  ##
-  ## Returns:
-  ##   list(value = inverse, ridge = ridge used,
-  ##        success = TRUE, method = "...")
-  ## ----------------------------------------------------------
-  .safe_inverse <- function(M,
-                            base_ridge = 1e-10,
-                            ridge_mult = 10,
-                            max_tries = 12,
-                            name = "matrix",
-                            scale_matrix = TRUE) {
-    
-    M <- .safe_symmetrize(M)
-    
-    if(!is.matrix(M)){
-      M <- as.matrix(M)
-    }
-    
-    if(nrow(M) != ncol(M)){
-      stop(sprintf("%s is not square.", name), call. = FALSE)
-    }
-    
-    if(any(!is.finite(M))){
-      stop(sprintf("%s contains non-finite values before inversion.", name), call. = FALSE)
-    }
-    
-    p <- nrow(M)
-    I_p <- diag(p)
-    
-    if(scale_matrix){
-      d <- diag(M)
-      
-      if(any(!is.finite(d))){
-        stop(sprintf("%s has non-finite diagonal.", name), call. = FALSE)
-      }
-      
-      scale_d <- sqrt(pmax(abs(d), .Machine$double.eps))
-      S <- diag(1 / scale_d, p)
-      
-      M_work <- .safe_symmetrize(S %*% M %*% S)
-    } else {
-      S <- diag(1, p)
-      M_work <- M
-    }
-    
-    if(any(!is.finite(M_work))){
-      stop(sprintf("%s became non-finite after scaling.", name), call. = FALSE)
-    }
-    
-    ## First try Cholesky with progressive ridge on the scaled
-    for(k in 0:max_tries){
-      
-      ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-      M_try <- if(ridge == 0) M_work else M_work + ridge * I_p
-      
-      chol_obj <- tryCatch(chol(M_try), error = function(e) NULL)
-      
-      if(!is.null(chol_obj)){
-        inv_scaled <- chol2inv(chol_obj)
-        M_inv <- S %*% inv_scaled %*% S
-        
-        if(any(!is.finite(M_inv))){
-          next
-        }
-        
-        return(list(
-          value   = .safe_symmetrize(M_inv),
-          ridge   = ridge,
-          success = TRUE,
-          method  = if(ridge == 0) "scaled_chol" else "scaled_chol_ridge"
-        ))
-      }
-    }
-    
-    ## ----------------------------------------------------------
-    ## Direct solve fallback, again on the scaled system.
-    ## ----------------------------------------------------------
-    for(k in 0:max_tries){
-      
-      ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-      M_try <- if(ridge == 0) M_work else M_work + ridge * I_p
-      
-      sol_scaled <- tryCatch(solve(M_try), error = function(e) NULL)
-      
-      if(!is.null(sol_scaled)){
-        M_inv <- S %*% sol_scaled %*% S
-        
-        if(any(!is.finite(M_inv))){
-          next
-        }
-        
-        return(list(
-          value   = .safe_symmetrize(M_inv),
-          ridge   = ridge,
-          success = TRUE,
-          method  = if(ridge == 0) "scaled_solve" else "scaled_solve_ridge"
-        ))
-      }
-    }
-    
-    ## ----------------------------------------------------------
-    ## Final diagnostic: report the scale of the failed matrix.
-    ## This is much more useful than a generic inversion failure.
-    ## ----------------------------------------------------------
-    eigvals <- tryCatch(eigen(M_work, symmetric = TRUE, only.values = TRUE)$values,
-                        error = function(e) NA_real_)
-    
-    stop(sprintf(
-      paste0(
-        "Unable to invert %s even after scaled ridging. ",
-        "diag range before scaling = [%s, %s]; ",
-        "scaled eigenvalue range = [%s, %s]."
-      ),
-      name,
-      signif(min(diag(M), na.rm = TRUE), 4),
-      signif(max(diag(M), na.rm = TRUE), 4),
-      signif(min(eigvals, na.rm = TRUE), 4),
-      signif(max(eigvals, na.rm = TRUE), 4)
-    ), call. = FALSE)
-  }
-  
-  ## ----------------------------------------------------------
-  ## Helper: compute Lambda_i and ARR_i robustly
-  ##
-  ## Lambda_i = [VEE_i^{-1} + A_i' SIG_i^{-1} A_i]^{-1}
-  ## ARR_i    = Lambda_i A_i' SIG_i^{-1}
-  ##
-  ## Returns:
-  ##   list with Lambda_i, ARR_i, and diagnostics
-  ## ----------------------------------------------------------
-  .safe_linear_combo <- function(VEE_i, A_i, SIG_i,
-                                 base_ridge = 1e-10,
-                                 ridge_mult = 10,
-                                 max_tries = 12,
-                                 name = "posterior system") {
-    
-    invVEE <- .safe_inverse(VEE_i,
-                            base_ridge = base_ridge,
-                            ridge_mult = ridge_mult,
-                            max_tries  = max_tries,
-                            name       = "VEE_i")
-    
-    invSIG <- .safe_inverse(SIG_i,
-                            base_ridge = base_ridge,
-                            ridge_mult = ridge_mult,
-                            max_tries  = max_tries,
-                            name       = "SIG_i")
-    
-    if(any(!is.finite(invVEE$value))){
-      stop("invVEE contains non-finite values.", call. = FALSE)
-    }
-    
-    if(any(!is.finite(invSIG$value))){
-      stop("invSIG contains non-finite values.", call. = FALSE)
-    }
-    
-    K <- .safe_symmetrize(invVEE$value + t(A_i) %*% invSIG$value %*% A_i)
-    
-    if(any(!is.finite(K))){
-      stop("Posterior system K contains non-finite values.", call. = FALSE)
-    }
-    
-    invK <- .safe_inverse(K,
-                          base_ridge = base_ridge,
-                          ridge_mult = ridge_mult,
-                          max_tries  = max_tries,
-                          name       = name)
-    
-    ARR <- invK$value %*% t(A_i) %*% invSIG$value
-    
-    if(any(!is.finite(ARR))){
-      stop("ARR contains non-finite values after posterior calculation.", call. = FALSE)
-    }
-    
-    list(
-      LAM = .safe_symmetrize(invK$value),
-      ARR = ARR,
-      invVEE_method = invVEE$method,
-      invSIG_method = invSIG$method,
-      invK_method   = invK$method,
-      ridge_VEE     = invVEE$ridge,
-      ridge_SIG     = invSIG$ridge,
-      ridge_K       = invK$ridge
-    )
-  }
-  
-  ## ----------------------------------------------------------
-  ## 0. Basic dimensions and indexing
-  ## ----------------------------------------------------------
-  n       <- sum(t)
-  id_obs  <- rep(seq_len(N), t)
-  t_cum   <- cumsum(t)
-  t_start <- c(1, head(t_cum, -1) + 1)
-  t_end   <- t_cum
-  
-  ## ----------------------------------------------------------
-  ## 1. Build design matrices for variance equations
-  ##
-  ## Z_mat  : stacked observation-level design for transient u_it
-  ## Zp_mat : firm-level design for persistent eta_i
-  ##
-  ## If no determinants are supplied, these become intercept-only.
-  ## ----------------------------------------------------------
-  Z_mat  <- make_var_design(data, z_vars,  rows = NULL,    int_name = "int_u")
-  Zp_mat <- make_var_design(data, zp_vars, rows = t_start, int_name = "int_h")
-  
-  n_z_eff  <- ncol(Z_mat)
-  n_zp_eff <- ncol(Zp_mat)
-  
-  ## ----------------------------------------------------------
-  ## 2. Parameter indexing
-  ##
-  ## Assumed parameter order:
-  ##   1                        -> sig_v
-  ##   2                        -> sig_r
-  ##   3:(2+n_x_vars)           -> beta
-  ##   next n_z_eff             -> delta
-  ##   next n_zp_eff            -> delta_p
-  ##
-  ## In the 2016 special case, n_z_eff = n_zp_eff = 1.
-  ## ----------------------------------------------------------
-  beta_start   <- 3
-  beta_end     <- beta_start + n_x_vars - 1
-  
-  delta_start  <- beta_end + 1
-  delta_end    <- delta_start + n_z_eff - 1
-  
-  deltap_start <- delta_end + 1
-  deltap_end   <- deltap_start + n_zp_eff - 1
-  
-  beta    <- opt$par[beta_start:beta_end]
-  delta   <- opt$par[delta_start:delta_end]
-  delta_p <- opt$par[deltap_start:deltap_end]
-  
-  ## noise and random-effects sds
-  sig_v <- max(opt$par[1], 1e-8)
-  sig_r <- max(opt$par[2], 1e-8)
-  
-  ## ----------------------------------------------------------
-  ## 3. Heteroskedastic standard deviations
-  ##
-  ## We also impose a small lower bound to avoid numerical
-  ## singularity in VEE_i when variances get extremely small.
-  ## ----------------------------------------------------------
-  min_sd <- 1e-8
-  
-  sig_u_all <- pmax(as.numeric(sqrt(exp(Z_mat  %*% delta))),   min_sd)  # length n
-  sig_h_all <- pmax(as.numeric(sqrt(exp(Zp_mat %*% delta_p))), min_sd)  # length N
-  
-  ## split transient sds by firm
-  sig_u_split <- split(sig_u_all, id_obs)
-  
-  ## ----------------------------------------------------------
-  ## 4. Residual vectors epsilon_i
-  ## ----------------------------------------------------------
-  e_i <- Map(
-    f = function(Yi, Xi){
-      pmin(
-        inefdec_n * (Yi[,1] - rowSums(t(t(Xi) * beta))),
-        Yi[,1] * 0
-      )
-    },
-    Yi = Y,
-    Xi = data_i_vars
-  )
-  
-  ## ----------------------------------------------------------
-  ## 5. Firm-level matrices via Map()
-  ##
-  ## A_i   : loadings matrix for persistent + transient ineff.
-  ## SIG_i : covariance of noise + random effects
-  ## VEE_i : covariance of persistent + transient inefficiency
-  ## ----------------------------------------------------------
-  A_i <- lapply(t, function(Ti) -cbind(rep(1, Ti), diag(Ti)))
-  
-  SIG <- lapply(
-    t,
-    function(Ti) sig_v^2 * diag(Ti) + sig_r^2 * tcrossprod(rep(1, Ti))
-  )
-  
-  VEE <- Map(
-    f = function(sig_h_i, sig_u_i){
-      Ti <- length(sig_u_i)
-      rbind(
-        c(sig_h_i^2, rep(0, Ti)),
-        cbind(rep(0, Ti), diag(sig_u_i^2, nrow = Ti, ncol = Ti))
-      )
-    },
-    sig_h_i = sig_h_all,
-    sig_u_i = sig_u_split
-  )
-  
-  ## ----------------------------------------------------------
-  ## 6. Robust posterior objects: Lambda_i and ARR_i
-  ## ----------------------------------------------------------
-  post_obj <- Map(
-    f = function(VEE_i, A_i, SIG_i){
-      .safe_linear_combo(
-        VEE_i      = VEE_i,
-        A_i        = A_i,
-        SIG_i      = SIG_i,
-        base_ridge = 1e-10,
-        ridge_mult = 10,
-        max_tries  = 8
-      )
-    },
-    VEE_i = VEE,
-    A_i   = A_i,
-    SIG_i = SIG
-  )
-  
-  LAM <- lapply(post_obj, `[[`, "LAM")
-  ARR <- lapply(post_obj, `[[`, "ARR")
-  
-  ## Optional diagnostic report for ridging/inversion method
-  ridge_report <- data.frame(
-    firm        = seq_len(N),
-    ridge_VEE   = sapply(post_obj, `[[`, "ridge_VEE"),
-    ridge_SIG   = sapply(post_obj, `[[`, "ridge_SIG"),
-    ridge_K     = sapply(post_obj, `[[`, "ridge_K"),
-    method_VEE  = sapply(post_obj, `[[`, "invVEE_method"),
-    method_SIG  = sapply(post_obj, `[[`, "invSIG_method"),
-    method_K    = sapply(post_obj, `[[`, "invK_method")
-  )
-  
-  ## ----------------------------------------------------------
-  ## 7. Persistent TE:
-  ##    H_i = E[exp(-eta_i) | epsilon_i]
-  ## ----------------------------------------------------------
-  res_d <- mapply(
-    FUN = function(Ti, ARR_i, e_i, LAM_i){
-      ptmvnorm(
-        lowerx = rep(0, Ti + 1),
-        upperx = rep(Inf, Ti + 1),
-        mean   = as.numeric(ARR_i %*% e_i),
-        sigma  = LAM_i
-      )[1]
-    },
-    Ti         = t,
-    ARR_i      = ARR,
-    e_i        = e_i,
-    LAM_i      = LAM,
-    SIMPLIFY   = FALSE
-  )
-  
-  res_n <- mapply(
-    FUN = function(Ti, ARR_i, e_i, LAM_i){
-      shift_vec <- c(-1, rep(0, Ti))
-      ptmvnorm(
-        lowerx = rep(0, Ti + 1),
-        upperx = rep(Inf, Ti + 1),
-        mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
-        sigma  = LAM_i
-      )[1]
-    },
-    Ti         = t,
-    ARR_i      = ARR,
-    e_i        = e_i,
-    LAM_i      = LAM,
-    SIMPLIFY   = FALSE
-  )
-  
-  H <- mapply(
-    FUN = function(Ti, ARR_i, e_i, LAM_i, rd, rn){
-      shift_vec <- c(-1, rep(0, Ti))
-      (max(rn, .SFA_CONSTANTS$MIN_POSITIVE) /
-          max(rd, .SFA_CONSTANTS$MIN_POSITIVE)) *
-        exp(
-          t(shift_vec) %*% ARR_i %*% e_i +
-            0.5 * t(shift_vec) %*% LAM_i %*% shift_vec
-        )
-    },
-    Ti         = t,
-    ARR_i      = ARR,
-    e_i        = e_i,
-    LAM_i      = LAM,
-    rd         = res_d,
-    rn         = res_n
-  )
-  
-  H <- pmin(H, 1)
-  
-  ## ----------------------------------------------------------
-  ## 8. Transient TE:
-  ##    U_it = E[exp(-u_it) | epsilon_i]
-  ##
-  ## For each firm i, compute the j-th transient TE directly
-  ## without expanding all firm-level objects to the stacked level.
-  ## ----------------------------------------------------------
-  U_list <- mapply(
-    FUN = function(Ti, ARR_i, e_i, LAM_i, rd){
-      
-      sapply(seq_len(Ti), function(j){
-        
-        shift_vec <- rep(0, Ti + 1)
-        shift_vec[j + 1] <- -1
-        
-        rn_t <- ptmvnorm(
-          lowerx = rep(0, Ti + 1),
-          upperx = rep(Inf, Ti + 1),
-          mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
-          sigma  = LAM_i
-        )[1]
-        
-        (max(rn_t, .SFA_CONSTANTS$MIN_POSITIVE) /
-            max(rd, .SFA_CONSTANTS$MIN_POSITIVE)) *
-          exp(
-            t(shift_vec) %*% ARR_i %*% e_i +
-              0.5 * t(shift_vec) %*% LAM_i %*% shift_vec
-          )
-      })
-    },
-    Ti         = t,
-    ARR_i      = ARR,
-    e_i        = e_i,
-    LAM_i      = LAM,
-    rd         = res_d,
-    SIMPLIFY   = FALSE
-  )
-  
-  U <- unlist(U_list, use.names = FALSE)
-  U <- pmin(U, 1)
-  
-  ## ----------------------------------------------------------
-  ## 9. Optional: if you want to keep diagnostics with output
-  ##
-  ## For example, you could later attach ridge_report to the
-  ## returned object from the parent estimation routine.
-  ## ----------------------------------------------------------
-  ## attr(H, "ridge_report") <- ridge_report
-  ## attr(U, "ridge_report") <- ridge_report
-}
-if(model_name == "TRE_Z"){
         NX    <- n_x_vars + 2
         NZ1   <- n_x_vars + 3
         NZ2   <- n_x_vars + n_z_vars + 2
@@ -1661,16 +1157,11 @@ if(model_name == "TRE_Z"){
         U          <- ((1-pnorm((sig_u*sig_v/sig) + inner ))/ pmax(1-pnorm(inner),.SFA_CONSTANTS$MIN_POSITIVE) )*exp( (sig_u^2/sig^2)*(eps_hat + 0.5*sig_v^2) )
         U          <- pmax(U, 0)
         U          <- pmin(U, 1)
-}      
+      
 ## Results 
-if(model_name == "GTRE_Z"){      
-results <- list(t(out),c(opt),data,End.Time,start_v,model_name,formula, U, H, out["par",], out["st_err",], out["t-val",], call)
-class(results)  <- "sfareg"
-names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U","H", "coefficients", "std.errors", "t.values","call")}
-if(model_name == "TRE_Z"){      
 results <- list(t(out),c(opt),data,End.Time,start_v,model_name,formula, U, out["par",], out["st_err",], out["t-val",], call)
 class(results)  <- "sfareg"
-names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U", "coefficients", "std.errors", "t.values","call")}
+names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U", "coefficients", "std.errors", "t.values","call")
 return(results)}    
 if(model_name ==     "TFE")        {
 Start.Tfe <- start.tfe(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars) 

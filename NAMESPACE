@@ -1,4 +1,4 @@
-export(zsfm, psfm, sfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg)
+export(zsfm, psfm, sfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
 
 import("methods")
 import("plm") # import whole package
@@ -21,9 +21,13 @@ import("devtools") # import whole package
 import("fdrtool") # import whole package
 import("numDeriv") # import whole package
 import("gsl") # import whole package
+import("pbapply") # import whole package
+import("parallel") # import whole package
 
-importFrom("stats", "coef", "dnorm", "dt", "integrate", "lm",
-                "model.matrix", "model.response", "optim", "pnorm", "pt",
-                "qnorm", "rcauchy", "rexp", "rnorm", "rt", "runif")
+importFrom("utils", "head")
+importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "lm", 
+                    "model.matrix", "model.response", "optim",   "pnorm",     "pt",
+                    "qnorm",        "rcauchy",        "rexp",    "rnorm",     "rt", 
+                    "as.formula",   "complete.cases", "formula", "sd",        "runif")
 S3method(summary, sfareg)
 S3method(print, sfareg)
