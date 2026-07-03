@@ -194,3 +194,65 @@
   return(lower_bounds)
 }
 
+
+
+
+.check_model_formula_pipes <- function(formula, model_name) {
+  # 1. Map model names to their maximum ALLOWED RHS parts (pipes + 1)
+  # 1 pipe = 2 parts, 2 pipes = 3 parts, 0 pipes = 1 part
+  max_parts_map <- c(
+    # --- 0 Pipes Allowed (1 Part) ---
+    "TFE"        = 1, 
+    "GTRE_SEQ1"  = 1, 
+    "GTRE_SEQ2"  = 1,
+    "NR"         = 1,  
+    "THT"        = 1,  
+    "NTN"        = 1,  
+    "NG"         = 1,
+    "ZISF"       = 1,
+    "NNAK"       = 1,  
+    
+    # --- 1 Pipe Allowed (2 Parts) ---
+    "TRE"        = 2, 
+    "TRE_Z"      = 2, 
+    "FD"         = 2,
+    "ZISF_Z"     = 2,
+    "NHN_Z"      = 2,  
+    "NE_Z"       = 2,  
+    "NHN"        = 2,  
+    "NE"         = 2, 
+    
+    # --- 2 Pipes Allowed (3 Parts) ---
+    "GTRE"       = 3, 
+    "GTRE_Z"     = 3,
+    "TTNE"       = 3,
+    "TTHN"       = 3
+  )
+  
+  # 2. Check if the provided model name is valid
+  if (!(model_name %in% names(max_parts_map))) {
+    stop(paste("Unknown model_name:", model_name), call. = FALSE)
+  }
+  
+  # 3. Parse the formula and count RHS parts separated by '|'
+  f <- Formula::Formula(formula)
+  rhs_parts <- length(f)[2] # Index 2 extracts the RHS parts vector length
+  
+  # 4. Get the max allowed parts for this specific model
+  allowed_parts <- max_parts_map[model_name]
+  
+  # 5. Enforce the limit
+  if (rhs_parts > allowed_parts) {
+    formula_str <- paste(deparse(formula), collapse = " ")
+    max_pipes <- allowed_parts - 1
+    
+    stop(paste0(
+      "Invalid formula structure for model '", model_name, "'!\n",
+      "Formula provided: ", formula_str, "\n",
+      "The '", model_name, "' model allows a maximum of ", max_pipes, " pipe separator(s) (", allowed_parts, " parts).\n",
+      "Found ", (rhs_parts - 1), " pipe separator(s) (", rhs_parts, " parts) instead."
+    ), call. = FALSE)
+  }
+  
+  return(invisible(TRUE))
+}

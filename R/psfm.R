@@ -19,6 +19,8 @@ psfm <- function(formula,
                  rand.gtre    = NULL,
                  rand.psoptim = NULL){
     
+.check_model_formula_pipes(formula,model_name)  
+  
 call          <- match.call()
 model_name    <- match.arg(model_name)
   

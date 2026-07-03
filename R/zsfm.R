@@ -16,8 +16,10 @@ zsfm <- function(formula,
                 logit         = TRUE,
                 verbose       = FALSE,
                 rand.psoptim  = NULL){
+
+.check_model_formula_pipes(formula,model_name)    
   
-call <- match.call()
+call          <- match.call()
 model_name    <- match.arg(model_name) 
 
 DR1 <- data_proc(formula,   data, model_name, individual = NULL, inefdec)
