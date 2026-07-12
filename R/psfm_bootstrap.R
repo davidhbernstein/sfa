@@ -15,7 +15,9 @@
 ##      entirely, controlled by `h_type`.
 ##   2. Re-draw v, u (half-normal w/ z-covariates), r (individual effects),
 ##      and h (half-normal, either parametric-in-covariates or scalar) exactly
-##      as the original model assumes.
+##      as the original model assumes. Parameterization confirmed from
+##      sfa:::psfm source: sigma_u_i = sqrt(exp(z %*% delta)),
+##      sigma_h_i = sqrt(exp(h_vars %*% delta_p)).
 ##   3. Build a new response y* = X * beta_hat + v + u + r + h
 ##   4. Re-estimate psfm() on the simulated data, in parallel, BOOT times.
 ##   5. Return bootstrap SEs / t-values for all parameters in $out, plus the
@@ -168,7 +170,7 @@ psfm_bootstrap <- function(psfm_object,
     v <- rnorm(n_obs, 0, sigv_hat)
     
     ## u: half-normal with covariate-driven sigma (z-block), as in the original
-    sigma_u <- exp(as.vector(data_z %*% beta_z_hat))
+    sigma_u <- sqrt(exp(as.vector(data_z %*% beta_z_hat)))
     u       <- abs(rnorm(n_obs, 0, sigma_u))
     
     ## r: individual random effect, constant within individual, repeated over time
@@ -179,7 +181,7 @@ psfm_bootstrap <- function(psfm_object,
     h <- switch(h_type,
                 "none" = 0,
                 "scalar" = {
-                  sigma_h <- unname(beta_h_hat)   ## single scalar sigma_h, same for all individuals
+                  sigma_h <- sqrt(exp( unname(beta_h_hat) ))  ## single scalar sigma_h, same for all individuals
                   h_i <- abs(rnorm(n_id, 0, sigma_h))
                   rep(h_i, times = timez)
                 },
@@ -188,7 +190,7 @@ psfm_bootstrap <- function(psfm_object,
                   ## within individual (h is a time-invariant effect) -- take the first
                   ## row observed for each individual to build the per-individual sigma.
                   first_idx  <- match(uniq_ids, ids)
-                  sigma_h_i  <- exp(as.vector(data_h[first_idx, , drop = FALSE] %*% beta_h_hat))
+                  sigma_h_i  <- sqrt(exp(as.vector(data_h[first_idx, , drop = FALSE] %*% beta_h_hat)) )
                   h_i        <- abs(rnorm(n_id, 0, sigma_h_i))
                   rep(h_i, times = timez)
                 }
@@ -198,10 +200,7 @@ psfm_bootstrap <- function(psfm_object,
     ## Sign convention matches sfa::psfm()'s `inefdec` argument:
     ##   inefdec = FALSE -> cost function:       inefficiency RAISES cost  (+u, +h)
     ##   inefdec = TRUE  -> production function: inefficiency LOWERS output (-u, -h)
-   
-     data_b <- data
-    
-    ## ---- simulate new response ----
+    data_b <- data
     if(inefdec == FALSE){
       data_b[[y_name]] <- as.vector(data_x %*% beta_x_hat) + v + u + r + h  
     }else{
