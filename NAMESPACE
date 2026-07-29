@@ -1,33 +1,29 @@
-export(zsfm, psfm, sfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
+export(zsfm, psfm, sfm, ttsfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
 
 import("methods")
 import("plm") # import whole package
 import("minqa") # import whole package
 import("randtoolbox") # import whole package
-import("matrixStats") # import whole package
-import("frontier") # import whole package
-import("Jmisc") # import whole package
 import("mnormt") # import whole package
 import("truncnorm") # import whole package
 import("tmvtnorm") # import whole package
 import("Formula") # import whole package
 import("pso") # import whole package 
-import("cubature") # import whole package
-import("moments") # import whole package
-import("readxl") # import whole package
-import("Hmisc") # import whole package
-import("haven") # import whole package
-import("devtools") # import whole package
-import("fdrtool") # import whole package
 import("numDeriv") # import whole package
 import("gsl") # import whole package
 import("pbapply") # import whole package
 import("parallel") # import whole package
 
 importFrom("utils", "head")
-importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "lm", 
+importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "lm",
                     "model.matrix", "model.response", "optim",   "pnorm",     "pt",
-                    "qnorm",        "rcauchy",        "rexp",    "rnorm",     "rt", 
-                    "as.formula",   "complete.cases", "formula", "sd",        "runif")
+                    "qnorm",        "rcauchy",        "rexp",    "rnorm",     "rt",
+                    "as.formula",   "complete.cases", "formula", "sd",        "runif",
+                    "ave",          "cor",            "terms",   "lm.fit",
+                    "plogis",       "rbinom")
 S3method(summary, sfareg)
 S3method(print, sfareg)
+S3method(coef, sfareg)
+S3method(vcov, sfareg)
+S3method(logLik, sfareg)
+S3method(nobs, sfareg)

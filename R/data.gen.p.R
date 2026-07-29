@@ -1,77 +1,126 @@
+## ------------------------------------------------------------------
+## Panel data generator.
+##
+## See DATA_GENERATION_REFERENCE.md (project root) for the full mapping of
+## every column here to the psfm() model_name it's meant to test, the true
+## parameter vector each model should recover, and an explicit list of
+## which models are NOT yet covered (or only best-effort covered) by any
+## column here. That file is the canonical reference; comments below are a
+## shorter pointer to it, not a duplicate of it.
+##
+## `eta`: decay-rate parameter used only by the BC92 (Battese-Coelli 1992)
+## column below. Defaults to 0.1.
+## ------------------------------------------------------------------
 data_gen_p <-
-function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau=0.5, mu=0, beta1, beta2){
+function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau=0.5, mu=0, beta1, beta2, eta=0.1){
 
 if(!is.null(rand)){
-set.seed(rand)}    
-    
+set.seed(rand)}
+
     n         <- N*t                                 ## Observations
     x1        <- log(runif(n,0,10))                  ## x1 variable
     x2        <- log(runif(n,1,50))                  ## x2 variable
     r         <- rep(rnorm(N,0,sig_r),each=t)        ## r_i individual effects
     u         <- abs(rnorm(n,0,sig_u))               ## u_it half-normal error term
-    v         <- rnorm(n,0, sig_v)                   ## v_it error term 
+    v         <- rnorm(n,0, sig_v)                   ## v_it error term
     h         <- abs(rep(rnorm(N,0,sig_h),each=t))   ## h_i individual effects
-    name      <- rep(1:N,each=t)                     ## name for individuals 
+    name      <- rep(1:N,each=t)                     ## name for individuals
     year      <- rep(seq(1,t,1),N)                   ## general time frame
     cons      <- cons                                ## constant
-    tau       <- tau                                 ## dependence paramter for tfe 
-    x1_w      <- tau*r + sqrt(1-tau^2)* x1           ## x1 variable with dependence 
-    x2_w      <- tau*r + sqrt(1-tau^2)* x2           ## x2 variable with dependence 
-    
-    
+    tau       <- tau                                 ## dependence paramter for tfe
+    x1_w      <- tau*r + sqrt(1-tau^2)* x1           ## x1 variable with dependence
+    x2_w      <- tau*r + sqrt(1-tau^2)* x2           ## x2 variable with dependence
+
+
     ## make a first-difference data set from WangHo2010
     r_fd      <- runif(N,min = 0, max = 1)
     x_fd      <- rep(0,n)
-    
+
     for (i in 1:N) {
       B          <- t*i
       A          <- B - (t - 1)
       x_fd[A:B]  <- rnorm(t, mean = r_fd[i], sd= 1)}
-    
-    z_fd       <- rnorm(n,0,1) 
+
+    z_fd       <- rnorm(n,0,1)
+    ## NOTE: u_fd_star is a folded normal (abs() of a general N(mu,sig_u)
+    ## draw), not a half-normal (mu=0 case) or a truncated normal
+    ## (rtruncnorm, used elsewhere in this package e.g. data_gen_cs.R's
+    ## u_tn). When mu != 0 these are three mathematically different
+    ## distributions -- verify against Wang & Ho (2010) before treating
+    ## FD's Monte Carlo bias/RMSE numbers as conclusive if mu != 0.
     u_fd_star  <- abs(rep(rnorm(N, mean = mu, sd=sig_u),each=t))
     r_fd       <- rep(r_fd, each = t)
     u_fd       <- exp(mu*z_fd) * u_fd_star
-    
-    ## Output -  psfm 
+
+    ## Output -  psfm
     y_gtre    <- r - h + cons + beta1*x1    + beta2*x2   + v - u
     y_tre     <- r     + cons + beta1*x1    + beta2*x2   + v - u
     y_pcs     <-         cons + beta1*x1    + beta2*x2   + v - u
     y_tfe    <- r            + beta1*x1_w  + beta2*x2_w + v - u
     y_fd      <- r_fd         + beta1*x_fd               + v - u_fd
-    
+
     y_gtre_nc <- r - h +        beta1*x1    + beta2*x2   + v - u
     y_tre_nc  <- r     +        beta1*x1    + beta2*x2   + v - u
     y_pcs_nc  <-                beta1*x1    + beta2*x2   + v - u
-    
+
     c_gtre    <- r + h + cons + beta1*x1    + beta2*x2   + v + u
     c_tre     <- r     + cons + beta1*x1    + beta2*x2   + v + u
     c_pcs     <-         cons + beta1*x1    + beta2*x2   + v + u
     c_tfe    <- r            + beta1*x1_w  + beta2*x2_w + v + u
-    
+
     c_gtre_nc <- r + h +        beta1*x1    + beta2*x2   + v + u
     c_tre_nc  <- r     +        beta1*x1    + beta2*x2   + v + u
     c_pcs_nc  <-                beta1*x1    + beta2*x2   + v + u
-    
-    ## GTRE-Z on u and with u and h 
+
+    ## GTRE-Z on u and with u and h
     u_gtre    <- rep(0,n)
     h_gtre    <- rep(0,N)
     z_gtre    <- runif(n,1,2)
     zp_gtreN  <- runif(N,0.5,1.5)
     zp_gtre   <- rep(zp_gtreN, each = t)
-    
+
     ## u_it and h_i half-normal error term with z var and cons
     u_gtre <- abs(rnorm(n, 0, sqrt(exp(0.33 + 0.61 * z_gtre))))
     h_gtre <- abs(rnorm(N, 0, sqrt(exp(0.25 + 0.21 * zp_gtreN))))
-    
+
     h_z     <- rep(h_gtre, each = t)
-    
+
     y_gtre_z  <-          r  - h  +  cons + beta1*x1    + beta2*x2   + v - u_gtre
     y_gtre_zz <-          r  - h_z+  cons + beta1*x1    + beta2*x2   + v - u_gtre
     y_tre_z   <-          r       +  cons + beta1*x1    + beta2*x2   + v - u_gtre
-    
-    data_trial <- as.data.frame(cbind(name,  year,  cons,  x1,  x1_w,  x2,  x2_w,  u,  v,  r,  y_gtre,  y_tre,  y_tfe,  h,  y_gtre_nc,  y_tre_nc,  y_pcs,  y_pcs_nc,  c_gtre,  c_tre, c_tfe,   c_gtre_nc,   c_tre_nc,   c_pcs,   c_pcs_nc,  y_fd,   x_fd,  u_fd_star,   z_fd,   r_fd,   u_fd,  u_gtre,  z_gtre,  y_gtre_z,   y_tre_z , y_gtre_zz,    zp_gtre)) 
-    colnames(data_trial) <- c(       "name","year","cons","x1","x1_w","x2","x2_w","u","v","r","y_gtre","y_tre","y_tfe","h","y_gtre_nc","y_tre_nc","y_pcs","y_pcs_nc","c_gtre","c_tre","c_tfe","c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc","y_fd", "x_fd","u_fd_star", "z_fd", "r_fd", "u_fd","u_gtre","z_gtre","y_gtre_z", "y_tre_z", "y_gtre_zz", "zp_gtre")
+
+    ## ------------------------------------------------------------------
+    ## Time-invariant firm effect.
+    ##
+    ## SSFE (Schmidt & Sickles 1984 LSDV) and PL80 (Pitt & Lee 1980) both
+    ## assume inefficiency is CONSTANT within a firm across time (estimated
+    ## two different ways -- fixed-effects/LSDV for SSFE, ML random effects
+    ## for PL80 -- but the same underlying data-generating assumption). The
+    ## pre-existing `u` above is drawn per observation (varies within a
+    ## firm across years), which does NOT match that assumption -- using it
+    ## to test SSFE/PL80 would silently test the wrong DGP. `u_inv` fixes
+    ## this the same way `h` above already does it correctly for GTRE's
+    ## time-invariant component: draw once per firm, repeat across time.
+    ## ------------------------------------------------------------------
+    u_inv     <- abs(rep(rnorm(N,0,sig_u),each=t))   ## time-invariant firm-level inefficiency
+    y_ssfe    <-         cons + beta1*x1    + beta2*x2   + v - u_inv
+
+    ## ------------------------------------------------------------------
+    ## Time-varying decay: BC92 (Battese & Coelli 1992) lets time-invariant
+    ## inefficiency decay (or grow) over time, u_it = u_i * B_it, with u_it
+    ## = u_i at the last observed period (B_it=1 there). Matches psfm()'s
+    ## "BC92" internal convention, B_it = exp(-eta*(t - Tref)), Tref = the
+    ## last time period in the whole panel (not per-firm); t below is the
+    ## function's own `t` argument (i.e. Tref), and `year` is the
+    ## per-observation time index.
+    ## ------------------------------------------------------------------
+    u_bc92    <- exp(eta*(t - year)) * u_inv
+    y_bc92    <-         cons + beta1*x1    + beta2*x2   + v - u_bc92
+
+    data_trial <- as.data.frame(cbind(name,  year,  cons,  x1,  x1_w,  x2,  x2_w,  u,  v,  r,  y_gtre,  y_tre,  y_tfe,  h,  y_gtre_nc,  y_tre_nc,  y_pcs,  y_pcs_nc,  c_gtre,  c_tre, c_tfe,   c_gtre_nc,   c_tre_nc,   c_pcs,   c_pcs_nc,  y_fd,   x_fd,  u_fd_star,   z_fd,   r_fd,   u_fd,  u_gtre,  z_gtre,  y_gtre_z,   y_tre_z , y_gtre_zz,    zp_gtre,  h_z,
+                                       u_inv, y_ssfe, u_bc92, y_bc92))
+    colnames(data_trial) <- c(       "name","year","cons","x1","x1_w","x2","x2_w","u","v","r","y_gtre","y_tre","y_tfe","h","y_gtre_nc","y_tre_nc","y_pcs","y_pcs_nc","c_gtre","c_tre","c_tfe","c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc","y_fd", "x_fd","u_fd_star", "z_fd", "r_fd", "u_fd","u_gtre","z_gtre","y_gtre_z", "y_tre_z", "y_gtre_zz", "zp_gtre", "h_z",
+                                     "u_inv","y_ssfe","u_bc92","y_bc92")
     data_rand           <- pdata.frame(data_trial,    c("name","year"))
-    
+
     return(data_rand)  }

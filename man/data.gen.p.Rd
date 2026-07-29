@@ -2,7 +2,8 @@
 \alias{data_gen_p}
 \title{Generate Panel Data for Stochastic Frontier Analysis}
 \description{\code{data_gen_p} generates simulated panel data for estimating various panel stochastic frontier models, including the Generalized True Random Effects (GTRE), True Random Effects (TRE), Pooled Cross-Section (PCS), and True Fixed Effects (TFE) models. The function returns the data as a \code{pdata.frame}.  All variants are produced so that the user can select those that they want.}
-\usage{data_gen_p(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5, mu = 0, beta1, beta2)}
+\usage{data_gen_p(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5,
+                  mu = 0, beta1, beta2, eta = 0.1)}
 \arguments{
 \item{t}{The number of time periods.}
 \item{N}{The number of individuals.}
@@ -15,7 +16,8 @@
 \item{tau}{The dependence parameter (\eqn{\tau}) used for the \code{y_tfe} (TFE) model formulation, default is 0.5.  See Chen, Schmidt, and Wang (2014, Journal of Econometrics).}
 \item{mu}{The mean parameter (\eqn{\mu}) used for the Truncated-Normal (TN) component of the \code{y_fd} model with default set to 0. See Wang and Ho (2010, Journal of Econometrics).}
 \item{beta1}{The coefficient for the \code{x1} variable (\eqn{\beta_1}).}
-\item{beta2}{The coefficient for the \code{x2} variable (\eqn{\beta_2}).}}
+\item{beta2}{The coefficient for the \code{x2} variable (\eqn{\beta_2}).}
+\item{eta}{The decay-rate parameter (\eqn{\eta}) for the time-varying inefficiency component \code{u_bc92}, following Battese and Coelli (1992): \eqn{u_{it} = u_i \exp(-\eta(T_i - t))}. Default is 0.1. See Battese and Coelli (1992, Journal of Productivity Analysis).}}
 \details{A \code{\link[plm:pdata.frame]{pdata.frame}} object with \eqn{N \times t} observations, containing the following columns:
 \itemize{
  \item \code{name} Individual identifier.
@@ -32,6 +34,8 @@
  \item \code{x_fd} Explanatory variable for the \code{y_fd} model.
  \item \code{u_fd_star, z_fd, r_fd, u_fd} Components used to generate \code{y_fd}.
  \item \code{u_gtre, z_gtre, zp_gtre, y_gtre_z,y_gtre_zz,y_tre_z} Variables for models with heteroskedastic inefficiency (\eqn{\sigma_{u,i} = \exp(0.33 + 0.61 Z_{i}))}.  Variables for models with heteroskedastic persistent inefficiency (\eqn{\sigma_{h,i} = \exp(0.25 + 0.21 Z_{i}))}.
+ \item \code{u_inv, y_ssfe} Time-invariant firm-level inefficiency (\eqn{u_i \sim |N(0,\sigma_u^2)|}, constant within individual across \eqn{t}) and the corresponding output variable, for \code{\link{psfm}}'s \code{"SSFE"} and \code{"PL80"}.
+ \item \code{u_bc92, y_bc92} Time-varying inefficiency following a Battese-Coelli (1992) decay structure (\eqn{u_{it} = u_i \exp(-\eta(T_i - t))}) and the corresponding output variable, for \code{\link{psfm}}'s \code{"BC92"}.
  }
   The data is generated based on standard Stochastic Frontier Analysis (SFA) formulations, primarily for a **Production Frontier** where the one-sided error component \eqn{u_{it}} is subtracted:
 

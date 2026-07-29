@@ -5,7 +5,7 @@
   \code{data_gen_cs} generates simulated cross-sectional data based on the stochastic frontier model, allowing for different distributional assumptions for the one-sided technical inefficiency error term (\eqn{u}) and the two-sided idiosyncratic error term (\eqn{v}). The model has the general form:
   \eqn{Y = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + v - u}
   where \eqn{u \geq 0} and represents inefficiency.  All variants are produced so that the user can select those that they want.}
-\usage{data_gen_cs(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu)}
+\usage{data_gen_cs(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w = sig_u)}
 \arguments{
   \item{N}{A single integer specifying the number of observations (cross-sectional units).}
   \item{rand}{A single integer to set the seed for the random number generator, ensuring reproducibility.}
@@ -16,6 +16,7 @@
   \item{beta2}{The coefficient for the \eqn{x_2} variable.}
   \item{a}{The degrees of freedom parameter for the t half-t distribution (\code{u_t} and \code{v_t}, respectively). Requires the \code{rt} function.}
   \item{mu}{The mean parameter (\eqn{\mu}) for the normal truncated normal distribution (\code{u_tn}). Requires the \code{rtruncnorm} function.}
+  \item{sig_w}{The standard deviation/scale parameter (\eqn{\sigma_w}) for the second one-sided error component \eqn{w}, used to generate two-tier model columns (see \code{\link{ttsfm}}). Defaults to \code{sig_u}.}
 }
 \details{
   The function simulates two explanatory variables, \eqn{x_1} and \eqn{x_2}, as transformations of uniform random variables.
@@ -48,8 +49,18 @@
   \item{x2}{Simulated explanatory variable \eqn{x_2}.}
   \item{u, uz, u_t, u_c, u_e, u_u, u_tn}{The simulated one-sided error terms under different distributions.}
   \item{v, v_t, v_c}{The simulated two-sided error terms under different distributions.}
-  \item{y_pcs, y_pcs_t, y_pcs_e, y_pcs_c, y_pcs_u, y_pcs_z, y_pcs_w, y_pcs_tn}{The dependent variable \eqn{Y} under the corresponding SFA model distributions.}
-  \item{z}{The auxiliary variable used for heteroskedasticity in \code{y_pcs_z}.}
+  \item{y_pcs, y_pcs_t, y_pcs_e, y_pcs_ez, y_pcs_c, y_pcs_u, y_pcs_z, y_pcs_w, y_pcs_tn}{The dependent variable \eqn{Y} under the corresponding SFA model distributions.}
+  \item{z}{The auxiliary variable used for heteroskedasticity in \code{y_pcs_z}, \code{y_pcs_ez}, \code{y_tthn_z}, and \code{y_zisf_z}.}
+  \item{uz_e}{Exponential one-sided error term with heteroskedastic scale, for \code{y_pcs_ez}.}
+  \item{w_tt, w_tt_hn, wz_hn}{The second one-sided error component (\eqn{w}) for the two-tier columns below, under exponential, homoskedastic half-normal, and heteroskedastic half-normal distributions respectively.}
+  \item{zp}{A second auxiliary variable used for heteroskedasticity of \eqn{\sigma_w} in \code{y_tthn_z}.}
+  \item{y_ttne}{Homoskedastic two-tier dependent variable (\eqn{v + w - u}, both one-sided components exponential), for \code{\link{ttsfm}}'s \code{"TTNE"}/\code{"TTNLS"}.}
+  \item{y_tthn}{Homoskedastic two-tier dependent variable (both one-sided components half-normal), for \code{\link{ttsfm}}'s \code{"TTHN"} with no pipes.}
+  \item{y_tthn_z}{Heteroskedastic two-tier dependent variable (\eqn{\sigma_u} a function of \code{z}, \eqn{\sigma_w} a function of \code{zp}), for \code{\link{ttsfm}}'s \code{"TTHN"} with formula \code{~x1+x2|z|zp}.}
+  \item{eff_ind, eff_ind_z}{Indicator (1 = efficient, \eqn{u} forced to 0) used to build the zero-inefficiency columns below.}
+  \item{prob_z_true}{The true heteroskedastic "efficient regime" probability used to draw \code{eff_ind_z}.}
+  \item{y_zisf}{Zero-inefficiency dependent variable with constant efficient-regime probability, for \code{\link{zsfm}}'s \code{"ZISF"}.}
+  \item{y_zisf_z}{Zero-inefficiency dependent variable with \code{z}-dependent efficient-regime probability, for \code{\link{zsfm}}'s \code{"ZISF_Z"}.}
   \item{con}{A constant column set to 1, potentially for use in estimation.}
 }
 \seealso{

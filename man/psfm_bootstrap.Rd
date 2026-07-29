@@ -2,14 +2,20 @@
 \alias{psfm_bootstrap}
 \title{Parametric Bootstrap for \code{psfm()} Panel Stochastic Frontier Models}
 \description{
-Performs a parametric bootstrap for panel stochastic frontier models
-(TRE / TRE_Z / GTRE / GTRE_Z) fit with \code{\link[sfa]{psfm}}.
-Frontier, inefficiency (\code{u(z)}), and inefficiency (\code{h(z)})
-parameter blocks are read directly from the fitted model's three-part
-\code{\link[Formula]{Formula}} (\code{y ~ x | z_u | z_h}). For each of
-\code{BOOT} replications, new disturbances are drawn, a simulated response is
-constructed from the fitted parameters, the model is re-estimated in parallel,
-and bootstrap standard errors / t-values are returned for every parameter in
+Performs a parametric bootstrap for panel stochastic frontier models fit with
+\code{\link[sfa]{psfm}}. Supports \code{model_name \%in\% c("GTRE_Z", "TRE_Z",
+"GTRE", "TRE", "TFE", "FD")} -- every \code{psfm()} model except the
+moment-based/LSDV estimators (\code{"GTRE_SEQ1"}, \code{"GTRE_SEQ2"},
+\code{"SSFE"}, which are not maximum-likelihood and have no \code{$opt} to
+bootstrap around in the same sense) and the \code{\link[frontier]{sfa}}-wrapped
+models (\code{"PL80"}, \code{"BC92"}, whose \code{$out}/efficiency-score
+fields don't follow this package's own conventions). Each supported model's
+frontier/variance-component parameter blocks are read directly from
+\code{psfm_object$out} and \code{psfm_object$formula}; for each of
+\code{BOOT} replications, a new response is simulated from the fitted
+parameters using a data-generating process appropriate to that specific
+model (see Details), the model is re-estimated in parallel, and bootstrap
+standard errors / t-values are returned for every parameter in
 \code{psfm_object$out}.
 }
 \usage{
@@ -21,7 +27,7 @@ psfm_bootstrap(psfm_object,
                maxit.psoptim = 1000,
                seed_offset   = 0,
                write_back    = TRUE,
-               pkgs          = c("sfa", "Formula", "pbapply"),
+               pkgs          = c("sfa", "Formula", "pbapply", "truncnorm"),
                inefdec,
                rand.gtre     = NULL,
                rand.psoptim  = NULL,
@@ -30,28 +36,36 @@ psfm_bootstrap(psfm_object,
 }
 \arguments{
   \item{psfm_object}{A fitted model object of class \code{"sfareg"} returned by
-    \code{\link[sfa]{psfm}}. Must contain \code{$out}, \code{$data},
-    \code{$formula}, \code{$U}, \code{$H}, and \code{$model_name}.}
+    \code{\link[sfa]{psfm}}, with \code{model_name \%in\% c("GTRE_Z", "TRE_Z",
+    "GTRE", "TRE", "TFE", "FD")}. Must contain \code{$out}, \code{$data},
+    \code{$formula}, and \code{$model_name}; \code{$H} is additionally
+    required for \code{"GTRE"}/\code{"GTRE_Z"} (the only two models that
+    return it) and \code{$r_hat_m} is additionally required for
+    \code{"TFE"}.}
   \item{numCores}{Integer. Number of cores for the parallel cluster created
     internally via \code{\link[parallel]{makeCluster}}.}
   \item{BOOT}{Integer. Number of bootstrap replications (e.g. 199, 399, 999).}
   \item{individual}{Character. Name of the individual/panel-ID column in
     \code{psfm_object$data} (e.g. \code{"firm.id"}).}
   \item{h_type}{One of \code{"auto"}, \code{"none"}, \code{"scalar"}, or
-    \code{"parametric"}, controlling how the individual-specific,
-    time-invariant inefficiency term \code{h} is simulated:
+    \code{"parametric"}. Only meaningful for \code{model_name \%in\%
+    c("GTRE_Z", "TRE_Z", "GTRE", "TRE")} (ignored for \code{"TFE"}/\code{"FD"},
+    which have no random persistent-inefficiency \code{h} term); controls how
+    the individual-specific, time-invariant inefficiency term \code{h} is
+    simulated:
     \describe{
-      \item{\code{"none"}}{The model has no \code{h} term at all (e.g. plain
-        TRE).}
+      \item{\code{"none"}}{The model has no \code{h} term at all (\code{TRE},
+        \code{TRE_Z}).}
       \item{\code{"scalar"}}{\code{h_i ~ abs(N(0, sigma_h))}, a single scalar
-        standard deviation taken from the row of \code{$out} immediately
-        following the \code{z} (\code{u}) block.}
+        standard deviation -- used automatically for bare \code{"GTRE"} (which
+        has no \code{h}-covariates at all, only a single fitted
+        \code{sigh}).}
       \item{\code{"parametric"}}{\code{h_i ~ abs(N(0, exp(data_h \%*\% h_vec)))},
         using the third right-hand-side part of the model formula as the
-        \code{h}-covariates.}
-      \item{\code{"auto"}}{(Default) Resolves to \code{"parametric"} if the
-        model formula has three right-hand-side parts, otherwise
-        \code{"none"}.}
+        \code{h}-covariates -- used automatically for \code{"GTRE_Z"}.}
+      \item{\code{"auto"}}{(Default) Resolves per \code{model_name}:
+        \code{"parametric"} for \code{"GTRE_Z"}, \code{"scalar"} for bare
+        \code{"GTRE"}, \code{"none"} for \code{"TRE_Z"}/\code{"TRE"}.}
     }
   }
   \item{maxit.psoptim}{Integer. Passed through to \code{psfm()} as
@@ -66,7 +80,9 @@ psfm_bootstrap(psfm_object,
     returned.}
   \item{pkgs}{Character vector of package names to load on each cluster
     worker via \code{\link[parallel]{clusterCall}}. Default
-    \code{c("sfa", "Formula", "pbapply")}.}
+    \code{c("sfa", "Formula", "pbapply", "truncnorm")} -- \pkg{truncnorm} is
+    only actually used when bootstrapping an \code{"FD"} fit, but is included
+    in the default so a single default works for every supported model.}
   \item{inefdec}{Logical, with no default; must be supplied. Passed through to
     \code{psfm()} on each bootstrap re-estimation. Should match the
     \code{inefdec} setting used to originally fit \code{psfm_object}.}
@@ -80,49 +96,84 @@ psfm_bootstrap(psfm_object,
     \code{maxit.optim} on each bootstrap re-estimation. Default \code{1}.}
 }
 \details{
-The row layout of \code{psfm_object$out} is assumed to be:
-\preformatted{
-  row 1         : sigv
-  row 2         : sigr
-  next Kx rows  : frontier (x) parameters, in formula right-hand-side part 1 order
-  next Kz rows  : u-block z parameters, in formula right-hand-side part 2 order
-  next Kh rows  : h-block z parameters, in formula right-hand-side part 3 order
-                  (only present when \code{h_type = "parametric"}; one extra
-                  row for a scalar sigma_h when \code{h_type = "scalar"})
+Supported models fall into three families, each with its own data-generating
+process and \code{$out} row layout (see \code{R/psfm_bootstrap.R}'s header
+comment for the full derivation, including how each was cross-checked
+against that model's own likelihood in \code{psfm.R}):
+
+\describe{
+  \item{\code{"randeff"} family (\code{GTRE_Z}, \code{TRE_Z}, \code{GTRE},
+    \code{TRE})}{\code{y* = X \%*\% beta_hat + v + u + r + h} (sign per
+    \code{inefdec}), with \code{v ~ N(0, sigma_v^2)}, \code{u} half-normal
+    (covariate-driven sigma for \code{GTRE_Z}/\code{TRE_Z}, a single
+    homoskedastic scalar for bare \code{GTRE}/\code{TRE}, which have no
+    \code{z} pipe at all), \code{r ~ N(0, sigma_r^2)} (one draw per
+    individual, repeated over time), and \code{h} per \code{h_type}
+    (\code{GTRE}/\code{GTRE_Z} only). \code{$out} row layout: \code{sigv,
+    sigr, [x-block], [z-block], [h-block]} for \code{GTRE_Z}/\code{TRE_Z};
+    \code{lambda, sigma, sigr, [sigh], [x-block]} for bare
+    \code{GTRE}/\code{TRE} (note the different reparameterization -- see
+    \code{\link[sfa]{psfm}}'s own model-family sigma-link inconsistency
+    note).}
+  \item{\code{"tfe"} family (\code{TFE})}{Fixed-effects model: the individual
+    effects are held FIXED at \code{psfm_object$r_hat_m}'s original point
+    estimates across every replication (not redrawn -- redrawing them would
+    contradict treating them as fixed rather than random), and only
+    \code{v ~ N(0, sigma_v^2)} and \code{u ~ |N(0, sigma_u^2)|} (both derived
+    from the fitted \code{lambda}/\code{sig}, or \code{gamma}/\code{sig} if
+    the original fit used \code{psfm(..., gamma = TRUE)}) are redrawn.
+    \code{$out} row layout: \code{lambda (or gamma), sig, [x-block]} (no
+    intercept row -- the within-transformation removes it).}
+  \item{\code{"fd"} family (\code{FD})}{Wang and Ho (2010) first-difference
+    estimator: a single time-invariant \code{u_i ~ TruncatedNormal(mean =
+    mu, sd = sqrt(sig_u2), lower = 0)} draw per individual (via
+    \code{\link[truncnorm]{rtruncnorm}}), scaled by a deterministic
+    time-varying factor \code{h_it = exp(z_it \%*\% delta)}, plus
+    \code{v_it ~ N(0, sig_v2)}. \code{$out} row layout: \code{sig_u2, sig_v2,
+    mu, [x-block], [z-block]} (no intercept row in either the x- or z-block).}
 }
-\code{psfm_bootstrap} validates that \code{nrow(psfm_object$out)} matches this
-expected layout for the resolved \code{h_type} before running any bootstrap
-replications, and stops with an informative error if it does not. It
-similarly validates up front that \code{length(psfm_object$H)} equals the
-number of unique individuals implied by the \code{individual} column, since
-\code{$H} is one value per individual rather than one value per observation;
-a mismatch here is also caught before any replications run, rather than after
-the (potentially long-running) bootstrap completes.
 
-For each replication \code{b}, new disturbances are drawn -- \code{v} (classic
-symmetric noise), \code{u} (half-normal with covariate-driven sigma from the
-\code{z} block), \code{r} (an individual random effect, constant within
-individual and repeated over time), and \code{h} (per \code{h_type}, as
-described above) -- and a simulated response
-\code{y* = X \%*\% beta_hat + v + u + r + h} is constructed. The model is then
-re-estimated on the simulated data via \code{sfa::psfm()}, executed in
-parallel across replications using \code{\link[parallel]{parLapply}} (or
-\code{\link[pbapply]{pblapply}} for a live progress bar, when the
-\pkg{pbapply} package is installed). From each re-estimated model, both the
-time-varying efficiency scores (\code{$U}) and the time-invariant,
-individual-specific inefficiency scores (\code{$H}) are collected across
-replications into \code{boot_eff} and \code{boot_eff_h} respectively.
+\code{psfm_bootstrap} validates that \code{nrow(psfm_object$out)} matches the
+expected layout for the resolved model/\code{h_type} before running any
+bootstrap replications, and stops with an informative error if it does not.
+For \code{GTRE}/\code{GTRE_Z} it similarly validates up front that
+\code{length(psfm_object$H)} equals the number of unique individuals implied
+by the \code{individual} column (\code{$H} is one value per individual, not
+one per observation) -- \code{TRE}/\code{TRE_Z}/\code{TFE}/\code{FD} do not
+return \code{$H} at all, so \code{boot_eff_h} is simply \code{NULL} for those
+four models (not an error).
 
-Re-estimation failures (e.g. optimizer errors) are caught per replication,
-recorded with their error message, and set to \code{NA} in the output
-matrices rather than stopping the bootstrap; a single \code{\link{warning}} at
-the end lists every failed replication index together with its error message.
-Bootstrap standard errors are computed with \code{na.rm = TRUE}, so they
-remain well-defined even when some replications failed.
+The model is re-estimated on each simulated dataset via \code{sfa::psfm()},
+executed in parallel across replications using
+\code{\link[parallel]{parLapply}} (or \code{\link[pbapply]{pblapply}} for a
+live progress bar, when the \pkg{pbapply} package is installed). Whether the
+\code{psoptim} (particle-swarm) optimizer stage is used on each refit is
+model-dependent: it is enabled for the \code{"randeff"} family (matching this
+function's original behavior, tested clean), but disabled for \code{"TFE"}
+-- testing found \code{psoptim}'s wide exploration made \code{TFE}
+repeatedly collapse onto a degenerate variance-boundary solution (reproduced
+even refitting the SAME real data across different \code{psoptim} seeds), a
+problem that disappeared entirely once that stage was skipped (matching
+\code{psfm()}'s own default of \code{PSopt = FALSE}). As a defense-in-depth
+safety net across every family, any replication whose refit still lands on a
+degenerate variance-boundary mode (a scale parameter pinned near its
+numerical floor -- the same well-understood boundary-mode phenomenon
+documented for \code{ttsfm()}'s \code{TTNE}/\code{TTHN} models) is treated
+as a per-replication FAILURE rather than silently corrupting the bootstrap
+standard error with a meaningless draw.
 
-Requires the \pkg{parallel} and \pkg{Formula} packages, and requires
-\pkg{sfa} (and any other packages named in \code{pkgs}) to be installed and
-loadable on each cluster worker.
+Re-estimation failures (optimizer errors, or the degenerate-mode check just
+described) are caught per replication, recorded with their message, and set
+to \code{NA} in the output matrices rather than stopping the bootstrap; a
+single \code{\link{warning}} at the end lists every failed replication index
+together with its message. Bootstrap standard errors are computed with
+\code{na.rm = TRUE}, so they remain well-defined even when some replications
+failed.
+
+Requires the \pkg{parallel} and \pkg{Formula} packages (and \pkg{truncnorm}
+when bootstrapping an \code{"FD"} fit), and requires \pkg{sfa} (and any other
+packages named in \code{pkgs}) to be installed and loadable on each cluster
+worker.
 }
 \value{
 A list with components:
@@ -131,14 +182,19 @@ A list with components:
     and \code{"hours"}. Rows corresponding to failed replications are
     \code{NA}.}
   \item{boot_eff}{A \code{BOOT} x \code{nrow(psfm_object$data)} matrix of
-    bootstrapped time-varying efficiency-score (\code{U}) draws. Rows
+    bootstrapped per-observation efficiency-score draws (\code{$U} for the
+    \code{"randeff"} family, \code{$exp_u_hat} for \code{"TFE"}/\code{"FD"}
+    -- the field is named differently across these models in \code{psfm.R},
+    but always collected into this same \code{boot_eff} matrix here). Rows
     corresponding to failed replications are \code{NA}.}
-  \item{boot_eff_h}{A \code{BOOT} x \code{length(psfm_object$H)} matrix of
-    bootstrapped time-invariant, individual-specific inefficiency-score
-    (\code{H}) draws -- one column per unique individual (not one column
-    per observation; \code{$H} does not vary over time within an
-    individual). Columns are named by the individual ID values. Rows
-    corresponding to failed replications are \code{NA}.}
+  \item{boot_eff_h}{Only non-\code{NULL} for \code{model_name \%in\%
+    c("GTRE", "GTRE_Z")} (the only two models that return \code{$H} at all);
+    \code{NULL} otherwise. A \code{BOOT} x \code{length(psfm_object$H)}
+    matrix of bootstrapped time-invariant, individual-specific
+    inefficiency-score (\code{$H}) draws -- one column per unique individual
+    (not one column per observation; \code{$H} does not vary over time
+    within an individual). Columns are named by the individual ID values.
+    Rows corresponding to failed replications are \code{NA}.}
   \item{se}{Named numeric vector of bootstrap standard errors for every
     parameter in \code{psfm_object$out}.}
   \item{tval}{Named numeric vector of bootstrap t-values

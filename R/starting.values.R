@@ -172,23 +172,29 @@ colnames(out)[1] <- if(gamma==TRUE) {"gamma"} else{"lambda"}
   
 indiv   <- noquote(as.vector(unique(data[,c(individual)])))
 t       <- rep(0,N)
-data_i  <- Y <- eps <- data_i_vars <- one_t <- I_t <- one_t1  <- I_t1  <- as.list(rep(0,N))
-  
+data_i  <- Y <- eps <- data_i_vars <- data_i_vars_dm <- one_t <- I_t <- one_t1  <- I_t1  <- as.list(rep(0,N))
+
 for (ii in 1:N) {
 data_i[[ii]]   <-  data[which(data[,c(individual)]==indiv[ii]),]
 t[ii]          <-  nrow(data_i[[ii]])
-Y[[ii]]        <-  demean(as.numeric(data_i[[ii]][,y_var]))
+Y[[ii]]        <-  .demean(as.numeric(data_i[[ii]][,y_var]))
 data_i_vars[[ii]]   <- data.frame(data_i[[ii]][,c(x_vars_vec)] )
+## Precomputed once here (same treatment Y already got above) rather than
+## inside psfm.R's TFE like.tfe()/fn1(), which used to call demean() on
+## this same per-individual regressor data on EVERY likelihood evaluation
+## even though it doesn't depend on the parameter vector being optimized --
+## a pure waste recomputed thousands of times across bobyqa/psoptim/optim.
+data_i_vars_dm[[ii]] <- as.matrix(.demean(data_i_vars[[ii]]))
 one_t[[ii]]    <- rep(1,t[[ii]])
-I_t[[ii]]      <- diag(t[[ii]]) 
+I_t[[ii]]      <- diag(t[[ii]])
 one_t1[[ii]]   <- rep(1,t[[ii]]-1)
 I_t1[[ii]]     <- diag(t[[ii]]-1)  }
-  
-if(gamma==TRUE){upper <- c(1,rep(Inf,n_x_vars+1))} else{upper <- NA}  
-  
-results        <-  list(upper, I_t1, one_t1, I_t, one_t, data_i_vars, Y, t, data_i,
+
+if(gamma==TRUE){upper <- c(1,rep(Inf,n_x_vars+1))} else{upper <- NA}
+
+results        <-  list(upper, I_t1, one_t1, I_t, one_t, data_i_vars, data_i_vars_dm, Y, t, data_i,
                      eps, indiv, out, start_v)
-names(results) <- c("upper", "I_t1", "one_t1", "I_t", "one_t", "data_i_vars", "Y", "t", "data_i",
+names(results) <- c("upper", "I_t1", "one_t1", "I_t", "one_t", "data_i_vars", "data_i_vars_dm", "Y", "t", "data_i",
                            "eps", "indiv", "out", "start_v")
 return(results)}
 

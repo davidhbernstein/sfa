@@ -13,15 +13,41 @@ sfm <- function(formula,
                 inefdec       = TRUE,
                 upper         = NA,
                 Method        = "L-BFGS-B",
-                eta           = 0.01,   
+                robust        = c("mle", "mlqe", "psi", "mdpd"),
+                c_mlqe        = 0.20,
+                eta           = 0.01,
                 alpha         = 0.2,
                 verbose       = FALSE,
                 rand.psoptim  = NULL){
 
-.check_model_formula_pipes(formula,model_name)  
-  
-call <- match.call()
-model_name    <- match.arg(model_name)   
+## call/model_name resolution moved ahead of .check_model_formula_pipes()
+## (was previously called below, on the raw, possibly-multi-choice default
+## `model_name` argument -- e.g. sfm(formula, data=d), i.e. every caller who
+## relies on model_name's default rather than specifying it explicitly, hits
+## `if(!(model_name %in% names(max_parts_map)))` with a length-9 logical
+## vector, which errors "the condition has length > 1" on R >= 4.3. This was
+## a real, latent bug affecting the package's simplest possible call pattern
+## -- confirmed broken before this fix, and confirmed to affect
+## zsfm()/psfm()/ttsfm() identically (same call ordering in each). Fixed
+## here and in those three files by resolving model_name via match.arg()
+## before it's used for anything else.
+call          <- match.call()
+model_name    <- match.arg(model_name)
+robust        <- match.arg(robust)
+
+.check_model_formula_pipes(formula,model_name)
+
+## Robust divergence estimation (MLqE/Psi/MDPD, see R/robust_divergence.R)
+## is currently only wired up for model_name == "NHN" -- see that file's
+## header comment for the staged-rollout rationale and what's needed to
+## extend it to the other models. Erroring clearly here rather than
+## silently ignoring `robust` for other models or (worse) applying it
+## incorrectly.
+if(robust != "mle" && model_name != "NHN"){
+  stop("robust = '", robust, "' is currently only implemented for model_name = ",
+       "\"NHN\" (see R/robust_divergence.R). Use model_name = \"NHN\", or ",
+       "robust = \"mle\" for other models.", call. = FALSE)
+}
 
 DR1 <- data_proc(formula, data, model_name, individual = NULL, inefdec)
 
@@ -170,7 +196,25 @@ if(model_name %in% c("NE_Z","NHN_Z")){data_z_vars <- as.matrix(data.frame(subset
       like[like==-Inf]         <-  -sqrt(.Machine$double.xmax/length(like))
       like[like== Inf]         <-  -sqrt(.Machine$double.xmax/length(like))
       like[is.nan(like)]       <-  -sqrt(.Machine$double.xmax/length(like))
-      
+
+      ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
+      ## objective for the robust one, at these SAME current parameter
+      ## values, instead of the generic -sum(like) tail below. See
+      ## R/robust_divergence.R's header for the full derivation/scope note
+      ## (NHN only for now) and why st_err/t_val are reported as NA for
+      ## these methods rather than the (invalid, for this class of
+      ## M-estimator) naive Hessian-inverse SE.
+      if(model_name == "NHN" && robust != "mle"){
+        lambda_x <- x[1]; sigma_x <- x[2]
+        sigma_u_x <- (lambda_x * sigma_x) / sqrt(1 + lambda_x^2)
+        sigma_v_x <- sigma_u_x / lambda_x
+        c_x <- switch(robust, mlqe = c_mlqe, psi = eta, mdpd = alpha)
+        return(.robust_objective(
+          method = robust, loglik = like, c = c_x,
+          power_integral_fn = function(p) .nhn_power_integral(sigma_v_x, sigma_u_x, p)
+        ))
+      }
+
       return(-sum(like[is.finite(like)]) ) }  
   
 Start.Time <- start.time()
@@ -204,6 +248,38 @@ if(optHessian==FALSE & PSopt == TRUE){opt <- opt00
 st_err  <- rep(NA,length(opt$par))}
 
 if(optHessian==TRUE){ st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)){rep(NA,length(opt$par))}else{suppressWarnings(sqrt(diag(solve(opt$hessian))))}}
+
+## Robust divergence estimation (MLqE/Psi/MDPD): the naive Hessian-inverse
+## SE above assumes the information-matrix equality, which does not hold
+## for these M-estimators in general -- replaced with the correct sandwich
+## form (A^-1 B A^-1; see R/robust_divergence.R's .sandwich_se_nhn() header
+## comment for the full derivation). "A" reuses opt$hessian (already
+## computed above, same objective); "B" needs the per-observation gradient
+## of the SAME per-observation objective like.fn() used internally, rebuilt
+## here as a standalone function of the raw parameter vector (matching
+## like.fn()'s own NHN eps/x_x_vec construction exactly) so numDeriv::jacobian()
+## can differentiate it observation-by-observation.
+if(model_name == "NHN" && robust != "mle"){
+  c_x <- switch(robust, mlqe = c_mlqe, psi = eta, mdpd = alpha)
+  x_x_idx <- 3:as.numeric(n_x_vars + 2)
+  per_obs_fn <- function(par){
+    lambda_p  <- par[1]; sigma_p <- par[2]; beta_p <- par[x_x_idx]
+    sigma_u_p <- (lambda_p * sigma_p) / sqrt(1 + lambda_p^2)
+    sigma_v_p <- sigma_u_p / lambda_p
+    eps_p     <- as.vector(inefdec_n * (Y - as.matrix(data_i_vars) %*% beta_p))
+    loglik_p  <- .dens_nhn(eps_p, sigma_v_p, sigma_u_p, log = TRUE)
+    .robust_objective_vec(
+      method = robust, loglik = loglik_p, c = c_x,
+      power_integral_fn = function(p) .nhn_power_integral(sigma_v_p, sigma_u_p, p)
+    )
+  }
+  st_err <- if(optHessian == TRUE && !is.null(opt$hessian)){
+    .sandwich_se_nhn(opt$par, opt$hessian, per_obs_fn)
+  } else {
+    rep(NA, length(opt$par))
+  }
+}
+
 try(t_val      <- opt$par/st_err , silent = T)
 out[1,]        <- opt$par
 try(out[2,]    <- st_err         , silent = T)
@@ -284,11 +360,12 @@ exp_u_hat  <- pmax(exp_u_hat, 0)
 exp_u_hat  <- pmin(exp_u_hat, 1)}
 
 if(model_name %in%  c("NHN") ){
-results <- list(t(out),c(opt),End.Time,start_v,model_name,formula, exp_u_hat, med_u_hat, 
-                out["par",], out["st_err",], out["t-val",],call  )
+robust_c_report <- if(robust == "mle") NA_real_ else switch(robust, mlqe = c_mlqe, psi = eta, mdpd = alpha)
+results <- list(t(out),c(opt),End.Time,start_v,model_name,formula, exp_u_hat, med_u_hat,
+                out["par",], out["st_err",], out["t-val",],call, robust, robust_c_report  )
 class(results) <- "sfareg"
 names(results)  <- c("out","opt","total_time","start_v","model_name","formula","exp_u_hat","med_u_hat",
-                     "coefficients", "std.errors", "t.values","call")}
+                     "coefficients", "std.errors", "t.values","call","robust","robust_c")}
 
 if(model_name %in%  c("NHN_Z","NR","NG","NNAK") ){
 results <- list(t(out),c(opt),End.Time,start_v,model_name,formula, exp_u_hat,
@@ -297,7 +374,7 @@ class(results) <- "sfareg"
 names(results)  <- c("out","opt","total_time","start_v","model_name","formula","exp_u_hat",
                      "coefficients", "std.errors", "t.values","call")}
 
-if(model_name %nin%  c("NHN","NHN_Z","NR","NG","NNAK") ){
+if(!(model_name %in%  c("NHN","NHN_Z","NR","NG","NNAK")) ){
 results <- list(t(out),c(opt),End.Time,start_v,model_name,formula,
                   out["par",], out["st_err",], out["t-val",],call )
 class(results) <- "sfareg"
@@ -305,7 +382,8 @@ names(results)  <- c("out","opt","total_time","start_v","model_name","formula",
                      "coefficients", "std.errors", "t.values","call")}
 return(results)}
 
-else {return(c("This is not a valid command"))}}
+else {stop(paste0("model_name '", model_name, "' is a recognized choice for sfm() but has no implementation branch. ",
+                   "Valid choices are: \"NHN\", \"NHN_Z\", \"NE\", \"NE_Z\", \"NR\", \"THT\", \"NTN\", \"NG\", \"NNAK\"."), call. = FALSE)}}
 
 
 

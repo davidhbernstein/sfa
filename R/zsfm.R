@@ -17,10 +17,15 @@ zsfm <- function(formula,
                 verbose       = FALSE,
                 rand.psoptim  = NULL){
 
-.check_model_formula_pipes(formula,model_name)    
-  
+## call/model_name resolution moved ahead of .check_model_formula_pipes() --
+## see sfm.R's identical fix for why (calling the pipe check on the raw,
+## unresolved multi-choice model_name default errored "the condition has
+## length > 1" for any caller relying on the default rather than specifying
+## model_name explicitly).
 call          <- match.call()
-model_name    <- match.arg(model_name) 
+model_name    <- match.arg(model_name)
+
+.check_model_formula_pipes(formula,model_name)
 
 DR1 <- data_proc(formula,   data, model_name, individual = NULL, inefdec)
 
@@ -220,7 +225,8 @@ if(model_name %in% c("ZISF","ZISF_Z")){
     names(results)  <- c("out","opt","total_time","start_v","model_name","formula","jlms","post.prob",
                            "coefficients", "std.errors", "t.values","call")}
     return(results)}
-else {return(c("This is not a valid command"))}}
+else {stop(paste0("model_name '", model_name, "' is a recognized choice for zsfm() but has no implementation branch. ",
+                   "Valid choices are: \"ZISF\", \"ZISF_Z\"."), call. = FALSE)}}
 
 
 

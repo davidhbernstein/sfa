@@ -1,12 +1,13 @@
-opt.bobyqa    <- function(fn, start_v, lower.bobyqa, maxit.bobyqa, bob.TF, rhobeg = NA, rhoend  =NA, verbose=verbose){
+opt.bobyqa    <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.bobyqa, bob.TF, rhobeg = NA, rhoend  =NA, verbose=verbose){
 start_feval   <- fn(start_v)
-bob1          <- NULL 
-if(isTRUE(bob.TF==TRUE)){  
+bob1          <- NULL
+if(isTRUE(bob.TF==TRUE)){
 
-bob1   <- bobyqa(par = start_v, 
+bob1   <- bobyqa(par = start_v,
                  fn = fn,
-                 lower   = lower.bobyqa, 
-                 control = list(iprint = if (verbose) 2 else 0, 
+                 lower   = lower.bobyqa,
+                 upper   = upper.bobyqa,
+                 control = list(iprint = if (verbose) 2 else 0,
                                 maxfun = maxit.bobyqa,
                                 rhobeg = rhobeg,
                                 rhoend = rhoend))

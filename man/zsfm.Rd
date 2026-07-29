@@ -27,7 +27,9 @@ Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,rand.psoptim = NULL)}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
 }
-\details{Example based on: A zero inefficiency stochastic frontier model, Journal of Econometrics, S. C. Kumbhakar, C. F. Parmeter and E. G. Tsionas, 2013}
+\details{Example based on: A zero inefficiency stochastic frontier model, Journal of Econometrics, S. C. Kumbhakar, C. F. Parmeter and E. G. Tsionas, 2013
+
+Note on default iteration counts: like \code{sfm()}, \code{zsfm()}'s likelihood is closed-form, so its optimization defaults (thousands of iterations) are set much higher than \code{psfm()}'s (which uses simulated maximum likelihood for several models and defaults to far fewer iterations for speed). See \code{\link{psfm}}'s Details for more.}
 \references{S. C. Kumbhakar, C. F. Parmeter and E. G. Tsionas (2013)}
 \author{Chris F. Parmeter and David H. Bernstein}
 \note{Standard errors require optHessian set to TRUE}
