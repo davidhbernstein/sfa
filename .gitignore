@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+.Rapp.history
+
+# R session / history
+.Rhistory
+.RData
+.Rprofile.user
+.Ruserdata
+
+# RStudio
+.Rproj.user/
+*.Rproj
+
+# R build / check artefacts
+*.tar.gz
+*.Rcheck/
+..Rcheck/
+/revdep/
+
+# Compiled objects (none at present -- NeedsCompilation: no)
+*.o
+*.so
+*.dll
+
+# Rendered vignette output (sources live in vignettes/*.Rmd)
+inst/doc/
+docs/

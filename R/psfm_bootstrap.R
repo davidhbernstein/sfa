@@ -118,6 +118,14 @@ psfm_bootstrap <- function(psfm_object,
 
   h_type <- match.arg(h_type)
 
+  ## Restore the caller's random stream on the way out. boot_one() seeds each
+  ## replicate deliberately (set.seed(b + seed_offset)) so the bootstrap is
+  ## reproducible, but that must not leak into the user's session -- the
+  ## snapshot is taken once here rather than per replicate, so the per-replicate
+  ## seeding is untouched and results are unchanged.
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+
   ## ---- 0. Basic validation -------------------------------------------------
   required_fields <- c("out", "data", "formula", "model_name")
   missing_fields  <- setdiff(required_fields, names(psfm_object))
@@ -134,7 +142,7 @@ psfm_bootstrap <- function(psfm_object,
   }
 
   model_name <- psfm_object$model_name
-  supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "TRE", "TFE", "FD")
+  supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "TRE", "TFE", "TFE_WMLE", "FD")
   if (!(model_name %in% supported_models)) {
     stop("psfm_bootstrap() does not support model_name = '", model_name, "'. ",
          "Supported: ", paste(supported_models, collapse = ", "), ". ",
@@ -185,7 +193,7 @@ psfm_bootstrap <- function(psfm_object,
   ## names(results) assignment in psfm.R) -- not a naming choice this
   ## function should paper over silently, so it's made explicit here and
   ## used generically in boot_one() below via MOD[[U_field]].
-  U_field <- if (model_name %in% c("TFE", "FD")) "exp_u_hat" else "U"
+  U_field <- if (model_name %in% c("TFE", "TFE_WMLE", "FD")) "exp_u_hat" else "U"
 
   ## Whether to run the psoptim (particle-swarm) stage during each bootstrap
   ## refit. The original version of this function hardcoded PSopt = TRUE
@@ -203,7 +211,7 @@ psfm_bootstrap <- function(psfm_object,
   ## the empirically safer behavior; the randeff family keeps PSopt = TRUE
   ## since it was already tested clean that way (GTRE_Z/TRE_Z/GTRE/TRE all
   ## converged with 0 failures across repeated testing).
-  PSopt_use <- if (model_name == "TFE") FALSE else TRUE
+  PSopt_use <- if (model_name %in% c("TFE", "TFE_WMLE")) FALSE else TRUE
 
   ## Row index of this family's "total scale" parameter in $out -- used below
   ## as a defense-in-depth check for a refit that lands on a degenerate
@@ -221,7 +229,7 @@ psfm_bootstrap <- function(psfm_object,
   scale_row <- switch(model_name,
     "GTRE_Z" = , "TRE_Z" = 1,      ## sigv
     "GTRE"   = , "TRE"   = 2,      ## sigma (total SD, not lambda itself)
-    "TFE"    = 2,                  ## sig
+    "TFE"    = , "TFE_WMLE" = 2,   ## sig
     "FD"     = c(1, 2)             ## sig_u2, sig_v2
   )
   degenerate_scale_floor <- 1e-6   ## well above .Machine$double.eps (~2.2e-16),
@@ -236,7 +244,7 @@ psfm_bootstrap <- function(psfm_object,
   ## intercept parameter in $out. Applying the same drop here keeps Kx (and
   ## therefore beta_x_hat / the frontier term in simulate_dgp) aligned with
   ## $out's actual row count for these two models.
-  if (model_name %in% c("TFE", "FD") &&
+  if (model_name %in% c("TFE", "TFE_WMLE", "FD") &&
       attr(terms(formula(form, rhs = 1)), "intercept") == 1) {
     data_x <- data_x[, -1, drop = FALSE]
   }
@@ -365,9 +373,14 @@ psfm_bootstrap <- function(psfm_object,
       }
     }
 
-  } else if (model_name == "TFE") {
+  } else if (model_name %in% c("TFE", "TFE_WMLE")) {
 
     ## ---- 2b. "tfe" family: fixed effects, r held fixed at r_hat_m --------
+    ## Both true-fixed-effects estimators share this block: Greene's TFE
+    ## ("TFE") and Chen-Schmidt-Wang's within MLE ("TFE_WMLE") assume the
+    ## same data-generating process and report the same (lambda|gamma, sig,
+    ## beta) row layout plus $r_hat_m/$exp_u_hat, which is all this block
+    ## reads.
     if (is.null(psfm_object$r_hat_m)) {
       stop("psfm_object$r_hat_m not found -- required to bootstrap a TFE fit ",
            "(the individual fixed effects are held fixed at their original ",

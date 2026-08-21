@@ -41,8 +41,11 @@ data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
     R_H     <- randtoolbox::halton(R+1000,2,start = 1,normal = FALSE)[-c(1:1000),c(1:2)]   
     R_H     <- cbind( qnorm(R_H[,1]) , sqrt(2)* pracma::erfinv(R_H[,2]) )                ## using inverse error function for R_H2
     
-    if(!is.null(rand.gtre)){
-      set.seed(rand.gtre)}   
+    if (!is.null(rand.gtre)) {
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+      set.seed(rand.gtre)
+    }   
     
     mat <- matrix(0,nrow=R, ncol=9999)
     for(v in 1:9999){mat[,v] <-  sample(R_H[,1])}
@@ -58,7 +61,7 @@ data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
     t       <- rep(0, N)
     data_i  <- Y <- eps <- data_i_vars <- R_h1 <- R_h2 <- as.list(rep(0,N))
     
-    for (ii in 1:N){
+    for (ii in seq_len(N)){
       data_i[[ii]]  <-  data[which(data[,c(individual)]==indiv[ii]),]
       t[ii]         <-  nrow(data_i[[ii]])
       R_h1[[ii]]    <-  t(matrix(rep(R_H[,1],t[[ii]]),R,t[[ii]]))
@@ -130,7 +133,7 @@ data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
       form_parts <- list("~", y_var, rep(NA_character_, parsed_f$n_parts))
     }
     if(model_name=="TRE"){ model_name <- "TRE_Z"}
-    if(model_name %in% c("THT","NTN","CHC","NU")){return(c("Currently building this functionality"))}#else{z_vars <- NULL}
+    if(model_name %in% c("THT","NTN","CHC","NU","tHN")){return(c("Currently building this functionality"))}#else{z_vars <- NULL}
   }
 
   if(parsed_f$n_parts >= 3){
@@ -144,7 +147,7 @@ data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
   intercept      <- attr(terms(formula_x), "intercept")
   inefdec_n      <- if(isTRUE(inefdec) ) {1} else{-1}
   inefdec_TF     <- if(isTRUE(inefdec) ) {TRUE} else{FALSE}
-  x_vars_vec     <- if(model_name %in% c("TFE","FD","SSFE") & intercept==1){colnames(data_x)[-c(1)]}else {colnames(data_x)}
+  x_vars_vec     <- if(model_name %in% c("TFE","TFE_WMLE","FD","SSFE") & intercept==1){colnames(data_x)[-c(1)]}else {colnames(data_x)}
   n_x_vars       <- length(x_vars_vec)
   x_vars         <- x_vars_vec
   x_x_vec        <- rep(0,length= n_x_vars)
@@ -156,7 +159,7 @@ data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
   
   if(length(unlist(form_parts))>3){
     intercept_z    <- attr(terms(formula_z), "intercept")
-    z_vars_vec     <- if(model_name %in% c("TFE","FD") & intercept_z==1){colnames(data_z)[-c(1)]}else {colnames(data_z)}
+    z_vars_vec     <- if(model_name %in% c("TFE","TFE_WMLE","FD") & intercept_z==1){colnames(data_z)[-c(1)]}else {colnames(data_z)}
     n_z_vars       <- length(z_vars_vec)
     z_vars         <- z_vars_vec
     z_z_vec        <- rep(0,length= n_z_vars)
@@ -164,7 +167,7 @@ data_proc <- function(formula, data, model_name, individual=NULL, inefdec){
 
   if(length(unlist(form_parts))>4){
     intercept_zp    <- attr(terms(formula_zp), "intercept")
-    zp_vars_vec     <- if(model_name %in% c("TFE","FD") & intercept_zp==1){colnames(data_zp)[-c(1)]}else {colnames(data_zp)}
+    zp_vars_vec     <- if(model_name %in% c("TFE","TFE_WMLE","FD") & intercept_zp==1){colnames(data_zp)[-c(1)]}else {colnames(data_zp)}
     n_zp_vars       <- length(zp_vars_vec)
     zp_vars         <- zp_vars_vec
     zp_zp_vec       <- rep(0,length= n_zp_vars)

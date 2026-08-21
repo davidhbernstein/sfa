@@ -12,10 +12,14 @@
 ## column below. Defaults to 0.1.
 ## ------------------------------------------------------------------
 data_gen_p <-
-function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau=0.5, mu=0, beta1, beta2, eta=0.1){
+function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau=0.5, mu=0, beta1, beta2, eta=0.1,
+         b_k90=0.05, c_k90=0.01, d_k90=0.05, e_k90=-0.005){
 
-if(!is.null(rand)){
-set.seed(rand)}
+if (!is.null(rand)) {
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+  set.seed(rand)
+}
 
     n         <- N*t                                 ## Observations
     x1        <- log(runif(n,0,10))                  ## x1 variable
@@ -36,7 +40,7 @@ set.seed(rand)}
     r_fd      <- runif(N,min = 0, max = 1)
     x_fd      <- rep(0,n)
 
-    for (i in 1:N) {
+    for (i in seq_len(N)) {
       B          <- t*i
       A          <- B - (t - 1)
       x_fd[A:B]  <- rnorm(t, mean = r_fd[i], sd= 1)}
@@ -95,12 +99,7 @@ set.seed(rand)}
     ## SSFE (Schmidt & Sickles 1984 LSDV) and PL80 (Pitt & Lee 1980) both
     ## assume inefficiency is CONSTANT within a firm across time (estimated
     ## two different ways -- fixed-effects/LSDV for SSFE, ML random effects
-    ## for PL80 -- but the same underlying data-generating assumption). The
-    ## pre-existing `u` above is drawn per observation (varies within a
-    ## firm across years), which does NOT match that assumption -- using it
-    ## to test SSFE/PL80 would silently test the wrong DGP. `u_inv` fixes
-    ## this the same way `h` above already does it correctly for GTRE's
-    ## time-invariant component: draw once per firm, repeat across time.
+    ## for PL80 -- but the same underlying data-generating assumption).
     ## ------------------------------------------------------------------
     u_inv     <- abs(rep(rnorm(N,0,sig_u),each=t))   ## time-invariant firm-level inefficiency
     y_ssfe    <-         cons + beta1*x1    + beta2*x2   + v - u_inv
@@ -117,10 +116,36 @@ set.seed(rand)}
     u_bc92    <- exp(eta*(t - year)) * u_inv
     y_bc92    <-         cons + beta1*x1    + beta2*x2   + v - u_bc92
 
+    ## ------------------------------------------------------------------
+    ## Kumbhakar (1990) time-varying inefficiency -- targets
+    ## psfm(model_name = "K1990") and "K1990modified".
+    ##
+    ## Same error-components structure as PL80/BC92: one time-invariant
+    ## half-normal draw per firm, scaled by a deterministic path B_it. Only
+    ## B_it differs, exactly as .build_Bit() in matrix_utils.R defines it:
+    ##
+    ##   K1990          B_it = (1 + exp(b*t + c*t^2))^-1
+    ##   K1990modified  B_it = 1 + d*(t - T_i) + e*(t - T_i)^2
+    ##
+    ## `year` here is the within-firm period 1..t and `t` the panel length, so
+    ## (year - t) is the (t - T_i) that K1990modified needs. The defaults are
+    ## chosen to keep B_it strictly positive and monotone over the whole panel:
+    ## at t = 10, K1990 runs 0.485 -> 0.182 and K1990modified 0.145 -> 1.
+    ## ------------------------------------------------------------------
+    B_k90     <- 1/(1 + exp(b_k90*year + c_k90*year^2))
+    u_k90     <- B_k90 * u_inv
+    y_k1990   <-         cons + beta1*x1    + beta2*x2   + v - u_k90
+
+    B_k90m    <- 1 + d_k90*(year - t) + e_k90*(year - t)^2
+    u_k90m    <- B_k90m * u_inv
+    y_k1990m  <-         cons + beta1*x1    + beta2*x2   + v - u_k90m
+
     data_trial <- as.data.frame(cbind(name,  year,  cons,  x1,  x1_w,  x2,  x2_w,  u,  v,  r,  y_gtre,  y_tre,  y_tfe,  h,  y_gtre_nc,  y_tre_nc,  y_pcs,  y_pcs_nc,  c_gtre,  c_tre, c_tfe,   c_gtre_nc,   c_tre_nc,   c_pcs,   c_pcs_nc,  y_fd,   x_fd,  u_fd_star,   z_fd,   r_fd,   u_fd,  u_gtre,  z_gtre,  y_gtre_z,   y_tre_z , y_gtre_zz,    zp_gtre,  h_z,
-                                       u_inv, y_ssfe, u_bc92, y_bc92))
+                                       u_inv, y_ssfe, u_bc92, y_bc92,
+                                       B_k90, u_k90, y_k1990, B_k90m, u_k90m, y_k1990m))
     colnames(data_trial) <- c(       "name","year","cons","x1","x1_w","x2","x2_w","u","v","r","y_gtre","y_tre","y_tfe","h","y_gtre_nc","y_tre_nc","y_pcs","y_pcs_nc","c_gtre","c_tre","c_tfe","c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc","y_fd", "x_fd","u_fd_star", "z_fd", "r_fd", "u_fd","u_gtre","z_gtre","y_gtre_z", "y_tre_z", "y_gtre_zz", "zp_gtre", "h_z",
-                                     "u_inv","y_ssfe","u_bc92","y_bc92")
+                                     "u_inv","y_ssfe","u_bc92","y_bc92",
+                                     "B_k90","u_k90","y_k1990","B_k90m","u_k90m","y_k1990m")
     data_rand           <- pdata.frame(data_trial,    c("name","year"))
 
     return(data_rand)  }

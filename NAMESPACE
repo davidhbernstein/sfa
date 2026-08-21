@@ -18,12 +18,17 @@ importFrom("utils", "head")
 importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "lm",
                     "model.matrix", "model.response", "optim",   "pnorm",     "pt",
                     "qnorm",        "rcauchy",        "rexp",    "rnorm",     "rt",
+                    "qt",
                     "as.formula",   "complete.cases", "formula", "sd",        "runif",
                     "ave",          "cor",            "terms",   "lm.fit",
-                    "plogis",       "rbinom")
+                    "plogis",       "rbinom",         "rgamma",  "rlnorm",    "rweibull",
+                    "dlnorm")
 S3method(summary, sfareg)
 S3method(print, sfareg)
 S3method(coef, sfareg)
 S3method(vcov, sfareg)
 S3method(logLik, sfareg)
 S3method(nobs, sfareg)
+S3method(predict, sfareg)
+S3method(fitted, sfareg)
+S3method(residuals, sfareg)

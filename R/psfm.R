@@ -1,9 +1,11 @@
 psfm <- function(formula, 
-                 model_name   = c("TRE_Z","GTRE_Z","TRE","GTRE","TFE","FD","GTRE_SEQ1","GTRE_SEQ2","SSFE","PL80","BC92"),
+                 model_name   = c("TRE_Z","GTRE_Z","TRE","GTRE","GTRE_FML","TFE","TFE_WMLE",
+                                  "FD","GTRE_SEQ1","GTRE_SEQ2","SSFE","PL80","BC92","K1990","K1990modified"),
                  data,
-                 maxit.bobyqa = 100,
-                 maxit.psoptim= 10,
-                 maxit.optim  = 10,
+                 maxit.bobyqa = 5000,
+                 maxit.nlminb = 500,
+                 maxit.psoptim= 100,
+                 maxit.optim  = 1000,
                  REPORT       = 1,
                  trace        = 3, 
                  pgtol        = 0, 
@@ -19,17 +21,77 @@ psfm <- function(formula,
                  rand.gtre    = NULL,
                  rand.psoptim = NULL,
                  OPG_calc     = FALSE,
-                 time         = NULL){
+                 collinear_action = c("start_only","error","warn_drop"),
+                 time         = NULL,
+                 tfe_lambda_max = 100){
   
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why (calling the pipe check on the raw,
   ## unresolved multi-choice model_name default errored "the condition has
   ## length > 1" for any caller relying on the default rather than specifying
   ## model_name explicitly).
-  call          <- match.call()
-  model_name    <- match.arg(model_name)
+  call             <- match.call()
+  model_name       <- match.arg(model_name)
+  collinear_action <- match.arg(collinear_action)
+
+  ## The meaning of model_name = "TFE" CHANGED in sfa 1.1.3. Through 1.1.2 it
+  ## was Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator,
+  ## which is not a "true fixed effects" estimator at all in Greene's (2005)
+  ## sense -- it is specifically the estimator that AVOIDS estimating the firm
+  ## effects. Now that Greene's TFE is also available, "TFE" names Greene's
+  ## estimator (the standard meaning in the literature) and the CSW estimator
+  ## is "TFE_WMLE". Warn rather than silently returning a different estimator
+  ## than an existing script asked for; this warning is intended to stay for
+  ## one release cycle.
+  if(identical(model_name, "TFE"))
+    warning("model_name = \"TFE\" now fits Greene's (2005) true fixed effects MLE. ",
+            "Through sfa 1.1.2 this name selected Chen, Schmidt and Wang's (2014) ",
+            "within MLE, which is now model_name = \"TFE_WMLE\". Specify the name ",
+            "explicitly to silence this warning.", call. = FALSE)
 
   .check_model_formula_pipes(formula,model_name)
+
+  ## Accept an ordinary data.frame (or tibble/data.table) as well as a
+  ## plm::pdata.frame. Everything downstream -- data_proc(), start_panel()'s
+  ## plm() calls, the per-firm split in each likelihood -- assumes the panel
+  ## index is already attached, and handed a plain data.frame the fit used to
+  ## die with the opaque message "empty model" (preceded by an unrelated
+  ## -looking "'-' not meaningful for factors" warning) that gave no hint the
+  ## real problem was a missing index. psfm() already receives `individual`
+  ## (and `time`), so it has everything needed to build the index itself.
+  data <- .as_panel_data(data, individual, time)
+
+  ## Pre-estimation collinearity check for the models whose starting values
+  ## come from plm(..., model = "random"). Run here, BEFORE data_proc(), so
+  ## that collinear_action = "warn_drop" can actually reshape the model the
+  ## rest of the function estimates. See .check_collinearity() for why the
+  ## between-individual design can be singular while the pooled one is fine.
+  .hr_uses_re_start <- !(model_name %in% c("TFE","TFE_WMLE","FD","SSFE","PL80","BC92","K1990","K1990modified")) &&
+                        isFALSE(is.numeric(start_val))
+  collinear_chk <- NULL
+  if(.hr_uses_re_start){
+    fx_probe <- tryCatch(stats::formula(Formula::Formula(formula), lhs = 1, rhs = 1),
+                         error = function(e) NULL)
+    if(!is.null(fx_probe))
+      collinear_chk <- tryCatch(.check_collinearity(fx_probe, data, individual),
+                                error = function(e) NULL)
+
+    if(!is.null(collinear_chk) && length(collinear_chk$between_drop)){
+      if(identical(collinear_action, "error"))
+        stop(.collinearity_message(collinear_chk, "error"), call. = FALSE)
+
+      if(identical(collinear_action, "warn_drop")){
+        warning(.collinearity_message(collinear_chk, "warn_drop"), call. = FALSE)
+        drop_terms <- .terms_for_columns(fx_probe, data, collinear_chk$between_drop)
+        if(length(drop_terms)){
+          keep <- setdiff(attr(stats::terms(fx_probe), "term.labels"), drop_terms)
+          formula <- stats::reformulate(if(length(keep)) keep else "1",
+                                        response = all.vars(fx_probe)[1])
+        }
+        collinear_chk <- NULL   ## handled here; nothing left for start_panel
+      }
+    }
+  }
 
   DR1 <- data_proc(formula, data, model_name, individual, inefdec)
   
@@ -68,7 +130,8 @@ psfm <- function(formula,
       zp_vars_vec   <- DR1$zp_vars_vec
       zp_zp_vec     <- DR1$zp_zp_vec}
     
-    Start_Panel  <- start_panel(formula_x, data, model_name, start_val, intercept, x_vars_vec)
+    Start_Panel  <- start_panel(formula_x, data, model_name, start_val, intercept, x_vars_vec,
+                                individual = individual, collinear_chk = collinear_chk)
     
     alpha_hat    <- Start_Panel$alpha_hat
     beta_0       <- Start_Panel$beta_0
@@ -111,7 +174,20 @@ psfm <- function(formula,
     R_h2   <- DR2$R_h2
     data_x <- DR2$data_x
     
-    fn_1 = function(x){
+    ## ---- stacked copies for the vectorized likelihood ---------------------
+    ## Built once per fit from the same per-firm lists, so row order matches
+    ## exactly. R_h1/R_h2 have identical rows within a firm (the draws are
+    ## firm-level and shared across firms), so only their first row is needed
+    ## and the composed error is rank one: eps[i, j] = (y_i - x_i'beta) + c_j.
+    ## That lets outer() build the n x R matrix without materializing per-firm
+    ## blocks.
+    .yv   <- unlist(lapply(Y, function(m) m[, 1L]))
+    .Xall <- do.call(rbind, data_i_vars)
+    .gid  <- rep(seq_len(N), times = vapply(Y, nrow, integer(1)))
+    .h1   <- R_h1[[1]][1, ]
+    .h2   <- R_h2[[1]][1, ]
+
+    fn_1_loop = function(x){
       if(model_name == "GTRE"){x_x_vec       <- x[5:as.numeric(n_x_vars + 4)]}
       if(model_name == "TRE"){ x_x_vec       <- x[4:as.numeric(n_x_vars + 3)]}
       fn1 = function(ii){
@@ -161,8 +237,81 @@ psfm <- function(formula,
       fn1_apply[is.infinite(fn1_apply)] <- sqrt(.SFA_CONSTANTS$MAX_VALUE/length(x))
       
       return( sum( fn1_apply[is.finite(fn1_apply)] ) ) }
+
+    ## Vectorized equivalent: one dnorm/pnorm pair over the whole stacked
+    ## (n x R) matrix instead of N pairs over Ti x R blocks. OFF by default --
+    ## measured, it is not worth the change:
+    ##
+    ##   model   loop    vectorized   speedup   agreement
+    ##   TRE     1.9s    1.4s         1.35x     coefficients match to 5.7e-05
+    ##   GTRE    7.0s    6.8s         1.03x     coefficients differ by 7.6e-02
+    ##
+    ## The speedup is small because R (the number of Halton draws) defaults to
+    ## ceiling(sqrt(n)) + 100, so each firm block is already a few thousand
+    ## elements -- big enough that R's per-call overhead is not what dominates.
+    ## Stacking removes that overhead but adds an outer() and a rowsum() of the
+    ## same total size, so most of the gain is given straight back.
+    ##
+    ## GTRE additionally DISAGREES, and the reason is a genuine asymmetry in the
+    ## loop version rather than an error in this one: z1_neg/z2_neg (the
+    ## negative half of the +/- r mixture) are computed just above the clipping
+    ## block and are never clipped, while z1/z2 are. The two halves of the same
+    ## mixture are therefore treated differently. This version clips both,
+    ## consistently, which is why it lands on a slightly different optimum.
+    ## Worth resolving deliberately -- it is not something to change silently as
+    ## a side effect of a speed edit.
+    fn_1_vec = function(x){
+      x_x_vec <- if(model_name == "GTRE") x[5:as.numeric(n_x_vars + 4)]
+                 else                     x[4:as.numeric(n_x_vars + 3)]
+      lam <- x[1]; sig <- x[2]
+      if(!is.finite(lam) || !is.finite(sig) || sig <= 0)
+        return(sqrt(.SFA_CONSTANTS$MAX_VALUE))
+
+      base <- .yv - as.vector(.Xall %*% x_x_vec)
+      c_pos <- if(model_name == "GTRE") -x[3]*.h1 + x[4]*.h2*inefdec_n else -x[3]*.h1
+      ll <- .gtre_sim_logdens(outer(base, c_pos, "+")*inefdec_n, lam, sig, .gid, N)
+
+      if(model_name == "GTRE"){
+        ## Second half of the +/- r mixture: r is symmetric, so the simulated
+        ## density averages the draw and its reflection.
+        c_neg <- x[3]*.h1 + x[4]*.h2*inefdec_n
+        ll <- 0.5*(ll + .gtre_sim_logdens(outer(base, c_neg, "+")*inefdec_n, lam, sig, .gid, N))
+      }
+      ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE/length(x))
+      -sum(ll[is.finite(ll)])
+    }
+
+    fn_1 = function(x)
+      if(isTRUE(getOption("sfa.gtre_vectorized", FALSE))) fn_1_vec(x) else fn_1_loop(x)
     
-    Start.Time  <- start.time()      
+    Start.Time  <- start.time()
+
+    ## ---- phased start: efficiency block first, beta held fixed -------------
+    ## These likelihoods are dominated by the cost of a single evaluation
+    ## (simulated ML over Halton draws), so the way to make them fast is to
+    ## need fewer evaluations rather than to make each one cheaper. The
+    ## frontier coefficients arrive from a random-effects regression already
+    ## close to their MLE and carry little of the composed-error information,
+    ## whereas the variance components are where the curvature and the bad
+    ## local optima are. .phased_start() therefore grid-searches the variance
+    ## block with beta pinned, polishes just that block, and hands the result
+    ## to the full stack below -- which still does the complete maximization.
+    ##
+    ## The block is the leading 3 (TRE: lambda, sigma, sigma_r) or 4 (GTRE:
+    ## plus sigma_h) entries, matching lower.start()'s own per-model layout.
+    ## OFF by default -- see .phased_start()'s header for the benchmark that
+    ## rejected it. Enable with options(sfa.phased_start = TRUE) to experiment.
+    if(isTRUE(getOption("sfa.phased_start", FALSE))){
+      ## Efficiency block, then the frontier intercept: for GTRE the layout is
+      ## (lambda, sigma, sigma_r, sigma_h, beta_0, x...), for TRE the same
+      ## without sigma_h. intercept = NULL when the formula has none.
+      .eff_idx <- if(model_name == "GTRE") 1:4 else 1:3
+      .int_idx <- if(isTRUE(intercept == 1)) max(.eff_idx) + 1L else NULL
+      start_v  <- .phased_start(fn = fn_1, start_v = start_v, idx = .eff_idx,
+                                int_idx = .int_idx, lower = .SFA_CONSTANTS$MIN_POSITIVE,
+                                grid = c(0.5, 0.75, 1.5, 2), verbose = verbose)
+    }
+
     Lower.Start <- lower.start(start_v, model_name, differ=3)
     Opt.Bobyqa  <- opt.bobyqa(fn=fn_1, start_v=start_v, lower.bobyqa=Lower.Start$lower1, maxit.bobyqa=maxit.bobyqa, bob.TF=TRUE,verbose = verbose)
     start_v     <- Opt.Bobyqa$start_v
@@ -178,7 +327,7 @@ psfm <- function(formula,
     opt00       <- Opt.Psoptim$opt00
     
     Lower.Start <-lower.start(start_v, model_name, differ=0.5)
-    Opt.Optim <- opt.optim(fn = fn_1, start_v = start_v, lower.optim =Lower.Start$lower1 ,upper.optim=Lower.Start$upper1, 
+    Opt.Optim <- opt.optim(fn = fn_1, start_v = start_v, lower.optim =Lower.Start$lower1 ,upper.optim=Lower.Start$upper1_open, 
                            maxit.optim=maxit.optim, opt.TF = optHessian, method=Method, optHessian= optHessian,verbose = verbose)
     start_v     <- Opt.Optim$start_v
     start_feval <- Opt.Optim$start_feval
@@ -228,7 +377,7 @@ psfm <- function(formula,
       ## make isSymmetric() reject a numerically-symmetric matrix -- see
       ## .safe_symmetrize()'s header in matrix_utils.R). GTRE_Z's own
       ## .gtre_te() already uses this same helper.
-      for(i in 1:N){
+      for(i in seq_len(N)){
         e_i[[i]]     <- pmin(inefdec_n*(Y[[i]][,1] - rowSums(t(t(data_i_vars[[i]]) * beta))),Y[[i]][,1]*0)
         A[[i]]       <- -cbind(rep(1,t[i]),diag(t[i]))
         SIG[[i]]     <- sig_v^2*diag(t[i]) + sig_r^2*rep(1,t[i])%*%t(rep(1,t[i]))
@@ -257,8 +406,8 @@ psfm <- function(formula,
       
       new_t_exp <- as.list(rep(0,n))
       
-      for(i in 1:N){
-        for (j in 1:t[i]) {
+      for(i in seq_len(N)){
+        for (j in seq_len(t[i])) {
           h <- cumsum(t)[i]-t[i] + j
           new_t      <- rep(0,t[i] +1)
           new_t[j+1] <- -1 
@@ -270,7 +419,7 @@ psfm <- function(formula,
       t_cum      <-   c(cumsum(t))
       t_exp      <-   e_i_exp    <-   A_exp  <- SIG_exp <- VEE_exp <- LAM_exp <- ARR_exp <- res_d_exp  <-   as.list(rep(0,n))
       
-      for(m in 1:N){
+      for(m in seq_len(N)){
         B  <- t_cum[m]
         A  <- B +1 - t[m] 
         t_exp[A:B]     <- rep(t[m],  t[m])
@@ -307,7 +456,7 @@ psfm <- function(formula,
       X_mean           <- matrix(0,N,ncol = length(x_vars_vec))
       colnames(X_mean) <- x_vars_vec
       
-      for (ii in 1:N) {
+      for (ii in seq_len(N)) {
         data_i[[ii]]  <- data[which(data[,c(individual)]==indiv[ii]),]
         Y_mean[ii]    <- mean(as.numeric(data_i[[ii]][,y_var]))
         X_mean[ii,]   <- colMeans(data.frame(data_i[[ii]][,c(x_vars_vec)] ))
@@ -376,8 +525,11 @@ psfm <- function(formula,
     ## Second column: half-normal via inverse error function
     R_H <- cbind(qnorm(R_H[,1]), sqrt(2) * pracma::erfinv(R_H[,2]))
     
-    if(!is.null(rand.gtre)){
-      set.seed(rand.gtre)}
+    if (!is.null(rand.gtre)) {
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+      set.seed(rand.gtre)
+    }
     
     ## Optional decorrelation step retained from current code
     ## (sampling order unchanged so the RNG stream -- and therefore the
@@ -1211,7 +1363,11 @@ psfm <- function(formula,
     R_H     <- randtoolbox::halton(R+.SFA_CONSTANTS$HALTON_DISCARD,2,start = 1,normal = FALSE)[-c(1:.SFA_CONSTANTS$HALTON_DISCARD),c(1:2)]   
     R_H     <- cbind( qnorm(R_H[,1]) , sqrt(2)* pracma::erfinv(R_H[,2]) )                ## using inverse error function for R_H2
     
-    if(!is.null(rand.gtre)){set.seed(rand.gtre)}   
+    if (!is.null(rand.gtre)) {
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+      set.seed(rand.gtre)
+    }   
     
     mat <- matrix(0,nrow=R, ncol=9999)
     for(v in 1:9999){mat[,v] <-  sample(R_H[,1])}
@@ -1227,7 +1383,7 @@ psfm <- function(formula,
     t               <- rep(0, N)
     data_i <- Y <- eps <- data_i_vars <- data_z_vars <- R_h1 <- R_h2 <- as.list(rep(0,N))
     
-    for (ii in 1:N) {
+    for (ii in seq_len(N)) {
       data_i[[ii]]        <-  data[which(data[,c(individual)]==indiv[ii]),]
       t[ii]               <-  nrow(data_i[[ii]])
       R_h1[[ii]]          <-  t(matrix(rep(R_H[,1],t[[ii]]),R,t[[ii]]))
@@ -1240,7 +1396,7 @@ psfm <- function(formula,
     fn <-  function(x){
       x_x_vec    <- x[3:as.numeric(n_x_vars + 2)]
       
-      for (qq in 1:n_z_vars){
+      for (qq in seq_len(n_z_vars)){
         v              <- qq  + 2 + n_x_vars
         z_z_vec[qq]    <- x[v]} 
       
@@ -1342,8 +1498,198 @@ psfm <- function(formula,
     class(results)  <- "sfareg"
     names(results)  <- c("out","opt","data","total_time","start_v","model_name","formula","U", "coefficients", "std.errors", "t.values","call")
     return(results)}    
-  if(model_name ==     "TFE")        {
-    Start.Tfe <- start.tfe(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars) 
+  if(model_name ==     "GTRE_FML")   {
+    ## Four-component GTRE by FULL information maximum likelihood, via the
+    ## model's closed-skew-normal representation. See .csn_gtre_loglik() in
+    ## matrix_utils.R for the algebra; ported from `base code/FML.R`.
+    ##
+    ## Contrast with model_name = "GTRE", which estimates the same model by
+    ## SIMULATED maximum likelihood over Halton draws. This branch integrates
+    ## nothing by Monte Carlo, so the likelihood is deterministic and the
+    ## reported log-likelihood is directly comparable across runs. The price is
+    ## one (T+1)-dimensional normal CDF per firm per evaluation: cost grows
+    ## sharply in T, and this is much slower than "GTRE" for long panels.
+    ##
+    ## Parameters are reported in the order the likelihood consumes them, which
+    ## keeps the mapping to FML.R transparent:
+    ##   (Intercept), x-vars, sigr, sigv, sigh, sigu
+    ## sigr/sigv are the two-sided components (individual effect, noise) and
+    ## sigh/sigu the one-sided ones (time-invariant and time-varying
+    ## inefficiency). These are RAW standard deviations, not the lambda/sigma
+    ## reparameterization "GTRE" reports.
+    Start.Time <- start.time()
+
+    ## The CSN derivation fixes T across firms (A, V and Sigma are built once at
+    ## a single dimension), so an unbalanced panel would silently be wrong
+    ## rather than merely unsupported.
+    id_chr <- as.character(data[, individual])
+    indiv  <- unique(id_chr)
+    gid    <- match(id_chr, indiv)
+    t_i    <- as.numeric(table(gid))
+    if(length(unique(t_i)) != 1L)
+      stop("psfm(model_name = \"GTRE_FML\") requires a BALANCED panel: the ",
+           "closed-skew-normal representation is built at a single T. Found ",
+           "T ranging from ", min(t_i), " to ", max(t_i), ". Use model_name = ",
+           "\"GTRE\" (simulated ML), which handles unbalanced panels.",
+           call. = FALSE)
+    BigT <- t_i[1]
+
+    Xmat  <- as.matrix(data[, setdiff(x_vars_vec, "(Intercept)"), drop = FALSE])
+    Y_vec <- inefdec_n * as.numeric(data[, y_var])
+    X_s   <- inefdec_n * Xmat
+    Kx    <- ncol(Xmat)
+
+    ## Starting values. Two candidates are built and the better one is chosen by
+    ## the likelihood itself, below, once like.fml exists.
+    ##
+    ## Candidate 1 is the random-effects decomposition start_panel() produces for
+    ## the whole GTRE family. NOTE the intercept: this branch used to seed it at
+    ## `beta_0_st`, the RAW panel-regression intercept, while GTRE and TRE seed
+    ## theirs at `beta_0 = beta_0_st + exp_u + exp_eta`. In a composed-error
+    ## model the regression intercept sits below the frontier by
+    ## E[u] + E[h] = (sigma_u + sigma_h)*sqrt(2/pi) -- 1.12 at the standard test
+    ## DGP -- so FML was starting a full unit low, in exactly the direction of
+    ## the sigma_h = 0 boundary optimum where the intercept absorbs E[h]. Seeding
+    ## at `beta_0` puts it where the other GTRE models start.
+    ##
+    ## Candidate 2 is the two-step moment estimator, which is what Colombi (2010,
+    ## sec. 3) and Colombi, Martini and Vittadini (2011, sec. 3.2) recommend as
+    ## the starting point for this exact likelihood.
+    if(isTRUE(is.numeric(start_val))){ start_cands <- list(start_val) } else {
+      b0_re <- if(is.na(beta_0)) mean(Y_vec) else unname(beta_0)
+      cand_re <- unname(c(b0_re, beta_hat[seq_len(Kx)],
+                          max(sigma_r, 0.05), max(sigma_v, 0.05),
+                          max(sigma_h, 0.05), max(sigma_u, 0.05)))
+
+      cand_ts <- tryCatch({
+        ts <- .gtre_two_step(epsilon_hat, alpha_hat, beta_0_st)
+        b0 <- if(is.na(ts$beta_0)) mean(Y_vec) else unname(ts$beta_0)
+        unname(c(b0, beta_hat[seq_len(Kx)],
+                 sqrt(max(ts$sigmaSq_hr*(1 - ts$gamma_hr), 2.5e-3)),
+                 sqrt(max(ts$sigmaSq_uv*(1 - ts$gamma_uv), 2.5e-3)),
+                 sqrt(max(ts$sigmaSq_hr*ts$gamma_hr,       2.5e-3)),
+                 sqrt(max(ts$sigmaSq_uv*ts$gamma_uv,       2.5e-3))))
+      }, error = function(e) NULL)
+
+      start_cands <- Filter(function(z) !is.null(z) && all(is.finite(z)),
+                            list(cand_re, cand_ts))
+      if(!length(start_cands)) start_cands <- list(cand_re)
+    }
+    start_cands <- lapply(start_cands, function(z){ z[!is.finite(z)] <- 0.1; z })
+    start_v     <- start_cands[[1]]
+
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    rownames(out) <- c("par","st_err","t-val")
+    colnames(out) <- c("(Intercept)", setdiff(x_vars_vec, "(Intercept)"),
+                       "sigr","sigv","sigh","sigu")
+
+    ## Quadrature nodes for the rank-one CDF reduction, built once per fit.
+    gh_fml <- .gauss_hermite_nodes(64L)
+
+    like.fml <- function(x)
+      .csn_gtre_loglik(x, Y = Y_vec, X = X_s, gid = gid,
+                       ngroups = N, BigT = BigT, gh = gh_fml)
+
+    ## Pick between the random-effects and two-step starts on the likelihood
+    ## itself. Two evaluations, against a fit costing thousands, and it cannot
+    ## do worse than either candidate alone. The candidates agree on most draws
+    ## and the choice is then immaterial; it matters on the minority where the
+    ## random-effects start would otherwise walk into the sigma_h = 0 corner.
+    if(length(start_cands) > 1L){
+      .cand_obj <- vapply(start_cands,
+                          function(z) tryCatch(like.fml(z), error = function(e) Inf),
+                          numeric(1))
+      if(any(is.finite(.cand_obj))) start_v <- start_cands[[which.min(.cand_obj)]]
+      fml_starts <- list(n_tried    = length(start_cands),
+                         loglik     = -.cand_obj,
+                         chosen     = c("random-effects","two-step")[which.min(.cand_obj)])
+    } else fml_starts <- NULL
+
+    ## Phased start, as in the GTRE/TRE branch: the four variance components
+    ## are the last four entries here (sigr, sigv, sigh, sigu), the frontier
+    ## block the first 1 + Kx. See .phased_start() in matrix_utils.R.
+    if(isTRUE(getOption("sfa.phased_start", FALSE))){
+      ## GTRE_FML layout is (beta_0, x..., sigr, sigv, sigh, sigu): variance
+      ## block last, intercept first.
+      .eff_idx_fml <- (length(start_v) - 3L):length(start_v)
+      start_v <- .phased_start(fn = like.fml, start_v = start_v, idx = .eff_idx_fml,
+                               int_idx = 1L, lower = .SFA_CONSTANTS$MIN_POSITIVE,
+                               grid = c(0.5, 0.75, 1.5, 2), verbose = verbose)
+    }
+
+    lower_f <- c(rep(-Inf, 1 + Kx), rep(.SFA_CONSTANTS$MIN_POSITIVE, 4))
+    upper_f <- rep(Inf, length(start_v))
+    start_v <- pmin(pmax(start_v, lower_f), upper_f)
+
+    ## Deterministic likelihood, so a quasi-Newton method is well behaved here;
+    ## bobyqa follows as a derivative-free safety net. psoptim is skipped
+    ## unless asked for -- each objective evaluation costs N multivariate normal
+    ## CDFs, which makes a particle swarm prohibitively expensive.
+    Opt.Nlminb <- opt.nlminb(fn=like.fml, start_v=start_v, lower.nlminb=lower_f,
+                             upper.nlminb=upper_f, maxit.nlminb=maxit.nlminb, nlminb.TF=TRUE,
+                             verbose=verbose)
+    start_v    <- Opt.Nlminb$start_v
+
+    Opt.Bobyqa <- opt.bobyqa(fn=like.fml, start_v=start_v, lower.bobyqa=lower_f,
+                             upper.bobyqa=upper_f, maxit.bobyqa=maxit.bobyqa,
+                             bob.TF=TRUE, verbose=verbose)
+    start_v     <- Opt.Bobyqa$start_v
+    bob1        <- Opt.Bobyqa$bob1
+
+    differ      <- 2
+    Opt.Psoptim <- opt.psoptim(fn=like.fml, start_v,
+                               lower.psoptim=c(start_v[seq_len(1+Kx)]-differ,
+                                               rep(.SFA_CONSTANTS$MIN_POSITIVE,4)),
+                               upper.psoptim=start_v+differ, rand.psoptim=rand.psoptim,
+                               maxit.psoptim=maxit.psoptim, psopt.TF=PSopt, verbose=verbose)
+    start_v     <- Opt.Psoptim$start_v
+    opt00       <- Opt.Psoptim$opt00
+
+    Opt.Optim <- opt.optim(fn=like.fml, start_v=start_v, lower.optim=lower_f,
+                           upper.optim=pmin(start_v+differ, upper_f),
+                           maxit.optim=maxit.optim, opt.TF=optHessian, method=Method,
+                           optHessian=optHessian, verbose=verbose)
+    start_v   <- Opt.Optim$start_v
+    opt       <- Opt.Optim$opt
+
+    End.Time <- end.time(Start.Time)
+
+    if(optHessian==FALSE & PSopt == FALSE){opt <- bob1}
+    if(optHessian==FALSE & PSopt == TRUE ){opt <- opt00}
+
+    st_err <- if(isTRUE(any(opt$hessian==0)) | optHessian==FALSE){ rep(NA,length(opt$par)) } else {
+      tryCatch(suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)),0))),
+               error = function(e) rep(NA_real_, length(opt$par)))}
+    out[1,] <- opt$par
+    out[2,] <- st_err
+    out[3,] <- opt$par/st_err
+
+    ## Transient (time-varying) and persistent (time-invariant) efficiency,
+    ## each from the corresponding one-sided component against the total
+    ## two-sided scale, following the same Battese-Coelli predictor the rest of
+    ## the package uses.
+    np    <- length(opt$par)
+    sig_r <- opt$par[np-3]; sig_v <- opt$par[np-2]
+    sig_h <- opt$par[np-1]; sig_u <- opt$par[np]
+    eps   <- as.numeric(Y_vec - opt$par[1] - X_s %*% opt$par[2:(1+Kx)])
+    s2u   <- sig_u^2; s2v <- sig_v^2
+    U     <- .te_battese_coelli(mu_star    = -eps*s2u/(s2u + s2v),
+                                sigma_star = sig_u*sig_v/sqrt(s2u + s2v))
+    e_bar <- as.numeric(.gsum(eps, gid, N)) / BigT
+    s2h   <- sig_h^2; s2r <- sig_r^2 + s2v/BigT
+    H     <- .te_battese_coelli(mu_star    = -e_bar*s2h/(s2h + s2r),
+                                sigma_star = sig_h*sqrt(s2r)/sqrt(s2h + s2r))
+    names(H) <- indiv
+
+    results <- list(t(out), c(opt), End.Time, start_v, U, H, model_name, formula, data,
+                    out["par",], out["st_err",], out["t-val",], call, fml_starts)
+    class(results) <- "sfareg"
+    names(results) <- c("out","opt","total_time","start_v","U","H","model_name","formula","data",
+                        "coefficients","std.errors","t.values","call","start_search")
+    return(results)
+  }
+  if(model_name ==     "TFE_WMLE")   {
+    Start.Tfe <- start.tfe(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars)
     
     data_i       <- Start.Tfe$data_i
     data_i_vars  <- Start.Tfe$data_i_vars
@@ -1386,7 +1732,7 @@ psfm <- function(formula,
         ## Was demean(as.numeric(data_i_vars[[i]][,qq])) recomputed here on
         ## every likelihood evaluation -- data_i_vars_dm precomputes this
         ## once in start.tfe() since it doesn't depend on x.
-        for (qq in 1:n_x_vars) {
+        for (qq in seq_len(n_x_vars)) {
           eps_t  <- eps_t - x_x_vec[qq]*data_i_vars_dm[[i]][,qq] }
         eps_t  <- eps_t*inefdec_n
         eps_t1 <- eps_t[1:t[[i]]-1]
@@ -1461,7 +1807,7 @@ psfm <- function(formula,
     ## data_i[[ii]] is already the correct per-individual subset from
     ## start.tfe() (same `indiv` ordering) -- was being recomputed from
     ## scratch here via an identical data[which(...)] subset.
-    for (ii in 1:N) {
+    for (ii in seq_len(N)) {
       Y_mean[ii]    <- mean(as.numeric(data_i[[ii]][,y_var]))
       X_mean[ii,]   <- colMeans(data.frame(data_i[[ii]][,c(x_vars_vec)] ))
     }
@@ -1488,6 +1834,199 @@ psfm <- function(formula,
     results <- list(   t(out),c(opt),End.Time,   start_v,   r_hat_m,  exp_u_hat , model_name,  formula,  data, out["par",], out["st_err",], out["t-val",],call)
     class(results) <- "sfareg"
     names(results) <- c("out","opt","total_time","start_v","r_hat_m","exp_u_hat","model_name","formula","data","coefficients", "std.errors", "t.values","call")
+    return(results)
+  }
+  if(model_name ==     "TFE")        {
+    ## Greene's (2005) true fixed effects stochastic frontier: the ordinary
+    ## normal/half-normal composed-error likelihood with one intercept per
+    ## individual estimated jointly with (lambda, sigma, beta). See
+    ## .tfe_alpha_profile() in matrix_utils.R for the likelihood, why the N
+    ## firm effects are concentrated out rather than handed to the optimizer,
+    ## and how they are solved for.
+    ##
+    ## Contrast with "TFE_WMLE" (Chen, Schmidt and Wang, 2014), which
+    ## estimates the same MODEL but from the within-transformed data, so the
+    ## firm effects never enter the likelihood. TFE is the estimator with the
+    ## incidental parameters problem -- at small T its sigma_u is biased
+    ## upward and its efficiency scores are correspondingly pessimistic --
+    ## which is exactly the bias TFE_WMLE was designed to remove. Both are
+    ## provided because TFE remains the benchmark that applied work reports.
+    ##
+    ## Starting values, the parameter ordering and the `out` column names are
+    ## shared with TFE_WMLE via start.tfe(), so psfm_bootstrap() and the
+    ## sfareg methods need no separate case for this model.
+    Start.Tfe <- start.tfe(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars)
+
+    out       <- Start.Tfe$out
+    start_v   <- Start.Tfe$start_v
+
+    ## Work in the production orientation throughout: e = inefdec_n*(y - x'b) - alpha
+    ## is v - u whichever frontier was requested, so one likelihood covers both.
+    ## The firm effect on the original scale is inefdec_n*alpha (recovered below).
+    Xmat   <- as.matrix(data[, x_vars_vec, drop = FALSE])
+    y_s    <- inefdec_n * as.numeric(data[, y_var])
+    X_s    <- inefdec_n * Xmat
+
+    ## Group id built by match() against unique(), NOT by assuming the rows
+    ## arrive sorted by individual -- see .gsum()'s note on why the obvious
+    ## rowsum()/tapply() shortcuts silently misassign firm effects when the
+    ## individual labels are numeric-looking strings.
+    id_chr <- as.character(data[, individual])
+    indiv  <- unique(id_chr)
+    gid    <- match(id_chr, indiv)
+
+    like.tfe.greene <- function(x){
+      lambda_eff <- if(gamma==FALSE) x[1] else sqrt(x[1]/(1-x[1]))
+      sig        <- x[2]
+      ## Same guard as like.tfe(): optim()'s numerical Hessian steps outside
+      ## the optimizer's own bounds, so gamma can exceed 1 there.
+      if(!is.finite(lambda_eff) || !is.finite(sig) || lambda_eff <= 0 || sig <= 0) return(1e12)
+
+      r     <- y_s - as.vector(X_s %*% x[3:as.numeric(n_x_vars + 2)])
+      alpha <- .tfe_alpha_profile(r, gid, N, lambda_eff, sig)
+      if(is.null(alpha)) return(1e12)
+
+      z  <- (r - alpha[gid]) / sig
+      ## Evaluated entirely in logs: pnorm(log.p = TRUE) stays accurate for
+      ## arguments far into the lower tail, where the raw CDF underflows to 0
+      ## and log(0) would hand the optimizer an -Inf.
+      ll <- sum(log(2) - log(sig) + dnorm(z, log = TRUE) +
+                  pnorm(-lambda_eff * z, log.p = TRUE))
+      if(!is.finite(ll)) return(1e12)
+      return(-ll)}
+
+    Start.Time <- start.time()
+
+    differ    <- 2
+
+    ## ---- the sigma_v -> 0 degeneracy, and why lambda is capped -----------
+    ## Because alpha_i is unrestricted, this likelihood ALWAYS has a
+    ## supremum on the sigma_v = 0 (lambda -> Inf) boundary: setting
+    ## alpha_i = max_t(y_it - x_it'beta) makes every composed error weakly
+    ## negative, Phi(-lambda e/sigma) -> 1, and what is left is the
+    ## deterministic-frontier likelihood, which is finite and attained.
+    ## Verified numerically on four simulated panels (T = 10 and 20,
+    ## lambda_true from 0.5 to 3.33): in every one, profiling the likelihood
+    ## over lambda at its own best sigma dips through a barrier and then
+    ## rises again, ending HIGHER at lambda = 1e7 than at the interior local
+    ## maximum. When lambda_true is high and T small the profile can be
+    ## monotone increasing throughout, i.e. no interior maximum exists at
+    ## all. The interior local mode -- the one reached by a local ascent from
+    ## the within estimator, which is what the applied literature reports and
+    ## what recovers the true parameters here -- is therefore the target, and
+    ## an unbounded search is a liability rather than thoroughness.
+    ##
+    ## tfe_lambda_max keeps the search in that basin. A fit that pins at the
+    ## cap has run into the degeneracy, and says so (warning below) rather
+    ## than quietly reporting sigma_v ~ 0 with meaningless standard errors.
+    if(!is.numeric(tfe_lambda_max) || length(tfe_lambda_max) != 1 ||
+       !is.finite(tfe_lambda_max) || tfe_lambda_max <= 0)
+      stop("tfe_lambda_max must be a single finite positive number.", call. = FALSE)
+
+    ## Same cap expressed in whichever parameterization x[1] carries.
+    gamma_cap <- if(gamma) min(tfe_lambda_max^2/(1 + tfe_lambda_max^2),
+                               1 - .SFA_CONSTANTS$MIN_POSITIVE) else tfe_lambda_max
+    lower_g   <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2), rep(-Inf,n_x_vars))
+    upper_g   <- c(gamma_cap, Inf, rep(Inf,n_x_vars))
+
+    ## start.tfe() derives its lambda from a within regression that knows
+    ## nothing about the cap, so on a low-noise panel (or a deliberately tight
+    ## tfe_lambda_max) the starting value can already sit above the bound --
+    ## which bobyqa rejects outright with "Starting values violate bounds"
+    ## rather than projecting onto the feasible set. Clamp first.
+    start_v <- pmin(pmax(start_v, lower_g), upper_g)
+
+    ## nlminb leads the stack here (as in the PL80/BC92 branch): the profile
+    ## likelihood is smooth -- alpha is solved by Newton to machine precision
+    ## rather than by a nested optimizer stopping at its own tolerance -- so a
+    ## quasi-Newton method uses it well, and it gets the derivative-free
+    ## stages started from a far better point than the within estimator alone.
+    Opt.Nlminb <- opt.nlminb(fn=like.tfe.greene, start_v=start_v, lower.nlminb=lower_g,
+                             upper.nlminb=upper_g, maxit.nlminb=maxit.nlminb, nlminb.TF=TRUE,
+                             verbose=verbose)
+    start_v    <- Opt.Nlminb$start_v
+
+    Opt.Bobyqa <- opt.bobyqa(fn=like.tfe.greene, start_v=start_v, lower.bobyqa=lower_g,
+                             upper.bobyqa=upper_g, maxit.bobyqa=maxit.bobyqa,
+                             bob.TF=TRUE, verbose=verbose)
+    start_v     <- Opt.Bobyqa$start_v
+    start_feval <- Opt.Bobyqa$start_feval
+    bob1        <- Opt.Bobyqa$bob1
+
+    upper_ps    <- pmin(start_v+differ, upper_g)
+    Opt.Psoptim <- opt.psoptim(fn=like.tfe.greene, start_v, lower.psoptim=c(rep(.SFA_CONSTANTS$MIN_POSITIVE,2), start_v[-c(1:2)]-differ),
+                               rand.psoptim = rand.psoptim,
+                               upper.psoptim=upper_ps, maxit.psoptim=maxit.psoptim, psopt.TF=PSopt, verbose = verbose)
+    start_v     <- Opt.Psoptim$start_v
+    start_feval <- Opt.Psoptim$start_feval
+    opt00       <- Opt.Psoptim$opt00
+
+    upper_opt <- pmin(start_v+differ, upper_g)
+    Opt.Optim <- opt.optim(fn = like.tfe.greene, start_v = start_v, lower.optim = lower_g,
+                           upper.optim=upper_opt, maxit.optim=maxit.optim, opt.TF = optHessian,
+                           method=Method, optHessian= optHessian, verbose = verbose)
+    start_v     <- Opt.Optim$start_v
+    start_feval <- Opt.Optim$start_feval
+    opt         <- Opt.Optim$opt
+
+    End.Time <- end.time(Start.Time)
+
+    if(optHessian==FALSE & PSopt == FALSE){opt <- bob1}
+    if(optHessian==FALSE & PSopt == TRUE ){opt <- opt00}
+
+    beta       <- opt$par[-c(1:2)]
+    lamb       <- if(gamma==FALSE) opt$par[1] else sqrt(opt$par[1]/(1-opt$par[1]))
+    sig        <- opt$par[2]
+    sig_u      <- (lamb*sig) / sqrt(1+lamb^2)
+    sig_v      <- sig_u/lamb
+
+    ## Pinned at the cap => the search left the interior basin for the
+    ## deterministic-frontier boundary described above. Report it: the
+    ## returned lambda is then the constraint, not an estimate, and the
+    ## numerical Hessian at a bound gives standard errors that mean nothing.
+    if(isTRUE(lamb >= tfe_lambda_max*(1 - 1e-6)))
+      warning("psfm(model_name = \"TFE\"): lambda converged to its upper bound (",
+              format(tfe_lambda_max), "), i.e. sigma_v -> 0. Greene's true fixed ",
+              "effects likelihood always has a supremum on that boundary (the ",
+              "deterministic frontier alpha_i = max_t(y_it - x_it'beta)), and for ",
+              "these data no interior maximum was found below the bound. Treat the ",
+              "reported lambda as the constraint rather than an estimate; consider ",
+              "model_name = \"TFE_WMLE\", which is not subject to this degeneracy.",
+              call. = FALSE)
+
+    ## Firm effects at the final estimates. Unlike TFE_WMLE's r_hat_m these
+    ## need no sqrt(2/pi)*sig_u mean adjustment: CSW's within likelihood
+    ## cannot identify alpha_i and recovers it from the mean residual (which
+    ## carries -E[u] and has to be shifted back), whereas here alpha_i is
+    ## estimated by maximum likelihood as the frontier intercept directly.
+    r         <- y_s - as.vector(X_s %*% beta)
+    alpha_hat <- .tfe_alpha_profile(r, gid, N, lamb, sig)
+    if(is.null(alpha_hat)) alpha_hat <- rep(NA_real_, N)
+    r_hat_m        <- inefdec_n * alpha_hat
+    names(r_hat_m) <- indiv
+
+    eps_hat    <- r - alpha_hat[gid]
+    exp_u_hat  <- .te_battese_coelli(mu_star    = -eps_hat*sig_u^2/sig^2,
+                                     sigma_star = sig_u*sig_v/sig)
+    u_hat      <- .jlms_u(mu_star    = -eps_hat*sig_u^2/sig^2,
+                          sigma_star = sig_u*sig_v/sig)
+
+    ## solve() on a singular Hessian errors outright; a fit that converged but
+    ## cannot be inverted should still return its point estimates with NA
+    ## standard errors rather than aborting the whole call.
+    st_err <- if(isTRUE(any(opt$hessian==0)) | optHessian==FALSE){ rep(NA,length(opt$par)) } else {
+      tryCatch(suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)),0))),
+               error = function(e) rep(NA_real_, length(opt$par)))}
+    t_val   <- opt$par/st_err
+    out[1,] <- opt$par
+    out[2,] <- st_err
+    out[3,] <- t_val
+
+    results <- list(t(out), c(opt), End.Time, start_v, r_hat_m, exp_u_hat, u_hat, model_name,
+                    formula, data, out["par",], out["st_err",], out["t-val",], call)
+    class(results) <- "sfareg"
+    names(results) <- c("out","opt","total_time","start_v","r_hat_m","exp_u_hat","u_hat","model_name",
+                        "formula","data","coefficients","std.errors","t.values","call")
     return(results)
   }
   if(model_name ==     "FD")         {
@@ -1527,7 +2066,7 @@ psfm <- function(formula,
     SIGMA           <- as.list(rep(0,N))
     data_z_vars     <- as.list(rep(0,N))
 
-    for (ii in 1:N) {
+    for (ii in seq_len(N)) {
       data_i[[ii]]              <- data[which(data[,c(individual)]==indiv[ii]),]
       t[ii]                     <- nrow(data_i[[ii]])
       Y[[ii]]                   <- as.numeric(data_i[[ii]][,y_var])
@@ -1551,11 +2090,11 @@ psfm <- function(formula,
     
     like.fd <- function(x){ 
       
-      for (q in 1:n_x_vars){
+      for (q in seq_len(n_x_vars)){
         v             <- q + 3
         x_x_vec[q]    <- x[v]}
       
-      for (qq in 1:n_z_vars){
+      for (qq in seq_len(n_z_vars)){
         m <- v + qq
         z_z_vec[qq]    <- x[m] }
       
@@ -1567,8 +2106,8 @@ psfm <- function(formula,
         eps_t    <- Y_diff[[i]]
         eps_h    <- rep(0, t[i])
 
-        for (qq in 1:n_x_vars) {eps_t <- eps_t - x_x_vec[qq] * data_i_vars_diff[[i]][,qq]}
-        for (qq in 1:n_z_vars) {eps_h <- eps_h + z_z_vec[qq] * as.numeric(data_z_vars[[i]][,qq])  }
+        for (qq in seq_len(n_x_vars)) {eps_t <- eps_t - x_x_vec[qq] * data_i_vars_diff[[i]][,qq]}
+        for (qq in seq_len(n_z_vars)) {eps_h <- eps_h + z_z_vec[qq] * as.numeric(data_z_vars[[i]][,qq])  }
         
         eps_h     <- diff(exp(eps_h), lag = 1)    
         eps_t     <- eps_t*inefdec_n            ## not exactly sure if this is sufficient for cost
@@ -1643,15 +2182,15 @@ psfm <- function(formula,
     ## UNdifferenced data_z_vars for eps_h -- a pre-existing discrepancy
     ## between the likelihood and this TE-prediction step left untouched
     ## here since this is a performance pass, not a correctness one).
-    for (i in 1:N) {
+    for (i in seq_len(N)) {
       eps_t     <- Y_diff[[i]]
       eps_h     <- rep(0, t[i]-1)
 
-      for (qq in 1:n_x_vars) {
+      for (qq in seq_len(n_x_vars)) {
         m         <- 3 + qq
         eps_t     <- eps_t - opt$par[m] * data_i_vars_diff[[i]][,qq]}
 
-      for (qq in 1:n_z_vars) {
+      for (qq in seq_len(n_z_vars)) {
         m         <- 3 + length(n_x_vars) + qq
         eps_h     <- eps_h + opt$par[m] * diff(as.numeric(data_z_vars[[i]][,qq]), lag = 1)}
 
@@ -1660,7 +2199,7 @@ psfm <- function(formula,
       sig_star2 <- (t(eps_h) %*% qr.solve(SIG) %*% eps_h  + (1/sigu2))^-1
       mu_star   <- (  (mu/sigu2) - t(eps_t) %*% qr.solve(SIG) %*% eps_h  )*sig_star2
 
-      for (tt in 1:t[i]) {
+      for (tt in seq_len(t[i])) {
         num        <- if(i>1) { cumsum(t)[i-1]  + tt } else {tt}
         u_hat[num]   <- h_hat[num] * (mu_star + (sqrt(sig_star2)*dnorm(mu_star/sqrt(sig_star2)) / max(pnorm(mu_star/sqrt(sig_star2)),.SFA_CONSTANTS$MIN_POSITIVE)   ) )
       }}
@@ -1706,7 +2245,23 @@ psfm <- function(formula,
     }
 
     sigma_v       <- fit_eps$par[1]; sigma_u <- fit_eps$par[2]
-    sigma_h       <- fit_alp$par[1]; sigma_r <- fit_alp$par[2]
+    ## .fit_nhn_intercept() returns (TWO-sided sd, ONE-sided sd, intercept).
+    ## alpha_i = r_i - h_i has r two-sided and h one-sided, so par[1] is
+    ## sigma_r and par[2] is sigma_h -- verified on synthetic r - h with known
+    ## components: par = (0.2075, 0.4062) against truths of 0.20 and 0.40.
+    ## These were assigned the other way round.
+    ##
+    ## The swap was easy to miss on real data because ranef() returns SHRUNKEN
+    ## individual effects, which compresses the skewness that identifies the
+    ## one-sided part; the fit then attributes most of the variance to par[1],
+    ## and the swapped assignment happens to reproduce the expected ordering
+    ## sigma_h > sigma_r. Only the reported other_parms were affected --
+    ## gamma_hr and sigmaSq_hr come from reparam_gs(par[1:2]), which reads the
+    ## positions correctly.
+    ##
+    ## That shrinkage is also the leading explanation for this model's
+    ## convergence failure on sigmaSq_hr; see CONVERGENCE_STATUS.md.
+    sigma_r       <- fit_alp$par[1]; sigma_h <- fit_alp$par[2]
     exp_u         <- fit_eps$par[3]
     exp_eta       <- fit_alp$par[3]
     beta_0        <- beta_0_st + exp_u +exp_eta
@@ -1751,8 +2306,9 @@ psfm <- function(formula,
   if(model_name ==     "SSFE")       {
     ## Schmidt & Sickles (1984, JBES) fixed-effects (LSDV) stochastic
     ## frontier estimator -- a genuinely different, deterministic model
-    ## from "TFE" above (which is Chen, Schmidt and Wang's 2014 within-MLE
-    ## true fixed-effects model). Schmidt-Sickles needs no numerical
+    ## from both "TFE" (Greene's 2005 true fixed effects MLE) and
+    ## "TFE_WMLE" (Chen, Schmidt and Wang's 2014 within MLE) above.
+    ## Schmidt-Sickles needs no numerical
     ## optimization at all: fit the standard fixed-effects (within) panel
     ## regression, then read technical inefficiency directly off the
     ## estimated firm effects -- the best-performing firm (highest fixed
@@ -1762,7 +2318,12 @@ psfm <- function(formula,
     ## deterministic -- no optimizer to fail to converge.
     Start.Time <- start.time()
 
-    plm_ss <- plm(formula_x, data, effect = "individual", model = "within")
+    ## index = individual is required: by this point `data` has been through
+    ## data_proc2() and is a plain data.frame, so plm() would otherwise treat
+    ## the first two columns as the panel index. See start.tfe() in
+    ## starting.values.R for the full account of this failure mode.
+    plm_ss <- plm(formula_x, data, effect = "individual", model = "within",
+                  index = individual)
 
     beta_hat_ss <- plm_ss$coefficients[x_vars_vec]
     beta_se_ss  <- summary(plm_ss)$coefficients[x_vars_vec, "Std. Error"]
@@ -1797,20 +2358,32 @@ psfm <- function(formula,
     names(results) <- c("out","total_time","model_name","formula","data","alpha_hat","u_hat","exp_u_hat",
                          "coefficients","std.errors","t.values","call")
     return(results)}
-  if(model_name %in% c("PL80","BC92"))       {
+  if(model_name %in% c("PL80","BC92","K1990","K1990modified"))       {
     ## Time-invariant panel stochastic frontier (Pitt and Lee, 1980, JoE)
-    ## and time-varying decay (Battese and Coelli, 1992, JPA) models --
-    ## the "error components frontier": y_it = x_it'beta + v_it - B_it*u_i
-    ## (production; sign flips for cost via inefdec_n), v_it ~ iid N(0,
-    ## sigma_v^2), u_i ~ iid N+(0, sigma_u^2) constant across t within firm
-    ## i, and B_it = 1 for PL80 (time-invariant) or B_it =
-    ## exp(-eta*(t - Tref)) for BC92 (time-decaying), Tref = the LAST time
-    ## period in the *whole panel* (not per-firm -- confirmed by matching
-    ## frontier::sfa()'s log-likelihood on an unbalanced-panel test case;
-    ## the per-firm-last-period alternative gives a different, non-matching
-    ## logLik there). Native implementation (previously wrapped
-    ## frontier::sfa() -- removed as a dependency since frontier is a
-    ## direct competitor to this package).
+    ## and three time-decay generalizations of it -- the "error components
+    ## frontier": y_it = x_it'beta + v_it - B_it*u_i (production; sign
+    ## flips for cost via inefdec_n), v_it ~ iid N(0, sigma_v^2), u_i ~ iid
+    ## N+(0, sigma_u^2) constant across t within firm i, and B_it a
+    ## model-specific decay pattern:
+    ##   PL80          : B_it = 1                             (no decay)
+    ##   BC92          : B_it = exp(-eta*(t - Tref))           (Battese &
+    ##                   Coelli 1992; Tref = the LAST time period in the
+    ##                   *whole panel*, not per-firm -- confirmed by
+    ##                   matching frontier::sfa()'s log-likelihood on an
+    ##                   unbalanced-panel test case; the per-firm-last-
+    ##                   period alternative gives a different, non-matching
+    ##                   logLik there)
+    ##   K1990         : B_it = (1 + exp(b*t + c*t^2))^-1      (Kumbhakar
+    ##                   1990; matches npsf::sf()'s "K1990" time pattern)
+    ##   K1990modified : B_it = 1 + d*(t-T_i) + e*(t-T_i)^2    (Kumbhakar
+    ##                   1990's modified pattern; T_i is each FIRM's OWN
+    ##                   last observed period, unlike BC92's whole-panel
+    ##                   Tref)
+    ## See .build_Bit() (matrix_utils.R) for the actual B_it construction --
+    ## centralized there since it's the only thing that differs across
+    ## these four models. Native implementation (PL80/BC92 previously
+    ## wrapped frontier::sfa() -- removed as a dependency since frontier is
+    ## a direct competitor to this package).
     ##
     ## Closed-form log-likelihood, derived by integrating u_i out of the
     ## joint density of (epsilon_i, u_i) (completing the square in u_i,
@@ -1824,12 +2397,18 @@ psfm <- function(formula,
     ## z_i = -sigma_u*S_i/(sigma_v*sqrt(denom_i)). Setting B_it=1 recovers
     ## Pitt & Lee (1980) exactly; setting T_i=1 (cross-sectional) recovers
     ## the ordinary Aigner-Lovell-Schmidt (1977) normal-half-normal
-    ## likelihood exactly -- both checked analytically.
+    ## likelihood exactly -- both checked analytically. This derivation
+    ## never assumed a specific functional form for B_it, so it applies to
+    ## K1990/K1990modified unchanged -- only .build_Bit()'s construction of
+    ## B_it itself differs by model.
     ##
-    ## Verified against frontier::sfa(): computed this closed form at
-    ## frontier::sfa()'s own reported MLE (both PL80 and BC92, balanced and
-    ## unbalanced panels) and matched its reported logLik to ~1e-5 (its own
-    ## reporting precision) in every case, before that dependency was removed.
+    ## Verified against frontier::sfa() (PL80/BC92 only -- K1990/
+    ## K1990modified have no frontier::sfa() equivalent to check against,
+    ## see the parameter-recovery validation in PROJECT_STATUS.md's "Round
+    ## 20" entry instead): computed this closed form at frontier::sfa()'s
+    ## own reported MLE (both PL80 and BC92, balanced and unbalanced
+    ## panels) and matched its reported logLik to ~1e-5 (its own reporting
+    ## precision) in every case, before that dependency was removed.
     Start.Time <- start.time()
 
     time_var <- if(is.null(time)){
@@ -1851,21 +2430,25 @@ psfm <- function(formula,
     idx_by_firm  <- split(seq_len(nrow(data)), data[[individual]], drop = TRUE)
     time_by_firm <- lapply(idx_by_firm, function(idx) time_var[idx])
 
-    is_bc92 <- (model_name == "BC92")
+    ## Number and names of this model's extra (decay) parameters beyond
+    ## (sigma_v, sigma_u, beta).
+    n_decay <- c(PL80 = 0L, BC92 = 1L, K1990 = 2L, K1990modified = 2L)[[model_name]]
+    decay_names <- switch(model_name, PL80 = character(0), BC92 = "time",
+                          K1990 = c("b","c"), K1990modified = c("d","e"))
 
     like.pl <- function(x){
       sigma_v <- x[1]; sigma_u <- x[2]
       beta    <- x[3:(2+K_pl)]
-      eta     <- if(is_bc92) x[3+K_pl] else 0
+      decay_par <- if(n_decay > 0) x[(3+K_pl):(2+K_pl+n_decay)] else numeric(0)
 
-      if(!all(is.finite(c(sigma_v,sigma_u,eta))) || sigma_v<=0 || sigma_u<=0) return(1e12)
+      if(!all(is.finite(c(sigma_v,sigma_u,decay_par))) || sigma_v<=0 || sigma_u<=0) return(1e12)
 
       resid_all <- inefdec_n*(y_pl - as.vector(X_pl %*% beta))
 
       ll_i <- function(idx, t_i){
         e_i  <- resid_all[idx]
         Ti   <- length(e_i)
-        B_it <- if(is_bc92) exp(-eta*(t_i - Tref_pl)) else rep(1, Ti)
+        B_it <- .build_Bit(model_name, t_i, Tref_pl, decay_par)
         SSE  <- sum(e_i*e_i)
         S1   <- sum(B_it*e_i)
         S2   <- sum(B_it*B_it)
@@ -1883,14 +2466,39 @@ psfm <- function(formula,
     ## sigma_u^2/sigma_v^2 (a robust, standard default -- moment/skewness-
     ## based starting values are known to be fragile for SFA models with
     ## weakly-skewed residuals, e.g. the "right-skewed" warning frontier's
-    ## own OLS step often emits on simulated data), eta starting at 0.
+    ## own OLS step often emits on simulated data). Decay parameters start
+    ## at 0, i.e. B_it starts at PL80's no-decay/K1990modified's no-decay
+    ## value (1) for eta/d/e; K1990's b=c=0 starts at the model's own
+    ## midpoint B_it=0.5 rather than 1 -- there is no zero-parameter value
+    ## of K1990's logistic form that reduces to "no decay", so 0 is simply
+    ## a neutral starting point for the search.
     ols_pl     <- lm.fit(X_pl, y_pl)
     resid_var  <- max(mean((inefdec_n*ols_pl$residuals)^2), .SFA_CONSTANTS$MIN_POSITIVE)
-    start_v    <- c(sqrt(resid_var/2), sqrt(resid_var/2), unname(coef(ols_pl)),
-                     if(is_bc92) 0)
+    ## sigma_u starts ABOVE sigma_v rather than at an equal split of the
+    ## residual variance. For a composed error the one-sided component
+    ## carries most of the residual spread, so sigma_v = sigma_u is a poor
+    ## prior -- and for the two-parameter decay patterns it is not merely
+    ## inefficient, it changes the answer: with the equal split K1990
+    ## converged to a log-likelihood of -429.30 on a test panel whose true
+    ## parameters score -423.03, while starting sigma_u at the residual RMSE
+    ## and sigma_v at half of it reaches -423.54 (bobyqa and nlminb agree on
+    ## that point independently, so it is the start, not the optimizer).
+    start_v    <- c(sqrt(resid_var)/2, sqrt(resid_var), unname(coef(ols_pl)),
+                     rep(0, n_decay))
     n_par      <- length(start_v)
 
     lower_pl <- c(.SFA_CONSTANTS$MIN_POSITIVE, .SFA_CONSTANTS$MIN_POSITIVE, rep(-Inf, n_par-2))
+
+    ## nlminb first. psfm()'s default maxit.bobyqa is 100 -- fine for the
+    ## 4-5 parameter models it was tuned on, but far too few for the
+    ## 7-parameter K1990/K1990modified fits, which were stopping ~6 log-
+    ## likelihood units short of the optimum purely on the iteration cap.
+    ## nlminb reaches the same point bobyqa reaches with 3000 evaluations,
+    ## so this buys accuracy rather than trading it away. bobyqa still runs
+    ## afterwards from wherever nlminb finished.
+    Opt.Nlminb <- opt.nlminb(fn=like.pl, start_v=start_v, lower.nlminb=lower_pl,
+                             maxit.nlminb=maxit.nlminb, nlminb.TF=TRUE, verbose=verbose)
+    start_v    <- Opt.Nlminb$start_v
 
     Opt.Bobyqa <- opt.bobyqa(fn=like.pl, start_v=start_v, lower.bobyqa=lower_pl,
                               maxit.bobyqa=maxit.bobyqa, bob.TF=TRUE, verbose=verbose)
@@ -1918,19 +2526,22 @@ psfm <- function(formula,
     par_hat <- opt$par
     sigma_v_hat <- par_hat[1]; sigma_u_hat <- par_hat[2]
     beta_hat_pl <- par_hat[3:(2+K_pl)]
-    eta_hat     <- if(is_bc92) par_hat[3+K_pl] else NA_real_
+    decay_hat   <- if(n_decay > 0) par_hat[(3+K_pl):(2+K_pl+n_decay)] else numeric(0)
     sigmaSq_hat <- sigma_v_hat^2 + sigma_u_hat^2
     gamma_hat   <- sigma_u_hat^2/sigmaSq_hat
 
     ## Delta-method Jacobian from the optimizer's own (sigma_v,sigma_u,beta,
-    ## [eta]) parameterization to the reported (beta,sigmaSq,gamma,[time])
-    ## parameterization -- matches frontier::sfa()'s output convention for
-    ## backward compatibility with existing psfm(model_name="PL80"/"BC92")
-    ## callers.
-    par_names <- c(colnames(X_pl), "sigmaSq", "gamma", if(is_bc92) "time")
+    ## [decay]) parameterization to the reported (beta,sigmaSq,gamma,[decay])
+    ## parameterization -- matches frontier::sfa()'s output convention
+    ## (PL80/BC92) for backward compatibility with existing
+    ## psfm(model_name="PL80"/"BC92") callers; K1990/K1990modified's decay
+    ## parameters are reported raw (untransformed), same treatment BC92's
+    ## "time"/eta already got.
+    par_names <- c(colnames(X_pl), "sigmaSq", "gamma", decay_names)
     reparam <- function(p){
-      sv <- p[1]; su <- p[2]; b <- p[3:(2+K_pl)]; e <- if(is_bc92) p[3+K_pl] else NULL
-      c(b, sv^2+su^2, su^2/(sv^2+su^2), e)
+      sv <- p[1]; su <- p[2]; b <- p[3:(2+K_pl)]
+      dcy <- if(n_decay > 0) p[(3+K_pl):(2+K_pl+n_decay)] else NULL
+      c(b, sv^2+su^2, su^2/(sv^2+su^2), dcy)
     }
     out           <- matrix(0, nrow = 3, ncol = length(par_names))
     rownames(out) <- c("par","st_err","t-val")
@@ -1959,8 +2570,7 @@ psfm <- function(formula,
       idx  <- idx_by_firm[[nm]]
       t_i  <- time_by_firm[[nm]]
       e_i  <- resid_hat_all[idx]
-      Ti   <- length(e_i)
-      B_it <- if(is_bc92) exp(-eta_hat*(t_i - Tref_pl)) else rep(1, Ti)
+      B_it <- .build_Bit(model_name, t_i, Tref_pl, decay_hat)
       S1   <- sum(B_it*e_i); S2 <- sum(B_it*B_it)
       denom <- pmax(S2*sigma_u_hat^2 + sigma_v_hat^2, .SFA_CONSTANTS$MIN_POSITIVE)
       sigma_star2 <- (sigma_v_hat^2*sigma_u_hat^2)/denom
@@ -1988,13 +2598,19 @@ psfm <- function(formula,
     alp_3m <- min(0,mean(alpha_hat^3))
     eps_2m <- mean(epsilon_hat^2)
     eps_3m <- min(0,mean(epsilon_hat^3))
-    
-    gamma_uv   <- min(1, 1/(eps_2m*(sqrt(pi/2)*(pi/(pi-4))*eps_3m)^(-2/3) + (2/pi)  ))
-    gamma_hr   <- min(1, 1/(alp_2m*(sqrt(pi/2)*(pi/(pi-4))*alp_3m)^(-2/3) + (2/pi)  ))
-    sigmaSq_uv <- eps_2m + (2/pi)*(sqrt(pi/2)*(pi/(pi-4))*eps_3m)^(2/3)
-    sigmaSq_hr <- alp_2m + (2/pi)*(sqrt(pi/2)*(pi/(pi-4))*alp_3m)^(2/3)
-    beta_0     <- beta_0_st + sqrt(2/pi)*(sqrt(pi/2)*(pi/(pi-4))*eps_3m)^(1/3) + sqrt(2/pi)*(sqrt(pi/2)*(pi/(pi-4))*alp_3m)^(1/3)
-    
+
+    ## The moment inversion itself now lives in .gtre_two_step() (matrix_utils.R)
+    ## so that GTRE_FML can seed its FIML search from the same estimator, which
+    ## is what Colombi (2010, sec. 3) and Colombi, Martini and Vittadini (2011,
+    ## sec. 3.2) recommend. The delta-method standard errors below still need
+    ## the raw moments, so those stay here.
+    .ts        <- .gtre_two_step(epsilon_hat, alpha_hat, beta_0_st)
+    gamma_uv   <- .ts$gamma_uv
+    gamma_hr   <- .ts$gamma_hr
+    sigmaSq_uv <- .ts$sigmaSq_uv
+    sigmaSq_hr <- .ts$sigmaSq_hr
+    beta_0     <- .ts$beta_0
+
     ## calculate the ten needed central moments 
     mu_2_eps   <- sigmaSq_uv*((1-gamma_uv) + gamma_uv*((pi -2)/pi) )
     mu_3_eps   <- sigmaSq_uv^(3/2)*(sqrt(2/pi)*(1-(4/pi))*gamma_uv^(3/2))
@@ -2071,4 +2687,4 @@ psfm <- function(formula,
     return(results)}
   
   else {stop(paste0("model_name '", model_name, "' is a recognized choice for psfm() but has no implementation branch. ",
-                     "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"TFE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\"."), call. = FALSE)}}
+                     "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"GTRE_FML\", \"TFE\", \"TFE_WMLE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\", \"K1990\", \"K1990modified\"."), call. = FALSE)}}

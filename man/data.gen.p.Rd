@@ -3,7 +3,8 @@
 \title{Generate Panel Data for Stochastic Frontier Analysis}
 \description{\code{data_gen_p} generates simulated panel data for estimating various panel stochastic frontier models, including the Generalized True Random Effects (GTRE), True Random Effects (TRE), Pooled Cross-Section (PCS), and True Fixed Effects (TFE) models. The function returns the data as a \code{pdata.frame}.  All variants are produced so that the user can select those that they want.}
 \usage{data_gen_p(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5,
-                  mu = 0, beta1, beta2, eta = 0.1)}
+                  mu = 0, beta1, beta2, eta = 0.1, b_k90 = 0.05, c_k90 = 0.01,
+                  d_k90 = 0.05, e_k90 = -0.005)}
 \arguments{
 \item{t}{The number of time periods.}
 \item{N}{The number of individuals.}
@@ -17,7 +18,9 @@
 \item{mu}{The mean parameter (\eqn{\mu}) used for the Truncated-Normal (TN) component of the \code{y_fd} model with default set to 0. See Wang and Ho (2010, Journal of Econometrics).}
 \item{beta1}{The coefficient for the \code{x1} variable (\eqn{\beta_1}).}
 \item{beta2}{The coefficient for the \code{x2} variable (\eqn{\beta_2}).}
-\item{eta}{The decay-rate parameter (\eqn{\eta}) for the time-varying inefficiency component \code{u_bc92}, following Battese and Coelli (1992): \eqn{u_{it} = u_i \exp(-\eta(T_i - t))}. Default is 0.1. See Battese and Coelli (1992, Journal of Productivity Analysis).}}
+\item{eta}{The decay-rate parameter (\eqn{\eta}) for the time-varying inefficiency component \code{u_bc92}, following Battese and Coelli (1992): \eqn{u_{it} = u_i \exp(-\eta(T_i - t))}. Default is 0.1. See Battese and Coelli (1992, Journal of Productivity Analysis).}
+\item{b_k90, c_k90}{Coefficients of the Kumbhakar (1990) inefficiency path \eqn{B_{it} = (1 + \exp(bt + ct^2))^{-1}} behind \code{y_k1990}, which targets \code{psfm(model_name = "K1990")}. The defaults give a path running from 0.485 to 0.182 over ten periods. Note that \eqn{b} and \eqn{c} are weakly identified: quite different pairs produce near-identical fitted paths.}
+\item{d_k90, e_k90}{Coefficients of the modified Kumbhakar path \eqn{B_{it} = 1 + d(t - T_i) + e(t - T_i)^2} behind \code{y_k1990m}, which targets \code{psfm(model_name = "K1990modified")}. The defaults give a path running from 0.145 to 1 over ten periods.}}
 \details{A \code{\link[plm:pdata.frame]{pdata.frame}} object with \eqn{N \times t} observations, containing the following columns:
 \itemize{
  \item \code{name} Individual identifier.

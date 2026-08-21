@@ -25,6 +25,11 @@ zsfm <- function(formula,
 call          <- match.call()
 model_name    <- match.arg(model_name)
 
+.validate_sfa_call(formula, data, "zsfm",
+                   maxit = list(maxit.bobyqa = maxit.bobyqa, maxit.psoptim = maxit.psoptim,
+                                maxit.optim = maxit.optim),
+                   flags = list(optHessian = optHessian, PSopt = PSopt, inefdec = inefdec))
+
 .check_model_formula_pipes(formula,model_name)
 
 DR1 <- data_proc(formula,   data, model_name, individual = NULL, inefdec)
@@ -96,6 +101,10 @@ like.fn = function(x){
       
 if(model_name == "ZISF"){
   	gamma  <- x[1]
+  	## exp(-|gamma|), so the likelihood is EXACTLY symmetric in gamma and the
+  	## optimizer may legitimately return either sign. Every other use of gamma
+  	## must therefore apply the same |.| -- see the JLMS block below, which
+  	## used exp(-gamma) and so produced prob > 1 for a negative estimate.
   	prob   <- exp(-abs(gamma)) 
   	sigvsq <- x[2]^2
   	sigusq <- x[3]^2
@@ -107,15 +116,24 @@ if(model_name == "ZISF"){
   	sig    <- sqrt(sigsq)           
 
   	f1     <- -0.5*log(2*pi*sigvsq)-(0.5/sigvsq)*eps^2
-  	f2     <- log(2/sig)+log(dnorm(eps/sig))+log(pnorm(eps*lambda/sig))
-  	f      <- prob*exp(f1)+(1-prob)*exp(f2)
-
-  	like   <- log(f+1e-10) }
+  	f2     <- log(2/sig)+log(dnorm(-eps/sig))+log(pnorm(-eps*lambda/sig))
+  	## Mixed on the LOG scale. Forming prob*exp(f1)+(1-prob)*exp(f2) underflows
+  	## to 0 when an observation is unlikely under both regimes, and the old
+  	## log(f + 1e-10) then floored that at -23.03 -- flattening the objective
+  	## exactly where the optimizer needs a gradient.
+  	like   <- .log_add2(log(prob) + f1, log1p(-prob) + f2) }
       
 if(model_name == "ZISF_Z"){
     gamma <- x[(n_x_vars+3):(n_x_vars+2+n_z_vars)]  ## lets put gammas last 
     
-    if(logit){ prob <- exp(  data_z%*%gamma)/(1+exp(  data_z%*%gamma))}
+    ## plogis(), not exp(eta)/(1+exp(eta)): the explicit form overflows to
+    ## Inf/Inf = NaN once eta passes ~710, which the optimizer can reach while
+    ## searching. Identical values everywhere the old form was finite.
+    if(logit){ prob <- plogis(data_z%*%gamma)}
+    ## NOTE: this is pnorm(eta)/(1+pnorm(eta)), which is bounded ABOVE BY 0.5 --
+    ## it is not the probit link. Left as-is deliberately: changing it would
+    ## change results for logit = FALSE, which is a modelling decision rather
+    ## than a cleanup. The convergence sweep uses the logit branch (the default).
     if(!logit){prob <- pnorm(data_z%*%gamma)/(1+pnorm(data_z%*%gamma))}
     
     sigvsq <- x[1]^2
@@ -128,10 +146,8 @@ if(model_name == "ZISF_Z"){
     sig    <- sqrt(sigsq)           
       
     f1     <- -0.5*log(2*pi*sigvsq)-(0.5/sigvsq)*eps^2
-    f2     <- log(2/sig)+log(dnorm(eps/sig))+log(pnorm(eps*lambda/sig))
-    f      <- prob*exp(f1)+(1-prob)*exp(f2)
-        
-    like   <- log(f+1e-10) }      
+    f2     <- log(2/sig)+log(dnorm(-eps/sig))+log(pnorm(-eps*lambda/sig))
+    like   <- .log_add2(log(prob) + f1, log1p(-prob) + f2) }      
 
 
 like[like==-Inf]         <-  -sqrt(.Machine$double.xmax/length(like))
@@ -157,7 +173,7 @@ opt00       <- Opt.Psoptim$opt00
 
 Lower.Start <- lower.start(start_v, model_name, differ=0.5)
 Opt.Optim   <- opt.optim(fn = like.fn, start_v = start_v, lower.optim =Lower.Start$lower1,
-          upper.optim=Lower.Start$upper1, maxit.optim=maxit.optim, opt.TF=optHessian, method=Method, optHessian= TRUE,verbose = verbose)
+          upper.optim=Lower.Start$upper1_open, maxit.optim=maxit.optim, opt.TF=optHessian, method=Method, optHessian= TRUE,verbose = verbose)
 start_v     <- Opt.Optim$start_v
 start_feval <- Opt.Optim$start_feval
 opt         <- Opt.Optim$opt
@@ -178,20 +194,33 @@ out[3,]    <- t_val
 ## JLMS
 if(model_name %in% c("ZISF","ZISF_Z")){
 
-  if(is.na(n_z_vars)==TRUE){
+  ## Branch on the MODEL, not on is.na(n_z_vars). The two are meant to say the
+  ## same thing, but only one of them is the actual contract: the parameter
+  ## layout is a property of the model_name, and the likelihood above already
+  ## branches that way. Keying the predictor off a different condition invites
+  ## the two to disagree -- if n_z_vars ever arrives as 0 rather than NA for a
+  ## no-z fit, this block would silently read ZISF's parameters with ZISF_Z's
+  ## layout and report efficiencies for a model that was never estimated.
+  if(model_name == "ZISF"){
   beta <- opt$par[-c(1:3)]
   z <- 1
   gamma <- opt$par[1]
-  prob  <- exp(-gamma)
+  ## exp(-|gamma|), matching the likelihood that was actually maximised. This
+  ## read exp(-gamma), which for a NEGATIVE estimate returns prob > 1 -- and a
+  ## negative estimate is not a pathology here: the likelihood uses |gamma| and
+  ## is therefore exactly symmetric, so +g and -g fit identically and the
+  ## optimizer may return either. post.prob and jlms were silently wrong
+  ## whenever it returned the negative one.
+  prob  <- exp(-abs(gamma))
   
   sigvsq <- opt$par[2]^2
   sigusq <- opt$par[3]^2 }
   
-  if(is.na(n_z_vars)==FALSE){
+  if(model_name == "ZISF_Z"){
     beta  <- opt$par[3:sum(n_x_vars,2) ]
     gamma <- opt$par[(n_x_vars+3):(n_x_vars+2+n_z_vars)]  ## lets put gammas last 
     
-    if(logit){prob  <- exp(data_z%*%gamma)/(1+exp(data_z%*%gamma))}
+    if(logit){prob  <- plogis(data_z%*%gamma)}
     if(!logit){prob <- pnorm(data_z%*%gamma)/(1+pnorm(data_z%*%gamma))}
     
     sigvsq <- opt$par[1]^2
@@ -206,13 +235,16 @@ if(model_name %in% c("ZISF","ZISF_Z")){
   sigsq       <- sigvsq+sigusq
   sig         <- sqrt(sigsq)           
   
-  ## Now the likelihood function
+  ## Now the likelihood function, on the log scale as above so that the
+  ## posterior probability stays a ratio of quantities that cannot underflow.
   f1          <- -0.5*log(2*pi*sigvsq)-(0.5/sigvsq)*eps^2
-  f2          <- log(2/sig)+log(dnorm(eps/sig))+log(pnorm(eps*lambda/sig))
-  f           <- prob*exp(f1)+(1-prob)*exp(f2)
+  f2          <- log(2/sig)+log(dnorm(-eps/sig))+log(pnorm(-eps*lambda/sig))
+  l_eff       <- log(prob)     + f1     ## efficient-regime contribution
+  l_ineff     <- log1p(-prob)  + f2     ## inefficient-regime contribution
+  log_f       <- .log_add2(l_eff, l_ineff)
 
-  post.prob   <- prob*exp(f1)/f
-  mustar      <- eps*sigusq/sigsq
+  post.prob   <- exp(l_eff - log_f)
+  mustar      <- -eps*sigusq/sigsq
   sigstarsq   <- sigusq*sigvsq/(sigusq+sigvsq)
   sigstar     <- sqrt(sigstarsq)
   zz          <- mustar/sigstar
