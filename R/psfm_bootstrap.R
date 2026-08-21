@@ -102,20 +102,19 @@
 ## ============================================================================
 
 psfm_bootstrap <- function(psfm_object,
-                          numCores,
-                          BOOT,
-                          individual,
-                          h_type        = c("auto", "none", "scalar", "parametric"),
-                          maxit.psoptim = 1000,
-                          seed_offset   = 0,
-                          write_back    = TRUE,
-                          pkgs          = c("sfa", "Formula", "pbapply", "truncnorm"),
-                          inefdec,
-                          rand.gtre     = NULL,
-                          rand.psoptim  = NULL,
-                          maxit.bobyqa  = 1,
-                          maxit.optim   = 1 ) {
-
+                           numCores,
+                           BOOT,
+                           individual,
+                           h_type = c("auto", "none", "scalar", "parametric"),
+                           maxit.psoptim = 1000,
+                           seed_offset = 0,
+                           write_back = TRUE,
+                           pkgs = c("sfa", "Formula", "pbapply", "truncnorm"),
+                           inefdec,
+                           rand.gtre = NULL,
+                           rand.psoptim = NULL,
+                           maxit.bobyqa = 1,
+                           maxit.optim = 1) {
   h_type <- match.arg(h_type)
 
   ## Restore the caller's random stream on the way out. boot_one() seeds each
@@ -128,10 +127,12 @@ psfm_bootstrap <- function(psfm_object,
 
   ## ---- 0. Basic validation -------------------------------------------------
   required_fields <- c("out", "data", "formula", "model_name")
-  missing_fields  <- setdiff(required_fields, names(psfm_object))
+  missing_fields <- setdiff(required_fields, names(psfm_object))
   if (length(missing_fields) > 0) {
     stop("psfm_object is missing required component(s): ",
-         paste(missing_fields, collapse = ", "), call. = FALSE)
+      paste(missing_fields, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   if (!requireNamespace("Formula", quietly = TRUE)) {
@@ -145,28 +146,30 @@ psfm_bootstrap <- function(psfm_object,
   supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "TRE", "TFE", "TFE_WMLE", "FD")
   if (!(model_name %in% supported_models)) {
     stop("psfm_bootstrap() does not support model_name = '", model_name, "'. ",
-         "Supported: ", paste(supported_models, collapse = ", "), ". ",
-         "(GTRE_SEQ1/GTRE_SEQ2/SSFE are moment-based, not MLE; PL80/BC92 ",
-         "don't expose the $U/$H structure this function relies on.)", call. = FALSE)
+      "Supported: ", paste(supported_models, collapse = ", "), ". ",
+      "(GTRE_SEQ1/GTRE_SEQ2/SSFE are moment-based, not MLE; PL80/BC92 ",
+      "don't expose the $U/$H structure this function relies on.)",
+      call. = FALSE
+    )
   }
 
-  data   <- psfm_object$data
-  out    <- psfm_object$out
-  n_par  <- nrow(out)
+  data <- psfm_object$data
+  out <- psfm_object$out
+  n_par <- nrow(out)
 
   if (!(individual %in% names(data))) {
     stop("Column '", individual, "' (the `individual` argument) was not found in psfm_object$data.", call. = FALSE)
   }
 
   ## ---- 1. Panel bookkeeping (shared across every family) --------------------
-  ids        <- data[[individual]]
-  uniq_ids   <- unique(ids)
-  n_id       <- length(uniq_ids)
-  timez      <- as.integer(table(factor(ids, levels = uniq_ids)))  ## preserves uniq_ids order
-  n_obs      <- nrow(data)
+  ids <- data[[individual]]
+  uniq_ids <- unique(ids)
+  n_id <- length(uniq_ids)
+  timez <- as.integer(table(factor(ids, levels = uniq_ids))) ## preserves uniq_ids order
+  n_obs <- nrow(data)
 
-  form   <- Formula::as.Formula(psfm_object$formula)
-  n_rhs  <- length(form)[2]
+  form <- Formula::as.Formula(psfm_object$formula)
+  n_rhs <- length(form)[2]
 
   ## Response variable name. NOTE: all.vars() is not S3-generic, so calling it
   ## directly on a `Formula` object does not dispatch correctly and silently
@@ -180,8 +183,10 @@ psfm_bootstrap <- function(psfm_object,
     n_h <- length(psfm_object$H)
     if (n_h != n_id) {
       stop("length(psfm_object$H) (", n_h, ") does not match the number of unique ",
-           "individuals implied by the `individual` column (", n_id, "). ",
-           "Check that `individual` is correct and that $H is one value per individual.", call. = FALSE)
+        "individuals implied by the `individual` column (", n_id, "). ",
+        "Check that `individual` is correct and that $H is one value per individual.",
+        call. = FALSE
+      )
     }
   } else {
     n_h <- 0L
@@ -227,13 +232,16 @@ psfm_bootstrap <- function(psfm_object,
   ## underlying MLE's numerical behavior itself, since a genuine boundary
   ## mode is a modeling-strategy question, not a bug.
   scale_row <- switch(model_name,
-    "GTRE_Z" = , "TRE_Z" = 1,      ## sigv
-    "GTRE"   = , "TRE"   = 2,      ## sigma (total SD, not lambda itself)
-    "TFE"    = , "TFE_WMLE" = 2,   ## sig
-    "FD"     = c(1, 2)             ## sig_u2, sig_v2
+    "GTRE_Z" = ,
+    "TRE_Z" = 1, ## sigv
+    "GTRE" = ,
+    "TRE" = 2, ## sigma (total SD, not lambda itself)
+    "TFE" = ,
+    "TFE_WMLE" = 2, ## sig
+    "FD" = c(1, 2) ## sig_u2, sig_v2
   )
-  degenerate_scale_floor <- 1e-6   ## well above .Machine$double.eps (~2.2e-16),
-                                    ## far below any plausible fitted scale
+  degenerate_scale_floor <- 1e-6 ## well above .Machine$double.eps (~2.2e-16),
+  ## far below any plausible fitted scale
 
   data_x <- model.matrix(form, data = data, rhs = 1)
   ## TFE and FD drop the intercept from their frontier (x) block entirely --
@@ -245,10 +253,10 @@ psfm_bootstrap <- function(psfm_object,
   ## therefore beta_x_hat / the frontier term in simulate_dgp) aligned with
   ## $out's actual row count for these two models.
   if (model_name %in% c("TFE", "TFE_WMLE", "FD") &&
-      attr(terms(formula(form, rhs = 1)), "intercept") == 1) {
+    attr(terms(formula(form, rhs = 1)), "intercept") == 1) {
     data_x <- data_x[, -1, drop = FALSE]
   }
-  beta_x_hat <- NULL   ## set inside each family block below
+  beta_x_hat <- NULL ## set inside each family block below
 
   ## ==========================================================================
   ## ---- 2. Family-specific extraction: build `simulate_dgp(b)`, a closure
@@ -258,7 +266,6 @@ psfm_bootstrap <- function(psfm_object,
   ## ==========================================================================
 
   if (model_name %in% c("GTRE_Z", "TRE_Z", "GTRE", "TRE")) {
-
     ## ---- 2a. "randeff" family --------------------------------------------
     if (model_name %in% c("GTRE_Z", "TRE_Z")) {
       ## Original (unchanged) extraction: z-covariate-driven u, optional
@@ -268,7 +275,9 @@ psfm_bootstrap <- function(psfm_object,
       }
       if (h_type == "parametric" && n_rhs < 3) {
         stop("h_type = 'parametric' requires a 3-part formula (y ~ x | z | h), ",
-             "but the model formula only has ", n_rhs, " RHS part(s).", call. = FALSE)
+          "but the model formula only has ", n_rhs, " RHS part(s).",
+          call. = FALSE
+        )
       }
 
       data_z <- model.matrix(form, data = data, rhs = 2)
@@ -283,15 +292,17 @@ psfm_bootstrap <- function(psfm_object,
 
       if (n_par != expected_n_par) {
         stop("Row count of psfm_object$out (", n_par, ") does not match the expected layout ",
-             "(2 + Kx + Kz", if (h_type != "none") " + Kh" else "", " = ", expected_n_par, "). ",
-             "Check that `h_type` matches how this model was actually specified.", call. = FALSE)
+          "(2 + Kx + Kz", if (h_type != "none") " + Kh" else "", " = ", expected_n_par, "). ",
+          "Check that `h_type` matches how this model was actually specified.",
+          call. = FALSE
+        )
       }
 
-      sigv_row  <- 1
-      sigr_row  <- 2
-      x_rows    <- (2 + 1):(2 + Kx)
-      z_rows    <- (2 + Kx + 1):(2 + Kx + Kz)
-      h_rows    <- if (h_type == "parametric") {
+      sigv_row <- 1
+      sigr_row <- 2
+      x_rows <- (2 + 1):(2 + Kx)
+      z_rows <- (2 + Kx + 1):(2 + Kx + Kz)
+      h_rows <- if (h_type == "parametric") {
         (2 + Kx + Kz + 1):(2 + Kx + Kz + Kh)
       } else if (h_type == "scalar") {
         2 + Kx + Kz + 1
@@ -302,9 +313,8 @@ psfm_bootstrap <- function(psfm_object,
       beta_x_hat <- out[x_rows, 1]
       beta_z_hat <- out[z_rows, 1]
       beta_h_hat <- if (h_type != "none") out[h_rows, 1] else NULL
-      sigv_hat   <- out[sigv_row, 1]
-      sigr_hat   <- out[sigr_row, 1]
-
+      sigv_hat <- out[sigv_row, 1]
+      sigr_hat <- out[sigr_row, 1]
     } else {
       ## Bare GTRE/TRE: homoskedastic u (and h, for GTRE), no z pipe at all.
       ## Build an intercept-only "z design" so the SAME u/h simulation formulas
@@ -316,54 +326,56 @@ psfm_bootstrap <- function(psfm_object,
 
       Kx <- ncol(data_x)
       lambda_hat <- out[1, 1]
-      sigma_hat  <- out[2, 1]
-      sigr_hat   <- out[3, 1]
-      sig_u_hat  <- (lambda_hat * sigma_hat) / sqrt(1 + lambda_hat^2)
-      sigv_hat   <- sig_u_hat / lambda_hat
+      sigma_hat <- out[2, 1]
+      sigr_hat <- out[3, 1]
+      sig_u_hat <- (lambda_hat * sigma_hat) / sqrt(1 + lambda_hat^2)
+      sigv_hat <- sig_u_hat / lambda_hat
 
       if (model_name == "GTRE") {
         sig_h_hat <- out[4, 1]
-        x_rows    <- 5:(4 + Kx)
+        x_rows <- 5:(4 + Kx)
         expected_n_par <- 4 + Kx
       } else {
-        x_rows    <- 4:(3 + Kx)
+        x_rows <- 4:(3 + Kx)
         expected_n_par <- 3 + Kx
       }
       if (n_par != expected_n_par) {
         stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
-             "layout for model_name = '", model_name, "' (", expected_n_par, "). ",
-             "This usually means psfm_object was not actually fit with this model_name.", call. = FALSE)
+          "layout for model_name = '", model_name, "' (", expected_n_par, "). ",
+          "This usually means psfm_object was not actually fit with this model_name.",
+          call. = FALSE
+        )
       }
 
       beta_x_hat <- out[x_rows, 1]
-      data_z     <- matrix(1, nrow = n_obs, ncol = 1)
+      data_z <- matrix(1, nrow = n_obs, ncol = 1)
       beta_z_hat <- 2 * log(sig_u_hat)
       beta_h_hat <- if (model_name == "GTRE") 2 * log(sig_h_hat) else NULL
-      data_h     <- NULL
+      data_h <- NULL
     }
 
     simulate_dgp <- function(b) {
       v <- rnorm(n_obs, 0, sigv_hat)
 
       sigma_u <- sqrt(exp(as.vector(data_z %*% beta_z_hat)))
-      u       <- abs(rnorm(n_obs, 0, sigma_u))
+      u <- abs(rnorm(n_obs, 0, sigma_u))
 
       r_i <- rnorm(n_id, 0, sigr_hat)
-      r   <- rep(r_i, times = timez)
+      r <- rep(r_i, times = timez)
 
       h <- switch(h_type,
-                  "none" = 0,
-                  "scalar" = {
-                    sigma_h <- sqrt(exp( unname(beta_h_hat) ))
-                    h_i <- abs(rnorm(n_id, 0, sigma_h))
-                    rep(h_i, times = timez)
-                  },
-                  "parametric" = {
-                    first_idx  <- match(uniq_ids, ids)
-                    sigma_h_i  <- sqrt(exp(as.vector(data_h[first_idx, , drop = FALSE] %*% beta_h_hat)) )
-                    h_i        <- abs(rnorm(n_id, 0, sigma_h_i))
-                    rep(h_i, times = timez)
-                  }
+        "none" = 0,
+        "scalar" = {
+          sigma_h <- sqrt(exp(unname(beta_h_hat)))
+          h_i <- abs(rnorm(n_id, 0, sigma_h))
+          rep(h_i, times = timez)
+        },
+        "parametric" = {
+          first_idx <- match(uniq_ids, ids)
+          sigma_h_i <- sqrt(exp(as.vector(data_h[first_idx, , drop = FALSE] %*% beta_h_hat)))
+          h_i <- abs(rnorm(n_id, 0, sigma_h_i))
+          rep(h_i, times = timez)
+        }
       )
 
       if (inefdec == FALSE) {
@@ -372,9 +384,7 @@ psfm_bootstrap <- function(psfm_object,
         as.vector(data_x %*% beta_x_hat) + v - u + r - h
       }
     }
-
   } else if (model_name %in% c("TFE", "TFE_WMLE")) {
-
     ## ---- 2b. "tfe" family: fixed effects, r held fixed at r_hat_m --------
     ## Both true-fixed-effects estimators share this block: Greene's TFE
     ## ("TFE") and Chen-Schmidt-Wang's within MLE ("TFE_WMLE") assume the
@@ -383,13 +393,17 @@ psfm_bootstrap <- function(psfm_object,
     ## reads.
     if (is.null(psfm_object$r_hat_m)) {
       stop("psfm_object$r_hat_m not found -- required to bootstrap a TFE fit ",
-           "(the individual fixed effects are held fixed at their original ",
-           "point estimates, not redrawn; see this function's header comment).", call. = FALSE)
+        "(the individual fixed effects are held fixed at their original ",
+        "point estimates, not redrawn; see this function's header comment).",
+        call. = FALSE
+      )
     }
-    r_hat_m_orig <- psfm_object$r_hat_m   ## one value per individual, uniq_ids order
+    r_hat_m_orig <- psfm_object$r_hat_m ## one value per individual, uniq_ids order
     if (length(r_hat_m_orig) != n_id) {
       stop("length(psfm_object$r_hat_m) (", length(r_hat_m_orig), ") does not match ",
-           "the number of unique individuals (", n_id, ").", call. = FALSE)
+        "the number of unique individuals (", n_id, ").",
+        call. = FALSE
+      )
     }
     r_fixed <- rep(r_hat_m_orig, times = timez)
 
@@ -399,13 +413,15 @@ psfm_bootstrap <- function(psfm_object,
     gamma_used <- identical(rownames(out)[1], "gamma")
 
     Kx <- ncol(data_x)
-    lambda_hat <- out[1, 1]   ## "gamma" value directly if gamma_used -- see below
-    sigma_hat  <- out[2, 1]
-    x_rows     <- 3:(2 + Kx)
+    lambda_hat <- out[1, 1] ## "gamma" value directly if gamma_used -- see below
+    sigma_hat <- out[2, 1]
+    x_rows <- 3:(2 + Kx)
     expected_n_par <- 2 + Kx
     if (n_par != expected_n_par) {
       stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
-           "TFE layout (2 + Kx = ", expected_n_par, ").", call. = FALSE)
+        "TFE layout (2 + Kx = ", expected_n_par, ").",
+        call. = FALSE
+      )
     }
     beta_x_hat <- out[x_rows, 1]
 
@@ -429,16 +445,16 @@ psfm_bootstrap <- function(psfm_object,
         as.vector(data_x %*% beta_x_hat) + v - u + r_fixed
       }
     }
-
   } else if (model_name == "FD") {
-
     ## ---- 2c. "fd" family: time-invariant truncated-normal u_i, scaled by
     ##      a deterministic time-varying z-covariate factor h_it. Derived
     ##      directly from like.fd()'s l5/l6/l7 likelihood terms -- see this
     ##      function's header comment for the full derivation.
     if (!requireNamespace("truncnorm", quietly = TRUE)) {
       stop("Package 'truncnorm' is required to bootstrap an FD fit ",
-           "(u_i is drawn from a truncated normal).", call. = FALSE)
+        "(u_i is drawn from a truncated normal).",
+        call. = FALSE
+      )
     }
 
     data_z <- model.matrix(form, data = data, rhs = 2)
@@ -456,23 +472,25 @@ psfm_bootstrap <- function(psfm_object,
     expected_n_par <- 3 + Kx + Kz
     if (n_par != expected_n_par) {
       stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
-           "FD layout (3 + Kx + Kz = ", expected_n_par, ").", call. = FALSE)
+        "FD layout (3 + Kx + Kz = ", expected_n_par, ").",
+        call. = FALSE
+      )
     }
 
     sig_u2_hat <- out[1, 1]
     sig_v2_hat <- out[2, 1]
-    mu_hat     <- out[3, 1]
-    x_rows     <- 4:(3 + Kx)
-    z_rows     <- (4 + Kx):(3 + Kx + Kz)
+    mu_hat <- out[3, 1]
+    x_rows <- 4:(3 + Kx)
+    z_rows <- (4 + Kx):(3 + Kx + Kz)
     beta_x_hat <- out[x_rows, 1]
-    delta_hat  <- out[z_rows, 1]
+    delta_hat <- out[z_rows, 1]
 
-    h_it <- as.vector(exp(data_z %*% delta_hat))   ## deterministic given the data
+    h_it <- as.vector(exp(data_z %*% delta_hat)) ## deterministic given the data
 
     simulate_dgp <- function(b) {
-      v   <- rnorm(n_obs, 0, sqrt(sig_v2_hat))
+      v <- rnorm(n_obs, 0, sqrt(sig_v2_hat))
       u_i <- truncnorm::rtruncnorm(n_id, a = 0, mean = mu_hat, sd = sqrt(sig_u2_hat))
-      u   <- rep(u_i, times = timez) * h_it
+      u <- rep(u_i, times = timez) * h_it
 
       if (inefdec == FALSE) {
         as.vector(data_x %*% beta_x_hat) + v + u
@@ -483,21 +501,20 @@ psfm_bootstrap <- function(psfm_object,
   }
 
   ## ---- 3. Set up output containers ------------------------------------------
-  boot_par             <- matrix(0, nrow = BOOT, ncol = n_par + 2)
-  colnames(boot_par)   <- c(rownames(out), "loglik", "hours")
-  boot_eff             <- matrix(0, nrow = BOOT, ncol = n_obs)
-  rownames(boot_par)   <- rownames(boot_eff) <- seq_len(BOOT)
+  boot_par <- matrix(0, nrow = BOOT, ncol = n_par + 2)
+  colnames(boot_par) <- c(rownames(out), "loglik", "hours")
+  boot_eff <- matrix(0, nrow = BOOT, ncol = n_obs)
+  rownames(boot_par) <- rownames(boot_eff) <- seq_len(BOOT)
   if (H_available) {
-    boot_eff_h             <- matrix(0, nrow = BOOT, ncol = n_h)
-    rownames(boot_eff_h)   <- seq_len(BOOT)
-    colnames(boot_eff_h)   <- uniq_ids
+    boot_eff_h <- matrix(0, nrow = BOOT, ncol = n_h)
+    rownames(boot_eff_h) <- seq_len(BOOT)
+    colnames(boot_eff_h) <- uniq_ids
   } else {
     boot_eff_h <- NULL
   }
 
   ## ---- 4. The per-replication worker function (generic across families) ----
   boot_one <- function(b) {
-
     set.seed(b + seed_offset)
 
     data_b <- data
@@ -528,23 +545,35 @@ psfm_bootstrap <- function(psfm_object,
 
     MOD_U <- MOD[[U_field]]
     if (length(MOD_U) != n_obs) {
-      return(list(sim = b, ok = FALSE,
-                  msg = paste0("length(MOD$", U_field, ") = ", length(MOD_U),
-                               " does not match n_obs = ", n_obs)))
+      return(list(
+        sim = b, ok = FALSE,
+        msg = paste0(
+          "length(MOD$", U_field, ") = ", length(MOD_U),
+          " does not match n_obs = ", n_obs
+        )
+      ))
     }
     if (H_available && length(MOD$H) != n_h) {
-      return(list(sim = b, ok = FALSE,
-                  msg = paste0("length(MOD$H) = ", length(MOD$H),
-                               " does not match n_h = ", n_h)))
+      return(list(
+        sim = b, ok = FALSE,
+        msg = paste0(
+          "length(MOD$H) = ", length(MOD$H),
+          " does not match n_h = ", n_h
+        )
+      ))
     }
 
     if (any(MOD$out[scale_row, 1] < degenerate_scale_floor)) {
-      return(list(sim = b, ok = FALSE,
-                  msg = paste0("refit landed on a degenerate variance-boundary mode ",
-                               "(", paste(rownames(MOD$out)[scale_row], collapse = "/"),
-                               " < ", degenerate_scale_floor, "); excluded rather than ",
-                               "letting it corrupt the bootstrap SE -- see this function's ",
-                               "scale_row/degenerate_scale_floor comment")))
+      return(list(
+        sim = b, ok = FALSE,
+        msg = paste0(
+          "refit landed on a degenerate variance-boundary mode ",
+          "(", paste(rownames(MOD$out)[scale_row], collapse = "/"),
+          " < ", degenerate_scale_floor, "); excluded rather than ",
+          "letting it corrupt the bootstrap SE -- see this function's ",
+          "scale_row/degenerate_scale_floor comment"
+        )
+      ))
     }
 
     ## MOD$opt is the raw object from whichever optimizer stage psfm()'s own
@@ -586,11 +615,13 @@ psfm_bootstrap <- function(psfm_object,
 
   parallel::clusterExport(
     cl,
-    varlist = c("data", "form", "model_name", "out", "simulate_dgp",
-                "H_available", "U_field", "scale_row", "degenerate_scale_floor", "PSopt_use",
-                "timez", "uniq_ids", "ids", "n_id", "n_obs", "n_h",
-                "y_name", "individual", "maxit.psoptim", "seed_offset",
-                "maxit.bobyqa", "maxit.optim", "inefdec", "rand.gtre", "rand.psoptim"),
+    varlist = c(
+      "data", "form", "model_name", "out", "simulate_dgp",
+      "H_available", "U_field", "scale_row", "degenerate_scale_floor", "PSopt_use",
+      "timez", "uniq_ids", "ids", "n_id", "n_obs", "n_h",
+      "y_name", "individual", "maxit.psoptim", "seed_offset",
+      "maxit.bobyqa", "maxit.optim", "inefdec", "rand.gtre", "rand.psoptim"
+    ),
     envir = environment()
   )
   for (p in pkgs) {
@@ -600,8 +631,10 @@ psfm_bootstrap <- function(psfm_object,
   if (requireNamespace("pbapply", quietly = TRUE)) {
     results <- pbapply::pblapply(X = seq_len(BOOT), FUN = boot_one, cl = cl)
   } else {
-    message("Package 'pbapply' not installed -- running without a progress bar. ",
-            "Install it (install.packages(\"pbapply\")) to see live progress.")
+    message(
+      "Package 'pbapply' not installed -- running without a progress bar. ",
+      "Install it (install.packages(\"pbapply\")) to see live progress."
+    )
     results <- parallel::parLapply(cl = cl, X = seq_len(BOOT), fun = boot_one)
   }
 
@@ -610,12 +643,12 @@ psfm_bootstrap <- function(psfm_object,
 
   for (b in seq_len(BOOT)) {
     if (!failures[b]) {
-      boot_par[b, ]   <- results[[b]]$par_row
-      boot_eff[b, ]   <- results[[b]]$eff
+      boot_par[b, ] <- results[[b]]$par_row
+      boot_eff[b, ] <- results[[b]]$eff
       if (H_available) boot_eff_h[b, ] <- results[[b]]$eff_h
     } else {
-      boot_par[b, ]   <- NA
-      boot_eff[b, ]   <- NA
+      boot_par[b, ] <- NA
+      boot_eff[b, ] <- NA
       if (H_available) boot_eff_h[b, ] <- NA
     }
   }
@@ -624,12 +657,14 @@ psfm_bootstrap <- function(psfm_object,
   if (length(failed_idx) > 0) {
     failed_msgs <- vapply(results[failed_idx], function(r) r$msg, character(1))
     warning(length(failed_idx), " of ", BOOT, " bootstrap replications failed to ",
-            "re-estimate and were set to NA.\n",
-            paste0("  [b=", failed_idx, "]: ", failed_msgs, collapse = "\n"), call. = FALSE)
+      "re-estimate and were set to NA.\n",
+      paste0("  [b=", failed_idx, "]: ", failed_msgs, collapse = "\n"),
+      call. = FALSE
+    )
   }
 
   ## ---- 7. Bootstrap SEs / t-values for each parameter in $out ---------------
-  boot_se   <- apply(boot_par[, seq_len(n_par), drop = FALSE], 2, sd, na.rm = TRUE)
+  boot_se <- apply(boot_par[, seq_len(n_par), drop = FALSE], 2, sd, na.rm = TRUE)
   boot_tval <- out[, 1] / boot_se
   names(boot_se) <- names(boot_tval) <- rownames(out)
 
