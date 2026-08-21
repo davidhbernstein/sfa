@@ -1224,6 +1224,7 @@
     "TFE"        = 1,     "TFE_WMLE"   = 1,   "GTRE_SEQ1"     = 1,
     "GTRE_SEQ2"  = 1,     "SSFE"       = 1,   "PL80"          = 1,
     "BC92"       = 1,     "K1990"      = 1,   "K1990modified" = 1,
+    "PL80_MVTN"  = 1,
     "NR"         = 1,     "THT"        = 1,   "NTN"           = 1,
     "NG"         = 1,     "ZISF"       = 1,   "NNAK"          = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,

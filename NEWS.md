@@ -25,6 +25,45 @@
   unusable by default on a whole class of data; asking for `"fiml"` explicitly
   errors instead of silently fitting something else.
 
+## New models
+
+* **`psfm(model_name = "PL80_MVTN")` -- Pitt and Lee's (1981) Model III**, the
+  multivariate truncated normal panel likelihood from their Appendix 2.
+  Inefficiency varies over time *and* is correlated within a firm:
+  `u_i = (u_i1,...,u_iT)'` is drawn from a T-variate normal truncated to the
+  negative orthant, where the existing `"PL80"` holds inefficiency fixed over
+  time.
+
+  Pitt and Lee derived this likelihood and then set it aside, writing that it
+  "is difficult to evaluate since the quantities P0 and P(y_i - x_i beta)
+  involve T-dimensional numerical integrals", and estimating Model III by
+  Zellner SUR instead. Those quantities are multivariate normal orthant
+  probabilities; `mnormt::sadmvn()` evaluates one in about 3 ms at T = 6, so a
+  likelihood evaluation costs roughly N+1 of them -- about 0.3 s at N = 100,
+  and about 12 s for a whole fit at N = 80, T = 4. What was intractable in
+  1981 is merely slow now.
+
+  Sigma is parameterized as **equicorrelated**, `sigma_u^2[(1-rho)I + rho 11']`,
+  costing two parameters. Unrestricted Sigma costs `T(T+1)/2` -- 21 at T = 6,
+  55 at T = 10 -- every one identified only through orthant probabilities. The
+  equicorrelated form captures what the general Sigma was for: dependence of a
+  firm's inefficiency across periods, with `rho = 0` giving independence over
+  time and `rho -> 1` approaching the time-invariant `"PL80"`. Because the form
+  is equicorrelated, every matrix quantity is closed form (Sherman-Morrison,
+  verified against brute force to 1e-17), so only the orthant probabilities are
+  numerical.
+
+  Requires a **balanced** panel with T >= 2; an unbalanced one errors and points
+  at `"PL80"`. `data_gen_p()` gains `y_pl_mvtn` and `u_mvtn` columns and a
+  `rho_mvtn` argument to test it, generated last so the RNG stream feeding every
+  existing column is untouched. Registered in the convergence framework as
+  `PL80_MVTN`. See `?PL80_MVTN`.
+
+  Validated before wiring: profiling the likelihood one parameter at a time
+  puts the minimum of the negative log-likelihood at the truth for all five
+  parameters, and maximizing it recovers `(sigma_v, sigma_u, rho)` =
+  (0.32, 0.78, 0.45) against a truth of (0.30, 0.80, 0.50) at N = 300.
+
 ## New features
 
 * **Model names are matched without regard to case.** `match.arg()` is case

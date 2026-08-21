@@ -13,7 +13,8 @@
 ## ------------------------------------------------------------------
 data_gen_p <-
   function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5, mu = 0, beta1, beta2, eta = 0.1,
-           b_k90 = 0.05, c_k90 = 0.01, d_k90 = 0.05, e_k90 = -0.005) {
+           b_k90 = 0.05, c_k90 = 0.01, d_k90 = 0.05, e_k90 = -0.005,
+           rho_mvtn = 0.5) {
     if (!is.null(rand)) {
       .rng_state <- .rng_snapshot()
       on.exit(.rng_restore(.rng_state), add = TRUE)
@@ -140,15 +141,31 @@ data_gen_p <-
     u_k90m <- B_k90m * u_inv
     y_k1990m <- cons + beta1 * x1 + beta2 * x2 + v - u_k90m
 
+    ## Pitt and Lee (1981) Model III: inefficiency is a T-vector drawn from a
+    ## multivariate normal TRUNCATED to the negative orthant, equicorrelated
+    ## across periods within a firm. Generated LAST so the RNG stream feeding
+    ## every column above is untouched -- the same discipline the NR column
+    ## needed in data_gen_cs().
+    Sig_mvtn <- sig_u^2 * ((1 - rho_mvtn) * diag(t) + rho_mvtn)
+    U_mvtn <- tmvtnorm::rtmvnorm(N,
+      mean = rep(0, t), sigma = Sig_mvtn,
+      lower = rep(-Inf, t), upper = rep(0, t),
+      algorithm = "gibbs", burn.in.samples = 100
+    )
+    u_mvtn <- as.numeric(t(U_mvtn)) ## firm-major, matching the name/year order
+    y_pl_mvtn <- cons + beta1 * x1 + beta2 * x2 + v + u_mvtn ## u <= 0 already
+
     data_trial <- as.data.frame(cbind(
       name, year, cons, x1, x1_w, x2, x2_w, u, v, r, y_gtre, y_tre, y_tfe, h, y_gtre_nc, y_tre_nc, y_pcs, y_pcs_nc, c_gtre, c_tre, c_tfe, c_gtre_nc, c_tre_nc, c_pcs, c_pcs_nc, y_fd, x_fd, u_fd_star, z_fd, r_fd, u_fd, u_gtre, z_gtre, y_gtre_z, y_tre_z, y_gtre_zz, zp_gtre, h_z,
       u_inv, y_ssfe, u_bc92, y_bc92,
-      B_k90, u_k90, y_k1990, B_k90m, u_k90m, y_k1990m
+      B_k90, u_k90, y_k1990, B_k90m, u_k90m, y_k1990m,
+      u_mvtn, y_pl_mvtn
     ))
     colnames(data_trial) <- c(
       "name", "year", "cons", "x1", "x1_w", "x2", "x2_w", "u", "v", "r", "y_gtre", "y_tre", "y_tfe", "h", "y_gtre_nc", "y_tre_nc", "y_pcs", "y_pcs_nc", "c_gtre", "c_tre", "c_tfe", "c_gtre_nc", "c_tre_nc", "c_pcs", "c_pcs_nc", "y_fd", "x_fd", "u_fd_star", "z_fd", "r_fd", "u_fd", "u_gtre", "z_gtre", "y_gtre_z", "y_tre_z", "y_gtre_zz", "zp_gtre", "h_z",
       "u_inv", "y_ssfe", "u_bc92", "y_bc92",
-      "B_k90", "u_k90", "y_k1990", "B_k90m", "u_k90m", "y_k1990m"
+      "B_k90", "u_k90", "y_k1990", "B_k90m", "u_k90m", "y_k1990m",
+      "u_mvtn", "y_pl_mvtn"
     )
     data_rand <- pdata.frame(data_trial, c("name", "year"))
 

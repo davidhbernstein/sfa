@@ -5,7 +5,7 @@
 \usage{psfm(formula, model_name = c("TRE_Z", "GTRE_Z", "TRE",
                     "GTRE", "GTRE_FML", "TFE", "TFE_WMLE", "FD",
                     "GTRE_SEQ1", "GTRE_SEQ2", "SSFE",
-                    "PL80", "BC92", "K1990", "K1990modified"), data,
+                    "PL80", "PL80_MVTN", "BC92", "K1990", "K1990modified"), data,
                     maxit.bobyqa = 5000, maxit.nlminb = 500,
                     maxit.psoptim = 100, maxit.optim = 1000,
                     REPORT = 1, trace = 3, pgtol = 0, individual,
@@ -30,6 +30,7 @@
   \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood -- no \code{logLik()}.}
   \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
+  \item{\code{"PL80_MVTN"}}{Pitt and Lee's (1981) Model III: inefficiency varies over time and is CORRELATED within a firm, through a multivariate normal truncated to the negative orthant. This is the likelihood from their Appendix 2, which they derived but did not use, calling the T-dimensional integrals intractable. Balanced panels only. See \code{\link{PL80_MVTN}}.}
   \item{\code{"K1990"}, \code{"K1990modified"}}{Kumbhakar (1990) time patterns for inefficiency.}
 } Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
   \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table) -- the panel index is constructed internally from the \code{individual} and \code{time} arguments -- or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}

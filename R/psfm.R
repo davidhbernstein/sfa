@@ -1,7 +1,8 @@
 psfm <- function(formula,
                  model_name = c(
                    "TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "TFE", "TFE_WMLE",
-                   "FD", "GTRE_SEQ1", "GTRE_SEQ2", "SSFE", "PL80", "BC92", "K1990", "K1990modified"
+                   "FD", "GTRE_SEQ1", "GTRE_SEQ2", "SSFE", "PL80", "PL80_MVTN",
+                   "BC92", "K1990", "K1990modified"
                  ),
                  data,
                  maxit.bobyqa = 5000,
@@ -218,6 +219,21 @@ psfm <- function(formula,
       zp_vars <- DR1$zp_vars
       zp_vars_vec <- DR1$zp_vars_vec
       zp_zp_vec <- DR1$zp_zp_vec
+    }
+
+    ## Pitt and Lee (1981) Model III -- the multivariate truncated normal
+    ## likelihood from their Appendix 2. Handled here, before the shared
+    ## start_panel() machinery: its parameters are (sigma_v, sigma_u, rho,
+    ## beta) and a pooled OLS supplies every start value it needs, so there is
+    ## nothing for start_panel()'s model-specific dispatch to contribute.
+    if (identical(model_name, "PL80_MVTN")) {
+      return(.psfm_pl_mvtn(
+        data = data, y_var = y_var, x_vars_vec = x_vars_vec,
+        individual = individual, inefdec_n = inefdec_n,
+        maxit.optim = maxit.optim, Method = Method, optHessian = optHessian,
+        start_val = start_val, verbose = verbose, call = call,
+        formula = formula
+      ))
     }
 
     Start_Panel <- start_panel(formula_x, data, model_name, start_val, intercept, x_vars_vec,
