@@ -61,6 +61,41 @@
 
 ## New models
 
+* **`npsfm()`, nonparametric stochastic frontier models.** A fifth entry point,
+  alongside `sfm()`, `psfm()`, `zsfm()` and `ttsfm()`, for frontiers whose shape
+  is estimated by kernel regression rather than assumed linear. Two estimators:
+
+  - `method = "FLW"` -- Fan, Li and Weersink (1996). Fits `E[y|x]`
+    nonparametrically, then recovers the scale parameters from the residuals,
+    by maximizing their concentrated likelihood in `lambda` for
+    `dist = "hn"` and by inverting central moments for `dist = "exp"`,
+    `"gamma"` and `"unif"`.
+  - `method = "SVKZ"` -- Simar, Van Keilegom and Zelenyuk (2017). Three
+    local-linear regressions give `sigma_u(x)` and `sigma_v(x)` pointwise, so
+    both variance components vary with the covariates. No optimizer runs.
+    Normal-half normal only.
+
+  Ported from Christopher Parmeter's research scripts. Results return as class
+  `"npsfareg"` rather than `"sfareg"`: there is no parameter vector with
+  standard errors, so `coef()`, `vcov()` and `logLik()` would have nothing to
+  return. `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()` are
+  provided.
+
+  Kernel regression comes from the **np** package, added to `Suggests` rather
+  than `Imports` -- nothing else in `sfa` needs it, and `npsfm()` checks for it
+  and stops with an install instruction if it is absent.
+
+  Against a simulated nonlinear frontier with `sigma_u = 0.6`, `sigma_v = 0.25`,
+  both estimators converge as `n` grows (6 replications at each size):
+  `FLW` recovers `sigma_u` = 0.560, 0.539, 0.595 at `n` = 150, 300, 600, and
+  `SVKZ` 0.477, 0.506, 0.559, with mean absolute frontier error falling from
+  0.102 to 0.043 and 0.206 to 0.079 respectively. `SVKZ`'s downward bias at
+  small `n` is the wrong-skew floor: the share of observations whose local
+  third moment has the wrong sign, and whose `sigma_u(x)` is therefore set to
+  zero, falls from 21.6% to 0.3% over that range.
+
+
+
 * **`sfm(model_name = "tHN")`** -- Student's t--half-normal. Heavy-tailed
   *noise* (`v ~ sigma_v * t_nu`) with a conventional half-normal inefficiency
   term (`u ~ |N(0, sigma_u^2)|`), drawn independently.

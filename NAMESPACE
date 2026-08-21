@@ -1,4 +1,4 @@
-export(zsfm, psfm, sfm, ttsfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
+export(zsfm, psfm, sfm, ttsfm, npsfm, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
 
 import("methods")
 import("plm") # import whole package
@@ -22,7 +22,7 @@ importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "l
                     "as.formula",   "complete.cases", "formula", "sd",        "runif",
                     "ave",          "cor",            "terms",   "lm.fit",
                     "plogis",       "rbinom",         "rgamma",  "rlnorm",    "rweibull",
-                    "dlnorm")
+                    "dlnorm",        "fitted",         "residuals", "optimize")
 S3method(summary, sfareg)
 S3method(print, sfareg)
 S3method(coef, sfareg)
@@ -32,3 +32,8 @@ S3method(nobs, sfareg)
 S3method(predict, sfareg)
 S3method(fitted, sfareg)
 S3method(residuals, sfareg)
+S3method(print, npsfareg)
+S3method(summary, npsfareg)
+S3method(fitted, npsfareg)
+S3method(residuals, npsfareg)
+S3method(nobs, npsfareg)
