@@ -42,26 +42,38 @@
 ## Hessian was not requested still reports whatever it can.
 .sfa_corr_diag <- function(object, pnames) {
   V <- tryCatch(suppressWarnings(stats::vcov(object)), error = function(e) NULL)
-  if (is.null(V) || any(!is.finite(V)) || nrow(V) < 2) {
+  if (is.null(V) || nrow(V) < 2) {
     return(NULL)
   }
+  ## A near-singular Hessian -- exactly the condition this diagnostic exists to
+  ## report -- often leaves one or two parameters with a non-finite or
+  ## non-positive variance. Dropping the whole diagnostic then loses it
+  ## precisely when it is most wanted, so drop only the unusable parameters and
+  ## report the correlations among the rest, naming what was set aside. A row
+  ## carrying a non-finite entry is dropped with its (symmetric) column.
+  v <- diag(V)
+  keep <- is.finite(v) & v > 0 &
+    vapply(seq_len(nrow(V)), function(i) all(is.finite(V[i, ])), logical(1))
+  if (sum(keep) < 2L) {
+    return(NULL)
+  }
+  dropped <- pnames[!keep]
+  V <- V[keep, keep, drop = FALSE]
+  pn <- pnames[keep]
   d <- sqrt(diag(V))
-  if (any(!is.finite(d)) || any(d <= 0)) {
-    return(NULL)
-  }
   R <- V / outer(d, d)
-  dimnames(R) <- list(pnames, pnames)
+  dimnames(R) <- list(pn, pn)
   off <- R
   diag(off) <- 0
   idx <- which(abs(off) == max(abs(off)), arr.ind = TRUE)[1, ]
   list(
     correlation = R,
-    worst_pair = c(pnames[idx[1]], pnames[idx[2]]),
-    worst_value = off[idx[1], idx[2]]
+    worst_pair = c(pn[idx[1]], pn[idx[2]]),
+    worst_value = off[idx[1], idx[2]],
+    dropped = dropped
   )
 }
 
-#' @noRd
 sfa_diagnostics <- function(object, ...) {
   if (!inherits(object, "sfareg")) {
     stop("sfa_diagnostics() expects an object of class \"sfareg\".", call. = FALSE)
@@ -235,6 +247,10 @@ print.sfadiag <- function(x, ...) {
     cat("  largest |corr|: ", sprintf("%s vs %s = %+.3f", x$correlation$worst_pair[1],
                                       x$correlation$worst_pair[2], x$correlation$worst_value),
       "\n", sep = "")
+    if (length(x$correlation$dropped)) {
+      cat("  excluded (no usable variance): ",
+        paste(x$correlation$dropped, collapse = ", "), "\n", sep = "")
+    }
   }
 
   if (!is.null(x$gradient)) {
@@ -300,14 +316,18 @@ plot.sfareg <- function(x, which = 1:4, n_grid = 41, span = 0.25, ...) {
   }
 
   if (2L %in% which) {
+    ## Dimension from the matrix, not from d$pnames: .sfa_corr_diag() drops
+    ## parameters with no usable variance, so R can be smaller than the fit.
     R <- d$correlation$correlation
-    graphics::image(seq_len(np), seq_len(np), abs(R[, np:1, drop = FALSE]),
+    nr <- nrow(R)
+    rn <- rownames(R)
+    graphics::image(seq_len(nr), seq_len(nr), abs(R[, nr:1, drop = FALSE]),
       zlim = c(0, 1), axes = FALSE, xlab = "", ylab = "",
       main = "|parameter correlation|",
       col = grDevices::hcl.colors(20, "Blues", rev = TRUE)
     )
-    graphics::axis(1, at = seq_len(np), labels = d$pnames, las = 2, cex.axis = 0.7)
-    graphics::axis(2, at = seq_len(np), labels = rev(d$pnames), las = 2, cex.axis = 0.7)
+    graphics::axis(1, at = seq_len(nr), labels = rn, las = 2, cex.axis = 0.7)
+    graphics::axis(2, at = seq_len(nr), labels = rev(rn), las = 2, cex.axis = 0.7)
     graphics::box()
   }
 

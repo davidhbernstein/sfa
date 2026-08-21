@@ -1,51 +1,71 @@
 ## Submission
 
 This is a feature update to `sfa`, from the current CRAN version 1.0.4 to
-1.1.3. It bundles the work of several development versions (1.1.0-1.1.3) that
+1.1.4. It bundles the work of five development versions (1.1.0-1.1.4) that
 were never submitted, so `NEWS.md` is correspondingly long.
 
-Please note one deliberate **breaking change**, described first in `NEWS.md`:
-`psfm(model_name = "TFE")` previously selected Chen, Schmidt and Wang's (2014)
-within maximum-likelihood estimator and now selects Greene's (2005) true fixed
-effects estimator, which is the standard meaning of that name in the
-literature. The previous estimator is unchanged and available as
-`model_name = "TFE_WMLE"`. Because existing scripts would otherwise silently
-get a different estimator, `psfm()` emits a warning whenever `"TFE"` is used;
-the warning is intended to remain for one release cycle. There are no reverse
-dependencies on CRAN, so no other package is affected.
+There are **no reverse dependencies on CRAN**, so no other package is affected
+by anything below.
 
-The package's dependency on `frontier` has been removed (along with eight
-others), and the R requirement has been lowered from `R (>= 4.4.0)` to
-`R (>= 4.0.0)`.
+### Two deliberate breaking changes
+
+Both are described at the top of their `NEWS.md` sections, and both warn at
+run time rather than changing behaviour silently.
+
+* `psfm(model_name = "TFE")` previously selected Chen, Schmidt and Wang's
+  (2014) within maximum-likelihood estimator and now selects Greene's (2005)
+  true fixed effects estimator, which is the standard meaning of that name in
+  the literature. The previous estimator is unchanged and available as
+  `model_name = "TFE_WMLE"`.
+
+* `psfm(model_name = "GTRE")` now defaults to full information maximum
+  likelihood rather than simulated maximum likelihood. The four ways of
+  fitting the four-component GTRE model used to be four separate `model_name`
+  values, which presented them as four models rather than four routes to one;
+  they are now chosen with an `estimator` argument, in the same spirit as
+  `sfm()`'s existing `estimator = c("mle", "cols")`. The old behaviour is
+  `estimator = "sml"`.
+
+In both cases existing scripts would otherwise silently get a different
+estimator, so `psfm()` warns whenever the affected name is used without an
+explicit choice. The warnings are intended to remain for one release cycle.
+
+### New dependencies in Suggests
 
 This version adds a fifth entry point, `npsfm()`, for nonparametric stochastic
 frontier models. It needs kernel regression from `np`, and its `"SZ"` method
-additionally needs `Benchmarking`. Both are declared in **Suggests** rather than
-Imports, since nothing else in the package uses them: `npsfm()` tests for each
-at run time and stops with an install instruction if it is absent, and its
-examples and tests are guarded with `requireNamespace()` / `skip_if_not_installed()`
-so they are skipped rather than failing where those packages are unavailable.
-`npsfm()` returns an object of class `"npsfareg"`, not `"sfareg"` — a
+additionally needs `Benchmarking`. Both are declared in **Suggests** rather
+than **Imports**, since nothing else in the package uses them: `npsfm()` tests
+for each at run time and stops with an install instruction if it is absent, and
+its examples and tests are guarded with `requireNamespace()` /
+`skip_if_not_installed()` so they are skipped rather than failing where those
+packages are unavailable.
+
+`npsfm()` returns an object of class `"npsfareg"`, not `"sfareg"` -- a
 kernel-estimated frontier has no parameter vector with standard errors, so the
 `coef`/`vcov`/`logLik` methods do not apply to it.
 
+The dependency on `frontier` was removed in this cycle (along with eight
+others), and the R requirement was lowered from `R (>= 4.4.0)` to
+`R (>= 4.0.0)`.
+
 ## Test environments
 
-* local macOS 15 (aarch64-apple-darwin), R 4.5.2
-* [to be filled in before submission: win-builder release + devel, R-hub]
+* local macOS 15 (aarch64-apple-darwin20), R 4.5.2
+* GitHub Actions: macOS-latest (release), windows-latest (release),
+  ubuntu-latest (devel, release, oldrel-1)
+* win-builder (R-devel and R-release)
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1-2 notes
+0 errors | 0 warnings | 0-2 notes
 
-Both notes are properties of the local check machine rather than the package,
-and are not expected on CRAN's systems:
+Any notes seen locally are properties of the check machine rather than the
+package, and are not expected on CRAN's systems:
 
-* `checking HTML version of manual ... NOTE`
-  `Skipping checking HTML validation: 'tidy' doesn't look like recent enough`
-  `HTML Tidy` / `Skipping checking math rendering: package 'V8' unavailable`.
-  The local HTML Tidy and V8 installations are missing or out of date, so
-  those two sub-checks are skipped rather than failed.
+* `checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
+  recent enough and that package `V8` is unavailable, so those two sub-checks
+  are skipped rather than failed.
 
 * `checking for future file timestamps ... NOTE` / `unable to verify current
   time`, which appears intermittently when the clock-check web service is
@@ -53,7 +73,7 @@ and are not expected on CRAN's systems:
 
 ## Notes for the reviewer
 
-* A `testthat` suite is new in this version. The tests that require a
+* A `testthat` suite is new in this version. The tests that need a
   statistically meaningful sample size are behind `skip_on_cran()`, so the
   suite run during CRAN's checks is limited to fast structural tests. One
   further model (`ttsfm(model_name = "TTHN")`) is skipped unless the
@@ -61,5 +81,6 @@ and are not expected on CRAN's systems:
   slower than the other estimators.
 
 * Several examples are wrapped in `\donttest{}` because they fit models by
-  simulated maximum likelihood over Halton draws and take longer than the
-  5-second guideline.
+  simulated maximum likelihood over Halton draws, or by kernel regression with
+  bandwidth cross-validation, and take longer than the 5-second guideline.
+  They are checked with `--run-donttest` before submission.

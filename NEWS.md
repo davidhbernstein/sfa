@@ -64,6 +64,106 @@
   parameters, and maximizing it recovers `(sigma_v, sigma_u, rho)` =
   (0.32, 0.78, 0.45) against a truth of (0.30, 0.80, 0.50) at N = 300.
 
+* **`npsfm()`, nonparametric stochastic frontier models.** A fifth entry point,
+  alongside `sfm()`, `psfm()`, `zsfm()` and `ttsfm()`, for frontiers whose shape
+  is estimated by kernel regression rather than assumed linear. Two estimators:
+
+  - `method = "FLW"` -- Fan, Li and Weersink (1996). Fits `E[y|x]`
+    nonparametrically, then recovers the scale parameters from the residuals,
+    by maximizing their concentrated likelihood in `lambda` for
+    `dist = "hn"` and by inverting central moments for `dist = "exp"`,
+    `"gamma"` and `"unif"`.
+  - `method = "SVKZ"` -- Simar, Van Keilegom and Zelenyuk (2017). Three
+    local-linear regressions give `sigma_u(x)` and `sigma_v(x)` pointwise, so
+    both variance components vary with the covariates. No optimizer runs.
+    Normal-half normal only.
+  - `method = "PSZ"` (alias `"KPST"`) -- Park, Simar and Zelenyuk. Local
+    maximum likelihood: the frontier and both log variance components get
+    local-linear expansions and the kernel-weighted normal-half normal
+    likelihood is maximized in those `3(k+1)` parameters, once per observation.
+  - `method = "MY"` -- Martins-Filho and Yao. Iterative local likelihood,
+    alternating local frontier fits with a global update of `(lambda, sigma)`.
+  - `method = "SZ"` -- Simar and Zelenyuk (2011). Passes an existing smooth
+    frontier through an output-oriented DEA to impose monotonicity and
+    convexity. Needs the **Benchmarking** package, also in `Suggests`.
+
+  `"PSZ"` and `"MY"` run one numerical optimization per observation (for
+  `"MY"`, per observation per iteration), so they are one to two orders of
+  magnitude slower than `"FLW"`. Both are seeded from an `"FLW"` fit.
+
+  Ported from Christopher Parmeter's research scripts. Results return as class
+  `"npsfareg"` rather than `"sfareg"`: there is no parameter vector with
+  standard errors, so `coef()`, `vcov()` and `logLik()` would have nothing to
+  return. `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()` are
+  provided.
+
+  Kernel regression comes from the **np** package, added to `Suggests` rather
+  than `Imports` -- nothing else in `sfa` needs it, and `npsfm()` checks for it
+  and stops with an install instruction if it is absent.
+
+  A correction worth recording, because it is easy to repeat: the two
+  local-likelihood estimators maximize the *composed-error* likelihood, in
+  which the local intercept is the frontier `m(x)` itself. They therefore take
+  **no** half-normal mean shift, unlike the least-squares methods, whose first
+  stage estimates `E[y|x] = m(x) - E[u]` and does need one. Applying the shift
+  to `"PSZ"`/`"MY"` biases the whole frontier up by about `E[u]`; mean absolute
+  frontier error at `n = 300` fell from 0.372 to 0.116 (`"PSZ"`) and 0.410 to
+  0.070 (`"MY"`) once it was removed.
+
+  Against a simulated nonlinear frontier with `sigma_u = 0.6`, `sigma_v = 0.25`,
+  both least-squares estimators converge as `n` grows (6 replications at each size):
+  `FLW` recovers `sigma_u` = 0.560, 0.539, 0.595 at `n` = 150, 300, 600, and
+  `SVKZ` 0.477, 0.506, 0.559, with mean absolute frontier error falling from
+  0.102 to 0.043 and 0.206 to 0.079 respectively. `SVKZ`'s downward bias at
+  small `n` is the wrong-skew floor: the share of observations whose local
+  third moment has the wrong sign, and whose `sigma_u(x)` is therefore set to
+  zero, falls from 21.6% to 0.3% over that range.
+
+## New methods and arguments
+
+* **`sfa_diagnostics()`, `plot()` for `"sfareg"`, and convergence reporting.**
+  The numerical hardening was already in place -- staged minimizer, clipping
+  constants, analytic gradients where they exist -- but nothing was reported
+  back. A fit carried `optim()`'s convergence code, message, evaluation counts
+  and Hessian, and `print()`/`summary()` showed none of it, so a fit that
+  stopped on the iteration cap printed exactly like a converged one.
+
+  `sfa_diagnostics()` returns the convergence code and what it means, the
+  eigenvalue spectrum and condition number of the Hessian, whether it is
+  positive definite, which parameters load on its flattest direction, the
+  implied parameter correlations, and -- with `keep_objective = TRUE` -- the
+  gradient at the reported optimum. `plot()` draws the Hessian spectrum, the
+  correlation matrix, a likelihood slice per parameter, and the gradient.
+  `print()` and `summary()` now report the convergence code.
+
+  **The code by itself is not diagnostic and is not treated as though it were.**
+  Across `NHN`, `NE` and `NTN` at n = 150, 500 and 1500, code 52
+  ("ABNORMAL_TERMINATION_IN_LNSRCH") appears routinely alongside a maximum
+  relative gradient of ~1e-6 and a positive definite Hessian: the staged
+  minimizer had already converged and `L-BFGS-B` could not step away from the
+  optimum. The same code on `NTN` at n = 150 came with a relative gradient of
+  5e+07 and an indefinite Hessian, a real failure. The verdict therefore
+  combines the code with the gradient and the Hessian, and distinguishes
+  *benign* from *unverified* (a line-search code with no objective retained, so
+  no gradient to settle it) from *failure*. Code 1, the iteration limit, is
+  never treated as benign.
+
+  On a single `NNAK` fit the report reproduces what the convergence sweeps
+  found only across replications: `mu` and `sigu` correlated at 0.998 -- the
+  documented ridge -- with the flattest Hessian direction loading on exactly
+  that pair.
+
+  When the Hessian is singular enough that some parameter has no usable
+  variance, the correlation report drops those parameters and names them,
+  rather than vanishing as a whole -- a diagnostic for ill-conditioning should
+  be most informative exactly when conditioning is worst, not least.
+
+* **`sfm(keep_objective = TRUE)`** stores the likelihood on the fitted object so
+  the gradient and likelihood slices can be computed after the fact. Off by
+  default: a closure carries its enclosing environment, so a fit saved with one
+  serializes the estimation data too (about 38 KB to 1.7 MB on a 200-observation
+  example). Everything else `sfa_diagnostics()` reports works without it.
+
 ## New features
 
 * **Model names are matched without regard to case.** `match.arg()` is case
@@ -142,63 +242,6 @@
 
 ## New models
 
-* **`npsfm()`, nonparametric stochastic frontier models.** A fifth entry point,
-  alongside `sfm()`, `psfm()`, `zsfm()` and `ttsfm()`, for frontiers whose shape
-  is estimated by kernel regression rather than assumed linear. Two estimators:
-
-  - `method = "FLW"` -- Fan, Li and Weersink (1996). Fits `E[y|x]`
-    nonparametrically, then recovers the scale parameters from the residuals,
-    by maximizing their concentrated likelihood in `lambda` for
-    `dist = "hn"` and by inverting central moments for `dist = "exp"`,
-    `"gamma"` and `"unif"`.
-  - `method = "SVKZ"` -- Simar, Van Keilegom and Zelenyuk (2017). Three
-    local-linear regressions give `sigma_u(x)` and `sigma_v(x)` pointwise, so
-    both variance components vary with the covariates. No optimizer runs.
-    Normal-half normal only.
-  - `method = "PSZ"` (alias `"KPST"`) -- Park, Simar and Zelenyuk. Local
-    maximum likelihood: the frontier and both log variance components get
-    local-linear expansions and the kernel-weighted normal-half normal
-    likelihood is maximized in those `3(k+1)` parameters, once per observation.
-  - `method = "MY"` -- Martins-Filho and Yao. Iterative local likelihood,
-    alternating local frontier fits with a global update of `(lambda, sigma)`.
-  - `method = "SZ"` -- Simar and Zelenyuk (2011). Passes an existing smooth
-    frontier through an output-oriented DEA to impose monotonicity and
-    convexity. Needs the **Benchmarking** package, also in `Suggests`.
-
-  `"PSZ"` and `"MY"` run one numerical optimization per observation (for
-  `"MY"`, per observation per iteration), so they are one to two orders of
-  magnitude slower than `"FLW"`. Both are seeded from an `"FLW"` fit.
-
-  Ported from Christopher Parmeter's research scripts. Results return as class
-  `"npsfareg"` rather than `"sfareg"`: there is no parameter vector with
-  standard errors, so `coef()`, `vcov()` and `logLik()` would have nothing to
-  return. `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()` are
-  provided.
-
-  Kernel regression comes from the **np** package, added to `Suggests` rather
-  than `Imports` -- nothing else in `sfa` needs it, and `npsfm()` checks for it
-  and stops with an install instruction if it is absent.
-
-  A correction worth recording, because it is easy to repeat: the two
-  local-likelihood estimators maximize the *composed-error* likelihood, in
-  which the local intercept is the frontier `m(x)` itself. They therefore take
-  **no** half-normal mean shift, unlike the least-squares methods, whose first
-  stage estimates `E[y|x] = m(x) - E[u]` and does need one. Applying the shift
-  to `"PSZ"`/`"MY"` biases the whole frontier up by about `E[u]`; mean absolute
-  frontier error at `n = 300` fell from 0.372 to 0.116 (`"PSZ"`) and 0.410 to
-  0.070 (`"MY"`) once it was removed.
-
-  Against a simulated nonlinear frontier with `sigma_u = 0.6`, `sigma_v = 0.25`,
-  both least-squares estimators converge as `n` grows (6 replications at each size):
-  `FLW` recovers `sigma_u` = 0.560, 0.539, 0.595 at `n` = 150, 300, 600, and
-  `SVKZ` 0.477, 0.506, 0.559, with mean absolute frontier error falling from
-  0.102 to 0.043 and 0.206 to 0.079 respectively. `SVKZ`'s downward bias at
-  small `n` is the wrong-skew floor: the share of observations whose local
-  third moment has the wrong sign, and whose `sigma_u(x)` is therefore set to
-  zero, falls from 21.6% to 0.3% over that range.
-
-
-
 * **`sfm(model_name = "tHN")`** -- Student's t--half-normal. Heavy-tailed
   *noise* (`v ~ sigma_v * t_nu`) with a conventional half-normal inefficiency
   term (`u ~ |N(0, sigma_u^2)|`), drawn independently.
@@ -264,46 +307,6 @@
   likelihood over Halton draws.
 
 ## New methods and arguments
-
-* **`sfa_diagnostics()`, `plot()` for `"sfareg"`, and convergence reporting.**
-  The numerical hardening was already in place -- staged minimizer, clipping
-  constants, analytic gradients where they exist -- but nothing was reported
-  back. A fit carried `optim()`'s convergence code, message, evaluation counts
-  and Hessian, and `print()`/`summary()` showed none of it, so a fit that
-  stopped on the iteration cap printed exactly like a converged one.
-
-  `sfa_diagnostics()` returns the convergence code and what it means, the
-  eigenvalue spectrum and condition number of the Hessian, whether it is
-  positive definite, which parameters load on its flattest direction, the
-  implied parameter correlations, and -- with `keep_objective = TRUE` -- the
-  gradient at the reported optimum. `plot()` draws the Hessian spectrum, the
-  correlation matrix, a likelihood slice per parameter, and the gradient.
-  `print()` and `summary()` now report the convergence code.
-
-  **The code by itself is not diagnostic and is not treated as though it were.**
-  Across `NHN`, `NE` and `NTN` at n = 150, 500 and 1500, code 52
-  ("ABNORMAL_TERMINATION_IN_LNSRCH") appears routinely alongside a maximum
-  relative gradient of ~1e-6 and a positive definite Hessian: the staged
-  minimizer had already converged and `L-BFGS-B` could not step away from the
-  optimum. The same code on `NTN` at n = 150 came with a relative gradient of
-  5e+07 and an indefinite Hessian, a real failure. The verdict therefore
-  combines the code with the gradient and the Hessian, and distinguishes
-  *benign* from *unverified* (a line-search code with no objective retained, so
-  no gradient to settle it) from *failure*. Code 1, the iteration limit, is
-  never treated as benign.
-
-  On a single `NNAK` fit the report reproduces what the convergence sweeps
-  found only across replications: `mu` and `sigu` correlated at 0.998 -- the
-  documented ridge -- with the flattest Hessian direction loading on exactly
-  that pair.
-
-* **`sfm(keep_objective = TRUE)`** stores the likelihood on the fitted object so
-  the gradient and likelihood slices can be computed after the fact. Off by
-  default: a closure carries its enclosing environment, so a fit saved with one
-  serializes the estimation data too (about 38 KB to 1.7 MB on a 200-observation
-  example). Everything else `sfa_diagnostics()` reports works without it.
-
-
 
 * `predict()`, `fitted()` and `residuals()` methods for class `"sfareg"`,
   alongside the existing `coef()`, `vcov()`, `logLik()` and `nobs()`.

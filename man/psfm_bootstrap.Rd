@@ -212,16 +212,25 @@ A list with components:
 }
 \examples{
 \dontrun{
-## GTRE_ZZ is a fitted "sfareg" object returned by sfa::psfm(), e.g.:
-## GTRE_ZZ <- sfa::psfm(lnC_P3 ~ lnY + lnP1_P3 | Age | Class ,
-##                      model_name = "GTRE_Z", data = data,
-##                      individual = "MFI.ID")
+## Not run: a meaningful bootstrap needs BOOT in the hundreds, each
+## replication refitting the model on a PSOCK cluster, so this takes
+## minutes rather than seconds.
+
+data_trial <- data_gen_p(t = 5, N = 50, rand = 100,
+                         sig_u = 1,   sig_v = 0.3,
+                         sig_r = 0.2, sig_h = 0.4,
+                         cons  = 0.5, beta1 = 0.5, beta2 = 0.5)
+
+GTRE_ZZ <- psfm(y_gtre_zz ~ x1 + x2 | z_gtre | zp_gtre,
+                model_name = "GTRE_Z",
+                data       = data_trial,
+                individual = "name")
 
 boot_results <- psfm_bootstrap(
   psfm_object = GTRE_ZZ,
-  numCores    = 4,
+  numCores    = 2,
   BOOT        = 199,
-  individual  = "MFI.ID",
+  individual  = "name",
   h_type      = "auto",
   inefdec     = FALSE
 )
@@ -239,5 +248,6 @@ boot_results$boot_eff_h
 boot_results$model$out
 }
 }
+
 \keyword{models}
 \keyword{htest}

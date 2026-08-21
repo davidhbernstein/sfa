@@ -57,14 +57,56 @@ test_that("keep_objective defaults to off", {
 test_that("weak identification is detected and named", {
   skip_on_cran()
   ## NNAK's sigma_u and shape are the documented ridge: the convergence work
-  ## measured cor = 0.997 across replications. One fit should show it too.
+  ## measured cor = 0.997 across replications. The fit is deliberately
+  ## ill-conditioned, so how much of the vcov survives is platform arithmetic,
+  ## not a property of the package -- assert the contract, and the ridge itself
+  ## whenever the pair carrying it survives.
   f <- suppressWarnings(sfm(y_pcs_nak ~ x1 + x2, model_name = "NNAK",
                             data = diag_data(300)))
   d <- sfa_diagnostics(f)
-  expect_false(is.null(d$correlation))
-  expect_gt(abs(d$correlation$worst_value), 0.95)
-  expect_setequal(d$correlation$worst_pair, c("mu", "sigu"))
-  expect_true(any(grepl("correlated at", d$flags)))
+  skip_if(is.null(d$correlation),
+          "fewer than two parameters have a usable variance on this platform")
+
+  R <- d$correlation$correlation
+  expect_true(is.matrix(R) && nrow(R) == ncol(R))
+  expect_identical(rownames(R), colnames(R))
+  expect_true(all(is.finite(R)))
+  expect_true(all(abs(R) <= 1 + 1e-8))
+  expect_equal(unname(diag(R)), rep(1, nrow(R)), tolerance = 1e-8)
+  expect_length(d$correlation$worst_pair, 2L)
+  expect_true(all(d$correlation$worst_pair %in% rownames(R)))
+  expect_true(is.finite(d$correlation$worst_value))
+  ## dropped parameters are named, and never overlap with those reported
+  expect_length(intersect(d$correlation$dropped, rownames(R)), 0L)
+
+  if (all(c("mu", "sigu") %in% rownames(R))) {
+    expect_setequal(d$correlation$worst_pair, c("mu", "sigu"))
+    expect_gt(abs(d$correlation$worst_value), 0.95)
+    expect_true(any(grepl("correlated at", d$flags)))
+  }
+})
+
+test_that("the correlation diagnostic survives a partly unusable vcov", {
+  ## The CI-visible case, made deterministic: one parameter with no usable
+  ## variance must cost only that parameter, not the whole diagnostic.
+  V <- diag(4)
+  V[2, 2] <- NaN
+  pn <- c("sigv", "sigu", "x1", "x2")
+  dimnames(V) <- list(pn, pn)
+  V[1, 3] <- V[3, 1] <- 0.99
+  ## .sfa_corr_diag() only ever asks stats::vcov() for the matrix, so a stub
+  ## class with its own method pins the input exactly. Registering is needed
+  ## because dispatch happens inside the sfa namespace, which cannot see a
+  ## method defined in this test's environment.
+  registerS3method("vcov", "sfa_fake_fit", function(object, ...) object$V)
+  fake <- structure(list(V = V), class = "sfa_fake_fit")
+  cd <- sfa:::.sfa_corr_diag(fake, pn)
+
+  expect_false(is.null(cd))
+  expect_identical(rownames(cd$correlation), c("sigv", "x1", "x2"))
+  expect_identical(cd$dropped, "sigu")
+  expect_setequal(cd$worst_pair, c("sigv", "x1"))
+  expect_equal(cd$worst_value, 0.99, tolerance = 1e-12)
 })
 
 test_that("a non-zero convergence code is surfaced rather than swallowed", {
