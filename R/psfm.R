@@ -902,12 +902,12 @@ psfm <- function(formula,
       
       ridge_report <- data.frame(
         firm        = seq_len(N),
-        ridge_VEE   = sapply(post_obj, `[[`, "ridge_VEE"),
-        ridge_SIG   = sapply(post_obj, `[[`, "ridge_SIG"),
-        ridge_K     = sapply(post_obj, `[[`, "ridge_K"),
-        method_VEE  = sapply(post_obj, `[[`, "invVEE_method"),
-        method_SIG  = sapply(post_obj, `[[`, "invSIG_method"),
-        method_K    = sapply(post_obj, `[[`, "invK_method")
+        ridge_VEE   = vapply(post_obj, `[[`, numeric(1),   "ridge_VEE"),
+        ridge_SIG   = vapply(post_obj, `[[`, numeric(1),   "ridge_SIG"),
+        ridge_K     = vapply(post_obj, `[[`, numeric(1),   "ridge_K"),
+        method_VEE  = vapply(post_obj, `[[`, character(1), "invVEE_method"),
+        method_SIG  = vapply(post_obj, `[[`, character(1), "invSIG_method"),
+        method_K    = vapply(post_obj, `[[`, character(1), "invK_method")
       )
       
       ## Persistent TE
@@ -968,7 +968,11 @@ psfm <- function(formula,
       U_list <- mapply(
         FUN = function(Ti, ARR_i, e_i, LAM_i, rd){
           
-          sapply(seq_len(Ti), function(j){
+          ## vapply: each element is the 1x1 matrix product below, which
+          ## satisfies a numeric(1) template (type and length are what vapply
+          ## checks). Fixing the type here stops a zero-length Ti or a changed
+          ## ptmvnorm() return from silently yielding a list.
+          vapply(seq_len(Ti), function(j){
             
             shift_vec <- rep(0, Ti + 1)
             shift_vec[j + 1] <- -1
@@ -986,7 +990,7 @@ psfm <- function(formula,
                 t(shift_vec) %*% ARR_i %*% e_i +
                   0.5 * t(shift_vec) %*% LAM_i %*% shift_vec
               )
-          })
+          }, numeric(1))
         },
         Ti       = t,
         ARR_i    = ARR,
@@ -1088,7 +1092,13 @@ psfm <- function(formula,
       
       if(OPG_calc==TRUE) {
         out_opg <- out_sandwich <- out
-        OPG_meat <- NULL   ## hoisted to outer scope so sandwich can reuse it
+        ## Declared here so the sandwich block below can reuse the same meat
+        ## without a second jacobian() call. Assign to it with plain `<-`:
+        ## tryCatch({...}) evaluates its expression in THIS frame rather than a
+        ## new one, so `<-` reaches this binding. `<<-` does not -- it starts
+        ## its search one frame out, skips this binding entirely, and ends up
+        ## writing to globalenv() while the local OPG_meat stays NULL.
+        OPG_meat <- NULL
         
         opg_se <- tryCatch({
           
@@ -1155,19 +1165,19 @@ psfm <- function(formula,
           score_mat <- -numDeriv::jacobian(func = fn_vec, x = opt$par)
           
           ## OPG meat and variance
-          OPG_meat <<- crossprod(score_mat)          ## t(S) %*% S; <<- assigns to outer scope
+          OPG_meat <- crossprod(score_mat)           ## t(S) %*% S
           OPG_vcov <- tryCatch(
             solve(OPG_meat),
             error = function(e){
               ## Fall back to pseudoinverse -- handles rank-deficient OPG meat
               warning("OPG matrix singular, using pseudoinverse (Moore-Penrose). ",
-                      "Some SEs may be unreliable.")
+                      "Some SEs may be unreliable.", call. = FALSE)
               tryCatch(MASS::ginv(OPG_meat), error = function(e2) NULL)
             }
           )
           
           if(is.null(OPG_vcov)){
-            warning("OPG matrix is singular; OPG standard errors set to NA.")
+            warning("OPG matrix is singular; OPG standard errors set to NA.", call. = FALSE)
             rep(NA_real_, length(opt$par))
           } else {
             sqrt(pmax(diag(OPG_vcov), 0))
@@ -1175,7 +1185,7 @@ psfm <- function(formula,
           
         }, error = function(e){
           warning("OPG SE computation failed: ", conditionMessage(e),
-                  ". OPG standard errors set to NA.")
+                  ". OPG standard errors set to NA.", call. = FALSE)
           rep(NA_real_, length(opt$par))
         })
         
@@ -1199,7 +1209,7 @@ psfm <- function(formula,
           }
         }, error = function(e){
           warning("Sandwich SE computation failed: ", conditionMessage(e),
-                  ". Sandwich standard errors set to NA.")
+                  ". Sandwich standard errors set to NA.", call. = FALSE)
           rep(NA_real_, length(opt$par))
         })
         

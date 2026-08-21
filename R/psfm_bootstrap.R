@@ -131,14 +131,14 @@ psfm_bootstrap <- function(psfm_object,
   missing_fields  <- setdiff(required_fields, names(psfm_object))
   if (length(missing_fields) > 0) {
     stop("psfm_object is missing required component(s): ",
-         paste(missing_fields, collapse = ", "))
+         paste(missing_fields, collapse = ", "), call. = FALSE)
   }
 
   if (!requireNamespace("Formula", quietly = TRUE)) {
-    stop("Package 'Formula' is required to parse the multi-part model formula.")
+    stop("Package 'Formula' is required to parse the multi-part model formula.", call. = FALSE)
   }
   if (!requireNamespace("parallel", quietly = TRUE)) {
-    stop("Package 'parallel' is required to run the bootstrap in parallel.")
+    stop("Package 'parallel' is required to run the bootstrap in parallel.", call. = FALSE)
   }
 
   model_name <- psfm_object$model_name
@@ -147,7 +147,7 @@ psfm_bootstrap <- function(psfm_object,
     stop("psfm_bootstrap() does not support model_name = '", model_name, "'. ",
          "Supported: ", paste(supported_models, collapse = ", "), ". ",
          "(GTRE_SEQ1/GTRE_SEQ2/SSFE are moment-based, not MLE; PL80/BC92 ",
-         "don't expose the $U/$H structure this function relies on.)")
+         "don't expose the $U/$H structure this function relies on.)", call. = FALSE)
   }
 
   data   <- psfm_object$data
@@ -155,7 +155,7 @@ psfm_bootstrap <- function(psfm_object,
   n_par  <- nrow(out)
 
   if (!(individual %in% names(data))) {
-    stop("Column '", individual, "' (the `individual` argument) was not found in psfm_object$data.")
+    stop("Column '", individual, "' (the `individual` argument) was not found in psfm_object$data.", call. = FALSE)
   }
 
   ## ---- 1. Panel bookkeeping (shared across every family) --------------------
@@ -181,7 +181,7 @@ psfm_bootstrap <- function(psfm_object,
     if (n_h != n_id) {
       stop("length(psfm_object$H) (", n_h, ") does not match the number of unique ",
            "individuals implied by the `individual` column (", n_id, "). ",
-           "Check that `individual` is correct and that $H is one value per individual.")
+           "Check that `individual` is correct and that $H is one value per individual.", call. = FALSE)
     }
   } else {
     n_h <- 0L
@@ -268,7 +268,7 @@ psfm_bootstrap <- function(psfm_object,
       }
       if (h_type == "parametric" && n_rhs < 3) {
         stop("h_type = 'parametric' requires a 3-part formula (y ~ x | z | h), ",
-             "but the model formula only has ", n_rhs, " RHS part(s).")
+             "but the model formula only has ", n_rhs, " RHS part(s).", call. = FALSE)
       }
 
       data_z <- model.matrix(form, data = data, rhs = 2)
@@ -284,7 +284,7 @@ psfm_bootstrap <- function(psfm_object,
       if (n_par != expected_n_par) {
         stop("Row count of psfm_object$out (", n_par, ") does not match the expected layout ",
              "(2 + Kx + Kz", if (h_type != "none") " + Kh" else "", " = ", expected_n_par, "). ",
-             "Check that `h_type` matches how this model was actually specified.")
+             "Check that `h_type` matches how this model was actually specified.", call. = FALSE)
       }
 
       sigv_row  <- 1
@@ -332,7 +332,7 @@ psfm_bootstrap <- function(psfm_object,
       if (n_par != expected_n_par) {
         stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
              "layout for model_name = '", model_name, "' (", expected_n_par, "). ",
-             "This usually means psfm_object was not actually fit with this model_name.")
+             "This usually means psfm_object was not actually fit with this model_name.", call. = FALSE)
       }
 
       beta_x_hat <- out[x_rows, 1]
@@ -384,12 +384,12 @@ psfm_bootstrap <- function(psfm_object,
     if (is.null(psfm_object$r_hat_m)) {
       stop("psfm_object$r_hat_m not found -- required to bootstrap a TFE fit ",
            "(the individual fixed effects are held fixed at their original ",
-           "point estimates, not redrawn; see this function's header comment).")
+           "point estimates, not redrawn; see this function's header comment).", call. = FALSE)
     }
     r_hat_m_orig <- psfm_object$r_hat_m   ## one value per individual, uniq_ids order
     if (length(r_hat_m_orig) != n_id) {
       stop("length(psfm_object$r_hat_m) (", length(r_hat_m_orig), ") does not match ",
-           "the number of unique individuals (", n_id, ").")
+           "the number of unique individuals (", n_id, ").", call. = FALSE)
     }
     r_fixed <- rep(r_hat_m_orig, times = timez)
 
@@ -405,7 +405,7 @@ psfm_bootstrap <- function(psfm_object,
     expected_n_par <- 2 + Kx
     if (n_par != expected_n_par) {
       stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
-           "TFE layout (2 + Kx = ", expected_n_par, ").")
+           "TFE layout (2 + Kx = ", expected_n_par, ").", call. = FALSE)
     }
     beta_x_hat <- out[x_rows, 1]
 
@@ -438,7 +438,7 @@ psfm_bootstrap <- function(psfm_object,
     ##      function's header comment for the full derivation.
     if (!requireNamespace("truncnorm", quietly = TRUE)) {
       stop("Package 'truncnorm' is required to bootstrap an FD fit ",
-           "(u_i is drawn from a truncated normal).")
+           "(u_i is drawn from a truncated normal).", call. = FALSE)
     }
 
     data_z <- model.matrix(form, data = data, rhs = 2)
@@ -456,7 +456,7 @@ psfm_bootstrap <- function(psfm_object,
     expected_n_par <- 3 + Kx + Kz
     if (n_par != expected_n_par) {
       stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
-           "FD layout (3 + Kx + Kz = ", expected_n_par, ").")
+           "FD layout (3 + Kx + Kz = ", expected_n_par, ").", call. = FALSE)
     }
 
     sig_u2_hat <- out[1, 1]
@@ -625,7 +625,7 @@ psfm_bootstrap <- function(psfm_object,
     failed_msgs <- vapply(results[failed_idx], function(r) r$msg, character(1))
     warning(length(failed_idx), " of ", BOOT, " bootstrap replications failed to ",
             "re-estimate and were set to NA.\n",
-            paste0("  [b=", failed_idx, "]: ", failed_msgs, collapse = "\n"))
+            paste0("  [b=", failed_idx, "]: ", failed_msgs, collapse = "\n"), call. = FALSE)
   }
 
   ## ---- 7. Bootstrap SEs / t-values for each parameter in $out ---------------

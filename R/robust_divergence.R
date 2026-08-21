@@ -82,7 +82,7 @@
   }
 
   if (is.null(power_integral_fn)) {
-    stop(".robust_objective_vec(): method '", method, "' requires power_integral_fn.")
+    stop(".robust_objective_vec(): method '", method, "' requires power_integral_fn.", call. = FALSE)
   }
   I <- power_integral_fn(1 + c)
 

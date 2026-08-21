@@ -145,7 +145,7 @@
 ## ------------------------------------------------------------
 .gauss_hermite_nodes <- function(n = 64L){
   n <- as.integer(n)
-  if(n < 5L) stop("n must be at least 5.")
+  if(n < 5L) stop("n must be at least 5.", call. = FALSE)
   i    <- seq_len(n - 1L)
   J    <- matrix(0, n, n)
   off  <- sqrt(i / 2)
@@ -173,7 +173,7 @@
 ## ------------------------------------------------------------
 .gauss_legendre_01 <- function(n = 64L){
   n <- as.integer(n)
-  if(n < 5L) stop("n must be at least 5.")
+  if(n < 5L) stop("n must be at least 5.", call. = FALSE)
   i    <- seq_len(n - 1L)
   J    <- matrix(0, n, n)
   off  <- i/sqrt(4*i^2 - 1)
@@ -964,7 +964,7 @@
     }
   }
   
-  stop(sprintf("Unable to invert %s even after ridging.", name))
+  stop(sprintf("Unable to invert %s even after ridging.", name), call. = FALSE)
 }
 
 

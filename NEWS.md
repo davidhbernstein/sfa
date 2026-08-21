@@ -180,6 +180,24 @@
 
 ## Bug fixes
 
+* **`psfm(OPG_calc = TRUE)` returned `NA` for every OPG and sandwich standard
+  error, and wrote a variable into the global environment.** The OPG "meat"
+  matrix was stored with a superassignment, `OPG_meat <<- crossprod(score_mat)`,
+  on the assumption that the surrounding `tryCatch({...})` introduced a scope to
+  escape from. It does not -- `tryCatch()` evaluates its expression in the
+  calling frame -- so `<<-` began its search one frame further out, skipped the
+  local `OPG_meat <- NULL` binding entirely, and assigned into `globalenv()`.
+  The immediately following `solve(OPG_meat)` therefore still saw `NULL` and
+  failed, as did the `MASS::ginv()` fallback, so the OPG standard errors were
+  always `NA`; the sandwich errors, which reuse the same matrix, were `NA` with
+  them. Both failures were reported through the existing handlers as
+  `"OPG matrix singular, using pseudoinverse"` and `"OPG matrix is singular"`,
+  which pointed at a rank problem in the data rather than at the scoping bug.
+  Changed to a plain `<-`. On a fixed-seed `GTRE_Z` fit the parameter estimates
+  and Hessian standard errors are bit-identical before and after, the OPG and
+  sandwich errors change from `NA` to finite values, the two warnings stop
+  firing, and `OPG_meat` no longer appears in the user's workspace.
+
 * **`psfm_bootstrap()` failed on Windows whenever `sfa` was not installed in a
   default library.** The function distributes work over PSOCK cluster workers,
   which start as fresh R sessions holding the *default* library path rather than
@@ -424,6 +442,18 @@
 
 * A singular Hessian now yields `NA` standard errors rather than aborting the
   whole fit.
+
+## Internal changes
+
+* All 76 `stop()` and `warning()` calls in `R/` now pass `call. = FALSE`; 24 of
+  them did not, which made the error output inconsistent between older and newer
+  code paths.
+
+* The seven `sapply()` calls in `psfm.R` -- six extracting ridge/method
+  diagnostics from the GTRE posterior solver, one building the transient
+  efficiency vector -- are now `vapply()` with explicit `numeric(1)` and
+  `character(1)` templates, so a change in what the solver returns fails loudly
+  instead of silently producing a list column.
 
 ## Dependencies
 

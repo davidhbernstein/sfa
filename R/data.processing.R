@@ -221,7 +221,7 @@ data_conform <- function (formula, data,na.action, method = "qr",
   mf[[1L]] <- quote(stats::model.frame)
   mf <- eval(mf, parent.frame())
   if (method == "model.frame")return(mf) else if (method != "qr") 
-    warning(gettextf("method = '%s' is not supported. Using 'qr'", method), domain = NA)
+    warning(gettextf("method = '%s' is not supported. Using 'qr'", method), domain = NA, call. = FALSE)
   mt <- attr(mf, "terms")
   y <- model.response(mf, "numeric")
   x <- model.matrix(mt, mf, contrasts)
