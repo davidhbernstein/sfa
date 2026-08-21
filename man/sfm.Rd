@@ -2,26 +2,43 @@
 \alias{sfm}
 \title{sfm}
 \description{Implementation of the cross-sectional stochastic frontier model across an array of distributional assumptions for both v and u (user specified). For panel models, see the psfm() call.}
-\usage{sfm(formula, model_name, data,maxit.bobyqa,maxit.nlminb,maxit.psoptim,
-maxit.optim,REPORT,
-trace,pgtol,start_val,PSopt,use.nlminb,use.bobyqa,optHessian,inefdec,upper,Method,
-robust=c("mle","mlqe","psi","mdpd"),c_mlqe=0.20,eta,alpha,verbose=FALSE,
-Nsim = "auto",rand.psoptim=NULL,
-estimator=c("mle","cols"),cols_boot=0,rand.cols=NULL)}
+\usage{sfm(formula, model_name = c("NHN", "NHN_Z", "NE", "NE_Z", "NR", "THT",
+                       "NTN", "NG", "NNAK", "NU", "NGE", "NLN", "NW", "tHN"),
+    data, maxit.bobyqa = 10000, maxit.nlminb = 500, maxit.psoptim = 1000,
+    maxit.optim = 1000, REPORT = 1, trace = 2, pgtol = 0,
+    start_val = FALSE, PSopt = FALSE, use.nlminb = "auto",
+    use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper = NA,
+    Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi", "mdpd"),
+    c_mlqe = 0.20, eta = 0.01, alpha = 0.2, verbose = FALSE,
+    Nsim = "auto", rand.psoptim = NULL,
+    estimator = c("mle", "cols"), cols_boot = 0, rand.cols = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
-\item{model_name}{model name for the estimation includes the: normal-half normal (NHN),
-normal-exponential (NE), student's t-half t (THT), Student's t-half normal (tHN),  Normal-Rayleigh (NR),
-the normal-truncated normal (NTN), normal-uniform (NU),
-normal-generalized exponential (NGE), normal-lognormal (NLN) and
-normal-Weibull (NW).}
-\item{data}{A data set}
+\item{model_name}{Which distributional pair to fit. The noise term \eqn{v} is
+normal except where stated, and the one-sided inefficiency term \eqn{u} follows:
+\describe{
+  \item{\code{"NHN"}}{half normal.}
+  \item{\code{"NHN_Z"}}{half normal with heteroskedastic \eqn{\sigma_u}, parameterized by the determinants \eqn{z} given in the second part of the formula (\code{y ~ x | z}) as \eqn{\sigma_u = \exp(z'\delta)}.}
+  \item{\code{"NE"}}{exponential.}
+  \item{\code{"NE_Z"}}{exponential with heteroskedastic \eqn{\sigma_u}, parameterized as for \code{"NHN_Z"}.}
+  \item{\code{"NTN"}}{truncated normal.}
+  \item{\code{"NR"}}{Rayleigh. Note this is a distinct family from \code{"NHN"}, not a reparameterization of it: the Rayleigh density carries an extra factor of \eqn{u}, and its standardized skewness is fixed at -0.631 against the half normal's -0.996.}
+  \item{\code{"NU"}}{uniform.}
+  \item{\code{"NG"}}{gamma. See \code{ng_starts} under \sQuote{Value} -- this likelihood determines \eqn{E[u] = \mu\sigma_u} far better than either factor separately.}
+  \item{\code{"NNAK"}}{Nakagami, with shape \eqn{m}. Nests \code{"NR"} at \eqn{m = 1}. The shape is weakly identified in practice, so \eqn{\sigma_u} and \eqn{m} are strongly correlated across samples.}
+  \item{\code{"NGE"}}{generalized exponential.}
+  \item{\code{"NLN"}}{lognormal. Estimated by simulated maximum likelihood over Halton draws; see \code{Nsim}.}
+  \item{\code{"NW"}}{Weibull. Also simulated maximum likelihood.}
+  \item{\code{"tHN"}}{half normal, with Student-\emph{t} noise.}
+  \item{\code{"THT"}}{half \emph{t}, with Student-\emph{t} noise.}
+}}
+\item{data}{A data frame containing the variables named in \code{formula}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
 \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
 \item{REPORT}{reporting parameter}
-\item{trace}{trace}
-\item{pgtol}{pgtol}
+\item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
+\item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
 \item{start_val}{starting value (optional)}
 \item{PSopt}{use psoptim optimization routine (T or F)}
 \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine.}
@@ -122,7 +139,7 @@ spread of repeated fits). Currently only implemented for
 \code{robust != "mle"} (\code{model_name = "NHN"} only), a sandwich-form SE
 is reported instead of the ordinary Hessian-inverse one -- see Details.}
 
-\seealso{see also}
+\seealso{\code{\link{psfm}} for panel models, \code{\link{zsfm}} for zero-inefficiency models, \code{\link{ttsfm}} for two-tier models, \code{\link{data_gen_cs}} for simulating data with known true parameters, and \code{\link{sfareg-methods}} for extracting results.}
 \value{
 An object of class \code{"sfareg"} containing the following components:
 

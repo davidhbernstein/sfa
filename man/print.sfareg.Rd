@@ -1,15 +1,16 @@
 \name{print.sfareg}
 \alias{print.sfareg}
-\title{sfa Object Summaries}
-\description{print function for stochastic frontier models of sfm(), zsfm(), and psfm() calls.}
+\title{Print method for "sfareg" objects}
+\description{Compact display of a stochastic frontier fit, as returned by \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{zsfm}} or \code{\link{ttsfm}}.}
 \usage{\method{print}{sfareg}(x, \dots)}
 \arguments{
-\item{x}{sfa regression objects of the sfm(), zsfm(), and psfm() calls.}
+\item{x}{An object of class \code{"sfareg"}, as returned by \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{zsfm}} or \code{\link{ttsfm}}.}
 \item{\dots}{Additional arguments passed to other methods}
 }
-\details{Allows for the usage of print()}
+\details{Prints the model name, the estimated coefficients with their standard errors and t-values (the \code{out} matrix), and the log-likelihood where the estimator has one. For a fuller display, including the frontier and variance-parameter blocks, use \code{\link{summary.sfareg}}.}
 \value{No return value, called for side effects}
 \author{David H. Bernstein}
+\seealso{\code{\link{summary.sfareg}}, \code{\link{sfareg-methods}}}
 \examples{
 \donttest{
 library(sfa)     

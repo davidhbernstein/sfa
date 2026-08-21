@@ -10,13 +10,13 @@ Method = "L-BFGS-B", logit = TRUE, verbose = FALSE, rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated. Use \code{y ~ x | zu | zw} to allow determinants \code{zu} of the first one-sided component and \code{zw} of the second.}
 \item{model_name}{model name for the estimation: \code{"TTNE"} for the Normal-Exponential-Exponential two-tier model, \code{"TTHN"} for the Normal-Half Normal-Half Normal two-tier model, or \code{"TTNLS"} for a nonlinear-least-squares two-tier estimator with no distributional assumption on \code{u}/\code{w} beyond their means.}
-\item{data}{A data set}
+\item{data}{A data frame containing the variables named in \code{formula}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
 \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
 \item{REPORT}{reporting parameter}
-\item{trace}{trace}
-\item{pgtol}{pgtol}
+\item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
+\item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
 \item{start_val}{starting value (optional)}
 \item{PSopt}{use psoptim optimization routine (T or F)}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}

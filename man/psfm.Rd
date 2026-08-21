@@ -17,19 +17,32 @@
                     time = NULL, tfe_lambda_max = 100)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
-  \item{model_name}{model name for the estimation}
+  \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
+\describe{
+  \item{\code{"TRE"}, \code{"TRE_Z"}}{Greene's (2005) true random effects, by simulated maximum likelihood. \code{_Z} adds determinants of \eqn{\sigma_u}.}
+  \item{\code{"GTRE"}, \code{"GTRE_Z"}}{the four-component model separating persistent from transient inefficiency, by simulated maximum likelihood. \code{_Z} adds determinants.}
+  \item{\code{"GTRE_FML"}}{the same four-component model by full information maximum likelihood through its closed-skew-normal representation; deterministic, but requires a balanced panel.}
+  \item{\code{"GTRE_SEQ1"}, \code{"GTRE_SEQ2"}}{two-step/moment-based estimators of the four-component model. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"TFE"}}{Greene's (2005) true fixed effects. \bold{Changed meaning in 1.1.3} -- see \sQuote{Details}.}
+  \item{\code{"TFE_WMLE"}}{Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator.}
+  \item{\code{"FD"}}{the first-difference estimator of Wang and Ho (2010).}
+  \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
+  \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
+  \item{\code{"K1990"}, \code{"K1990modified"}}{Kumbhakar (1990) time patterns for inefficiency.}
+}}
   \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table) -- the panel index is constructed internally from the \code{individual} and \code{time} arguments -- or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
   \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
   \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine. Previously hard-coded (200 in the \code{GTRE_FML} branch, 500 elsewhere) and not settable from the call.}
   \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
   \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
   \item{REPORT}{reporting parameter}
-  \item{trace}{trace}
-  \item{pgtol}{pgtol}
+  \item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
+  \item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
   \item{individual}{individual unit in the regression model}
   \item{halton_num}{number of Halton draws to use in SML models}
   \item{start_val}{starting value (optional)}
-  \item{gamma}{gamma}
+  \item{gamma}{Logical. Report the variance parameters in the \eqn{\gamma = \sigma_u^2/(\sigma_u^2 + \sigma_v^2)} parameterization instead of the default. Defaults to \code{FALSE}.}
   \item{PSopt}{use psoptim optimization routine (T or F)}
   \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
   \item{inefdec}{Production or cost function}
@@ -82,10 +95,10 @@ The two are \emph{not} nested and their log-likelihoods are not on the same scal
 
 Note on default iteration counts: \code{psfm()}'s defaults were raised in version 1.1.3, from 100/10/10 for \code{maxit.bobyqa}/\code{maxit.psoptim}/\code{maxit.optim} to 5000/100/1000, and \code{maxit.nlminb} (previously hard-coded) is now an argument. The old values were binding rather than merely economical: the \code{K1990}/\code{K1990modified} branch already carried a note that 100 bobyqa evaluations left its seven-parameter fits several log-likelihood units short of the optimum purely on the iteration cap, and \code{GTRE_FML} at N = 500, T = 10 roughly halves its root-mean-square error against known true values when the caps are lifted, at about 1.5 times the run time. They remain below \code{sfm()}'s defaults because several \code{psfm()} models (\code{GTRE}, \code{GTRE_Z}, \code{TRE}, \code{TRE_Z}) are estimated by simulated maximum likelihood over Halton draws, so each objective evaluation is far more expensive than the closed-form likelihoods used elsewhere. Lower them explicitly if a fast approximate call is wanted.}
 \references{Fillipini and Greene (2016, JPA); Colombi, Kumbhakar, Martini and Vittadini (2014, JPA) on the closed-skew-normal four-component likelihood, with Colombi (2010) and Colombi, Martini and Vittadini (2011) on the two-step estimator used to seed it; Greene (2005, JoE and JPA); Wang and Ho (2010, JoE); Chen, Schmidt and Wang (2014, JoE); Kumbhakar (1990, JoE); Pitt and Lee (1980, JoE); Battese and Coelli (1992, JPA); Battese and Coelli (1988, JoE); Jondrow, Lovell, Materov and Schmidt (1982, JoE); Schmidt and Sickles (1984, JBES)}
-\author{David Bernstein}
+\author{David H. Bernstein}
 \note{Standard errors require optHessian set to TRUE}
 
-\seealso{see also}
+\seealso{\code{\link{sfm}} for cross-sectional models, \code{\link{psfm_bootstrap}} for bootstrap standard errors, \code{\link{data_gen_p}} for simulating panel data with known true parameters, and \code{\link{sfareg-methods}} for extracting results.}
 \value{
 An object of class \code{"sfareg"} containing components that vary by model. All models return:
 

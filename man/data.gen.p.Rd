@@ -39,6 +39,9 @@
  \item \code{u_gtre, z_gtre, zp_gtre, y_gtre_z,y_gtre_zz,y_tre_z} Variables for models with heteroskedastic inefficiency (\eqn{\sigma_{u,i} = \exp(0.33 + 0.61 Z_{i}))}.  Variables for models with heteroskedastic persistent inefficiency (\eqn{\sigma_{h,i} = \exp(0.25 + 0.21 Z_{i}))}.
  \item \code{u_inv, y_ssfe} Time-invariant firm-level inefficiency (\eqn{u_i \sim |N(0,\sigma_u^2)|}, constant within individual across \eqn{t}) and the corresponding output variable, for \code{\link{psfm}}'s \code{"SSFE"} and \code{"PL80"}.
  \item \code{u_bc92, y_bc92} Time-varying inefficiency following a Battese-Coelli (1992) decay structure (\eqn{u_{it} = u_i \exp(-\eta(T_i - t))}) and the corresponding output variable, for \code{\link{psfm}}'s \code{"BC92"}.
+ \item \code{B_k90, u_k90, y_k1990} The Kumbhakar (1990) inefficiency path \eqn{B_{it} = (1 + \exp(b t + c t^2))^{-1}} (controlled by \code{b_k90}, \code{c_k90}), the resulting inefficiency \eqn{u_{it} = B_{it} u_i}, and the corresponding output variable, for \code{\link{psfm}}'s \code{"K1990"}.
+ \item \code{B_k90m, u_k90m, y_k1990m} The modified Kumbhakar path \eqn{B_{it} = 1 + d(t - T_i) + e(t - T_i)^2} (controlled by \code{d_k90}, \code{e_k90}), the resulting inefficiency, and the corresponding output variable, for \code{\link{psfm}}'s \code{"K1990modified"}.
+ \item \code{h_z} The heteroskedastic persistent inefficiency \eqn{h_i} expanded to one value per observation (constant within individual), used to build \code{y_gtre_zz}.
  }
   The data is generated based on standard Stochastic Frontier Analysis (SFA) formulations, primarily for a **Production Frontier** where the one-sided error component \eqn{u_{it}} is subtracted:
 
@@ -71,8 +74,8 @@ Filippini, M., & Greene, W. H. (2016). Persistent and transient productive ineff
 
 Wang, H., & Ho, C. M. (2010). Estimating fixed-effect panel stochastic frontier models by model transformation. \emph{Journal of Econometrics}, 157(2), 286-296.
 }
-\author{David Bernstein}
-\seealso{data_gen_p, to see all the data generating processes}
+\author{David H. Bernstein}
+\seealso{\code{\link{data_gen_cs}} for the cross-sectional generator, and \code{\link{psfm}} for the estimators these columns are built for.}
 \examples{library(sfa) 
 # Generate a dataset 
 data_trial <- data_gen_p(t=10, N=100, rand = 100, 

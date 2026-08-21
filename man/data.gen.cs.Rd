@@ -71,12 +71,19 @@
   \item{prob_z_true}{The true heteroskedastic "efficient regime" probability used to draw \code{eff_ind_z}.}
   \item{y_zisf}{Zero-inefficiency dependent variable with constant efficient-regime probability, for \code{\link{zsfm}}'s \code{"ZISF"}.}
   \item{y_zisf_z}{Zero-inefficiency dependent variable with \code{z}-dependent efficient-regime probability, for \code{\link{zsfm}}'s \code{"ZISF_Z"}.}
+  \item{u_g, y_pcs_g}{Gamma one-sided error term and the corresponding dependent variable, for \code{\link{sfm}}'s \code{"NG"}. Shape \code{shape_g}, scale \code{sig_u/shape_g}, so \eqn{E[u] = \sigma_u} whatever shape is chosen.}
+  \item{u_nak, y_pcs_nak}{Nakagami one-sided error term and dependent variable, for \code{\link{sfm}}'s \code{"NNAK"}. Shape \code{m_nak}, spread \eqn{\Omega = \sigma_u^2}. The default \code{m_nak = 1} is the Rayleigh case, so this column coincides in distribution with \code{y_pcs_r} at the default.}
+  \item{u_ge, y_pcs_ge}{Generalized-exponential one-sided error term and dependent variable, for \code{\link{sfm}}'s \code{"NGE"}, drawn as \eqn{u = -\sigma_u\log(1 - \sqrt{U})} with \eqn{U \sim \mathrm{Unif}(0,1)}.}
+  \item{u_ln, y_pcs_ln}{Lognormal one-sided error term and dependent variable, for \code{\link{sfm}}'s \code{"NLN"}. Log-scale mean \code{mu_ln} and log-scale standard deviation \code{sig_u}.}
+  \item{u_w, y_pcs_wb}{Weibull one-sided error term and dependent variable, for \code{\link{sfm}}'s \code{"NW"}. Shape \code{k_w}, scale \code{sig_u}.}
   \item{con}{A constant column set to 1, potentially for use in estimation.}
 }
 \seealso{
+  \code{\link{data_gen_p}} for the panel generator, and \code{\link{sfm}}, \code{\link{zsfm}} and \code{\link{ttsfm}} for the estimators these columns are built for.
+
   \code{\link[stats]{rnorm}}, \code{\link[stats]{runif}}, \code{\link[stats]{rt}}, \code{\link[stats]{rexp}}, \code{\link[stats]{rcauchy}}, \code{\link[truncnorm]{rtruncnorm}} (if available).
 }
-\author{David Bernstein}
+\author{David H. Bernstein}
 \examples{
 
 # Generate 100 observations of SFA data

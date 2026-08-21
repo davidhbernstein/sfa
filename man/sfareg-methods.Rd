@@ -45,10 +45,11 @@ that \code{AIC()}/\code{BIC()} work automatically. Every estimator in this
 package minimizes the negative summed log-likelihood internally, so
 \code{logLik = -object$opt$value}. \strong{Exception:} \code{psfm()}'s
 \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} models are estimated by a
-moment-based procedure, not maximum likelihood, and carry no \code{$opt}
-component -- calling \code{logLik()} (or, transitively, \code{AIC()}/
-\code{BIC()}) on those fits returns \code{NA} with a warning rather than
-erroring.
+moment-based procedure and \code{"SSFE"} by fixed-effects (LSDV)
+regression, not by maximum likelihood; none of the three carries an
+\code{$opt} component, so calling \code{logLik()} (or, transitively,
+\code{AIC()}/\code{BIC()}) on those fits returns \code{NA} with a warning
+rather than erroring.
 
 \code{nobs.sfareg} returns the number of observations used in estimation,
 recovered from \code{object$data} when the fitting function stored it, or

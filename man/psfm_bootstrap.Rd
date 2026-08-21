@@ -205,9 +205,7 @@ A list with components:
     \code{psfm_object} with \code{$out[,2]} and \code{$out[,3]} replaced by
     the bootstrap standard errors and t-values.}
 }
-\author{
-David H. Bernstein, Chris Parmeter
-}
+\author{David H. Bernstein and Christopher F. Parmeter}
 \seealso{
 \code{\link[sfa]{psfm}}, \code{\link[parallel]{parLapply}},
 \code{\link[pbapply]{pblapply}}, \code{\link[Formula]{Formula}}

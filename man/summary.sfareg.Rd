@@ -1,15 +1,16 @@
 \name{summary.sfareg}
 \alias{summary.sfareg}
-\title{sfa Object Summaries}
-\description{Summary function for stochastic frontier models of sfm(), zsfm(), and psfm() calls.}
+\title{Summary method for "sfareg" objects}
+\description{Summary of a stochastic frontier fit, as returned by \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{zsfm}} or \code{\link{ttsfm}}.}
 \usage{\method{summary}{sfareg}(object, \dots)}
 \arguments{
-\item{object}{sfa regression objects of the sfm(), zsfm(), and psfm() calls.}
+\item{object}{An object of class \code{"sfareg"}, as returned by \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{zsfm}} or \code{\link{ttsfm}}.}
 \item{\dots}{Additional arguments passed to other methods}
 }
-\details{Allows for the usage of summary()}
-\value{prints while returning the \code{sfareg} object}
-\author{David Bernstein}
+\details{Prints the call, the model name, and the estimated parameters with standard errors and t-values, together with the log-likelihood and the number of observations where the estimator provides them. Which parameters appear depends on the model: several report the \eqn{\lambda = \sigma_u/\sigma_v}, \eqn{\sigma = \sqrt{\sigma_u^2 + \sigma_v^2}} reparameterization rather than the raw scale parameters.}
+\value{Invisibly returns its \code{object} argument unchanged, having printed the summary as a side effect.}
+\author{David H. Bernstein}
+\seealso{\code{\link{print.sfareg}}, \code{\link{sfareg-methods}}}
 \examples{
 \donttest{
 library(sfa)     
