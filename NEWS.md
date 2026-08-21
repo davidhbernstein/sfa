@@ -74,6 +74,19 @@
     local-linear regressions give `sigma_u(x)` and `sigma_v(x)` pointwise, so
     both variance components vary with the covariates. No optimizer runs.
     Normal-half normal only.
+  - `method = "PSZ"` (alias `"KPST"`) -- Park, Simar and Zelenyuk. Local
+    maximum likelihood: the frontier and both log variance components get
+    local-linear expansions and the kernel-weighted normal-half normal
+    likelihood is maximized in those `3(k+1)` parameters, once per observation.
+  - `method = "MY"` -- Martins-Filho and Yao. Iterative local likelihood,
+    alternating local frontier fits with a global update of `(lambda, sigma)`.
+  - `method = "SZ"` -- Simar and Zelenyuk (2011). Passes an existing smooth
+    frontier through an output-oriented DEA to impose monotonicity and
+    convexity. Needs the **Benchmarking** package, also in `Suggests`.
+
+  `"PSZ"` and `"MY"` run one numerical optimization per observation (for
+  `"MY"`, per observation per iteration), so they are one to two orders of
+  magnitude slower than `"FLW"`. Both are seeded from an `"FLW"` fit.
 
   Ported from Christopher Parmeter's research scripts. Results return as class
   `"npsfareg"` rather than `"sfareg"`: there is no parameter vector with
@@ -85,8 +98,17 @@
   than `Imports` -- nothing else in `sfa` needs it, and `npsfm()` checks for it
   and stops with an install instruction if it is absent.
 
+  A correction worth recording, because it is easy to repeat: the two
+  local-likelihood estimators maximize the *composed-error* likelihood, in
+  which the local intercept is the frontier `m(x)` itself. They therefore take
+  **no** half-normal mean shift, unlike the least-squares methods, whose first
+  stage estimates `E[y|x] = m(x) - E[u]` and does need one. Applying the shift
+  to `"PSZ"`/`"MY"` biases the whole frontier up by about `E[u]`; mean absolute
+  frontier error at `n = 300` fell from 0.372 to 0.116 (`"PSZ"`) and 0.410 to
+  0.070 (`"MY"`) once it was removed.
+
   Against a simulated nonlinear frontier with `sigma_u = 0.6`, `sigma_v = 0.25`,
-  both estimators converge as `n` grows (6 replications at each size):
+  both least-squares estimators converge as `n` grows (6 replications at each size):
   `FLW` recovers `sigma_u` = 0.560, 0.539, 0.595 at `n` = 150, 300, 600, and
   `SVKZ` 0.477, 0.506, 0.559, with mean absolute frontier error falling from
   0.102 to 0.043 and 0.206 to 0.079 respectively. `SVKZ`'s downward bias at

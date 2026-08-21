@@ -250,20 +250,37 @@
 ## ---------------------------------------------------------------------------
 ## User-facing entry point
 ## ---------------------------------------------------------------------------
-npsfm <- function(formula, data, method = c("FLW", "SVKZ"),
+npsfm <- function(formula, data, method = c("FLW", "SVKZ", "PSZ", "KPST", "MY", "SZ"),
                   dist = c("hn", "exp", "gamma", "unif"),
                   regtype = c("lc", "ll"), bw.sel = c("cv.ls", "cv.aic"),
-                  bw = NULL, cost = FALSE, eff = TRUE) {
+                  bw = NULL, cost = FALSE, eff = TRUE,
+                  maxit = 5000, tol = 1e-3, iter = 25,
+                  rts = c("vrs", "crs", "drs", "irs"),
+                  prior.fit = NULL, log.form = TRUE, verbose = FALSE) {
   .npsfm_need_np()
+
+  ## np prints "Multistart 1 of 1" progress from every bandwidth search, which
+  ## floods the console when npsfm() is called in a loop (a Monte Carlo sweep,
+  ## for instance). Silence it for the duration of the call unless the user
+  ## asked for progress, and restore whatever they had set.
+  old_np_msg <- getOption("np.messages")
+  options(np.messages = isTRUE(verbose))
+  on.exit(options(np.messages = old_np_msg), add = TRUE)
 
   method <- match.arg(method)
   regtype <- match.arg(regtype)
   bw.sel <- match.arg(bw.sel)
   dist <- match.arg(dist)
+  rts <- match.arg(rts)
 
-  if (method == "SVKZ" && dist != "hn") {
-    stop("method = \"SVKZ\" is derived for the normal-half normal model only; ",
-      "dist = \"", dist, "\" is not available for it.",
+  ## "KPST" is the alternative name for the Park-Simar-Zelenyuk estimator that
+  ## the source scripts accepted; keep it working but normalize internally.
+  if (method == "KPST") method <- "PSZ"
+
+  if (method != "FLW" && dist != "hn") {
+    stop("method = \"", method, "\" is derived for the normal-half normal ",
+      "model only; dist = \"", dist, "\" is available for method = \"FLW\" ",
+      "alone.",
       call. = FALSE
     )
   }
@@ -291,11 +308,13 @@ npsfm <- function(formula, data, method = c("FLW", "SVKZ"),
   n_obs <- length(ydat)
 
   start_time <- Sys.time()
-  fit <- if (method == "FLW") {
-    .npsfm_flw(xdat, ydat, dist, regtype, bw.sel, bw, cost)
-  } else {
-    .npsfm_svkz(xdat, ydat, bw.sel, cost)
-  }
+  fit <- switch(method,
+    FLW  = .npsfm_flw(xdat, ydat, dist, regtype, bw.sel, bw, cost),
+    SVKZ = .npsfm_svkz(xdat, ydat, bw.sel, cost),
+    PSZ  = .npsfm_psz(xdat, ydat, bw.sel, bw, cost, maxit, verbose),
+    MY   = .npsfm_my(xdat, ydat, bw.sel, bw, cost, tol, iter, maxit, verbose),
+    SZ   = .npsfm_sz(xdat, ydat, bw.sel, bw, cost, rts, prior.fit, log.form)
+  )
   total_time <- Sys.time() - start_time
 
   ## Observation-level inefficiency predictions. The composed residual is
@@ -327,7 +346,11 @@ npsfm <- function(formula, data, method = c("FLW", "SVKZ"),
     sigma.u = fit$sigma_u, sigma.v = fit$sigma_v,
     lambda = fit$lambda, sigma = fit$sigma,
     theta = fit$theta, b = fit$b,
-    sigma.u.grad = fit$sigma_u_grad, wrong.skew = fit$wrong_skew,
+    sigma.u.grad = fit$sigma_u_grad, sigma.v.grad = fit$sigma_v_grad,
+    wrong.skew = fit$wrong_skew, convergence = fit$convergence,
+    iterations = fit$iterations, converged = fit$converged,
+    tol.reached = fit$tol_reached, prior.fit = fit$prior.fit,
+    dea.efficiency = fit$dea.efficiency, rts = fit$rts,
     u_hat = u_hat, exp_u_hat = exp_u_hat,
     bws = fit$bws, cost = cost, regtype = regtype, bw.sel = bw.sel,
     nobs = n_obs, total_time = total_time, data = data
@@ -401,3 +424,318 @@ fitted.npsfareg <- function(object, ...) object$frontier
 residuals.npsfareg <- function(object, ...) object$residuals
 
 nobs.npsfareg <- function(object, ...) object$nobs
+
+
+## ---------------------------------------------------------------------------
+## Kernel weights, for the local-likelihood estimators below.
+##
+## The source scripts obtained these with np::npksum(). Computing the Gaussian
+## product kernel directly is equivalent, transparent, and avoids depending on
+## npksum's argument conventions -- np is still used for bandwidth selection,
+## which is the part worth borrowing.
+## ---------------------------------------------------------------------------
+.npsfm_kw <- function(xm, j, bw) {
+  z <- sweep(xm, 2L, xm[j, ], "-")
+  z <- sweep(z, 2L, bw, "/")
+  w <- exp(rowSums(dnorm(z, log = TRUE)))
+  ## A degenerate weight vector (every point too far away) would make the local
+  ## problem rank deficient; fall back to a flat weighting rather than fail.
+  if (!any(is.finite(w)) || sum(w) <= .SFA_CONSTANTS$MIN_POSITIVE) {
+    w <- rep(1, nrow(xm))
+  }
+  w
+}
+
+## Log density of the normal-half normal composed error, in (lambda, sigma).
+## Constants that do not depend on the parameters are dropped.
+.lnhn <- function(e, lambda, sigma) {
+  -log(sigma) + pnorm(-e * lambda / sigma, log.p = TRUE) - 0.5 * e^2 / sigma^2
+}
+
+
+## ---------------------------------------------------------------------------
+## PSZ / KPST: Park, Simar and Zelenyuk. Local maximum likelihood.
+##
+## At each evaluation point the frontier and BOTH variance components are
+## given local-linear expansions, the latter on the log scale so they stay
+## positive:
+##   r(w)             ~ r0 + (w - w_j)'r1
+##   log sigma_v^2(w) ~ a0 + (w - w_j)'a1
+##   log sigma_u^2(w) ~ b0 + (w - w_j)'b1
+## and the kernel-weighted normal-half normal log-likelihood is maximized in
+## those 3q parameters, once per evaluation point.
+## ---------------------------------------------------------------------------
+.psz_nll <- function(par, yv, wm, K, q) {
+  r0 <- par[1]
+  r1 <- par[2:q]
+  a0 <- par[q + 1]
+  a1 <- par[(q + 2):(2 * q)]
+  b0 <- par[2 * q + 1]
+  b1 <- par[(2 * q + 2):(3 * q)]
+
+  ei <- yv - r0 - as.numeric(wm %*% r1)
+  ls2v <- a0 + as.numeric(wm %*% a1)
+  ls2u <- b0 + as.numeric(wm %*% b1)
+
+  ## Keep the exponentials inside representable range
+  ls2v <- pmin(pmax(ls2v, -.SFA_CONSTANTS$EXP_CLIP_UPPER), .SFA_CONSTANTS$EXP_CLIP_UPPER)
+  ls2u <- pmin(pmax(ls2u, -.SFA_CONSTANTS$EXP_CLIP_UPPER), .SFA_CONSTANTS$EXP_CLIP_UPPER)
+
+  s2 <- exp(ls2u) + exp(ls2v)
+  if (any(!is.finite(s2)) || any(s2 <= 0)) {
+    return(.SFA_CONSTANTS$MAX_VALUE)
+  }
+  zz <- -ei * exp(ls2u / 2 - ls2v / 2) / sqrt(s2)
+  ll <- -log(s2) / 2 - ei^2 / (2 * s2) + pnorm(zz, log.p = TRUE)
+  val <- sum(ll * K)
+  if (!is.finite(val)) {
+    return(.SFA_CONSTANTS$MAX_VALUE)
+  }
+  -val
+}
+
+.npsfm_psz <- function(xdat, ydat, bw.sel, bw, cost, maxit, verbose) {
+  cost_sc <- if (cost) -1 else 1
+  yv <- cost_sc * ydat
+  xm <- as.matrix(xdat)
+  n <- length(yv)
+  q <- ncol(xm) + 1L
+
+  ## Seed from an FLW fit: it supplies the local intercept/slope start and
+  ## global variance components, which is the "prior fit" the paper assumes.
+  seed <- .npsfm_flw(xdat, ydat, "hn", "ll", bw.sel, bw, cost)
+  bwv <- as.numeric(seed$bws$bw)
+  s2v0 <- log(max(seed$sigma_v^2, .SFA_CONSTANTS$MIN_POSITIVE))
+  s2u0 <- log(max(seed$sigma_u^2, .SFA_CONSTANTS$MIN_POSITIVE))
+
+  par_store <- matrix(NA_real_, n, 3L * q)
+  conv <- integer(n)
+
+  for (j in seq_len(n)) {
+    if (verbose && j %% 25L == 0L) {
+      message("PSZ: observation ", j, " of ", n)
+    }
+    K <- .npsfm_kw(xm, j, bwv)
+    wm <- sweep(xm, 2L, xm[j, ], "-")
+    start <- c(
+      cost_sc * seed$frontier[j], cost_sc * seed$frontier_grad[j, ],
+      s2v0, rep(0, q - 1L),
+      s2u0, rep(0, q - 1L)
+    )
+    fitj <- tryCatch(
+      minqa::bobyqa(start, .psz_nll,
+        control = list(maxfun = maxit),
+        yv = yv, wm = wm, K = K, q = q
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(fitj)) {
+      par_store[j, ] <- start
+      conv[j] <- -1L
+    } else {
+      par_store[j, ] <- fitj$par
+      conv[j] <- fitj$ierr
+    }
+  }
+
+  sigma_v <- sqrt(exp(pmin(par_store[, q + 1L], .SFA_CONSTANTS$EXP_CLIP_UPPER)))
+  sigma_u <- sqrt(exp(pmin(par_store[, 2L * q + 1L], .SFA_CONSTANTS$EXP_CLIP_UPPER)))
+  mu <- sqrt(2 / pi) * sigma_u
+
+  ## NO mean correction here. The local objective is the normal-half normal
+  ## COMPOSED-ERROR likelihood, in which e = y - r0 - (w-w_j)'r1 is eps = v-u
+  ## with E[eps] = -E[u] rather than a mean-zero residual. r0 is therefore
+  ## already the frontier m(w_j); adding sqrt(2/pi)*sigma_u on top of it
+  ## biases the whole frontier up by about E[u]. (FLW is different: its first
+  ## stage is a least-squares kernel regression, which does estimate E[y|x],
+  ## so there the shift is required.)
+  frontier <- cost_sc * par_store[, 1L]
+  frontier_grad <- cost_sc * par_store[, 2:q, drop = FALSE]
+
+  list(
+    frontier = frontier, frontier_grad = frontier_grad,
+    residuals = ydat - frontier,
+    sigma_u = sigma_u, sigma_v = sigma_v, mean_correction = mu,
+    conditional_mean = frontier - cost_sc * mu,
+    sigma_v_grad = par_store[, (q + 2L):(2L * q), drop = FALSE],
+    sigma_u_grad = par_store[, (2L * q + 2L):(3L * q), drop = FALSE],
+    convergence = conv, bws = seed$bws
+  )
+}
+
+
+## ---------------------------------------------------------------------------
+## MY: Martins-Filho and Yao. Iterative local likelihood.
+##
+## Alternates between (i) a local-linear fit of the frontier at every
+## evaluation point, holding (lambda, sigma) fixed, and (ii) a global update
+## of (lambda, sigma) from the resulting residuals, until the scale parameters
+## stop moving. Step (i) is n optimizations, so the cost is n * iterations.
+## ---------------------------------------------------------------------------
+.my_local_nll <- function(par, yv, wm, K, lambda, sigma) {
+  e <- yv - par[1] - as.numeric(wm %*% par[-1])
+  val <- sum(.lnhn(e, lambda, sigma) * K)
+  if (!is.finite(val)) {
+    return(.SFA_CONSTANTS$MAX_VALUE)
+  }
+  -val
+}
+
+.my_global_nll <- function(par, e) {
+  lambda <- par[1]
+  sigma <- par[2]
+  if (!is.finite(lambda) || !is.finite(sigma) || lambda <= 0 || sigma <= 0) {
+    return(.SFA_CONSTANTS$MAX_VALUE)
+  }
+  val <- sum(.lnhn(e, lambda, sigma))
+  if (!is.finite(val)) {
+    return(.SFA_CONSTANTS$MAX_VALUE)
+  }
+  -val
+}
+
+.npsfm_my <- function(xdat, ydat, bw.sel, bw, cost, tol, iter, maxit, verbose) {
+  cost_sc <- if (cost) -1 else 1
+  yv <- cost_sc * ydat
+  xm <- as.matrix(xdat)
+  n <- length(yv)
+  q <- ncol(xm) + 1L
+
+  ## Step 1 of the paper: FLW supplies the starting frontier and scale.
+  seed <- .npsfm_flw(xdat, ydat, "hn", "ll", bw.sel, bw, cost)
+  bwv <- as.numeric(seed$bws$bw)
+  theta <- c(
+    max(seed$lambda, 1e-3),
+    max(sqrt(seed$sigma_u^2 + seed$sigma_v^2), 1e-3)
+  )
+  ab <- cbind(cost_sc * seed$frontier, cost_sc * seed$frontier_grad)
+
+  ## Precompute the kernel weights and centred designs once; they do not
+  ## change across iterations, and recomputing them was most of the cost of
+  ## the original script.
+  Klist <- vector("list", n)
+  Wlist <- vector("list", n)
+  for (j in seq_len(n)) {
+    Klist[[j]] <- .npsfm_kw(xm, j, bwv)
+    Wlist[[j]] <- sweep(xm, 2L, xm[j, ], "-")
+  }
+
+  step <- 1L
+  dif <- Inf
+  while (step <= iter && dif > tol) {
+    for (j in seq_len(n)) {
+      fitj <- tryCatch(
+        stats::optim(ab[j, ], .my_local_nll,
+          method = "BFGS", control = list(maxit = maxit),
+          yv = yv, wm = Wlist[[j]], K = Klist[[j]],
+          lambda = theta[1], sigma = theta[2]
+        )$par,
+        error = function(e) ab[j, ]
+      )
+      ab[j, ] <- fitj
+    }
+    ## Step 3: global update of (lambda, sigma) from the local intercepts
+    e_opt <- yv - ab[, 1L]   ## composed errors eps = v - u, not centered
+    new_theta <- tryCatch(
+      stats::optim(theta, .my_global_nll,
+        method = "L-BFGS-B",
+        lower = c(1e-4, 1e-4), upper = c(50, 50), e = e_opt
+      )$par,
+      error = function(e) theta
+    )
+    dif <- sum((theta - new_theta)^2)
+    theta <- new_theta
+    if (verbose) {
+      message("MY: iteration ", step, ", change ", signif(dif, 4))
+    }
+    step <- step + 1L
+  }
+  converged <- dif <= tol
+
+  lambda <- theta[1]
+  sigma <- theta[2]
+  sigma_v <- sigma / sqrt(1 + lambda^2)
+  sigma_u <- sigma_v * lambda
+  mu <- sqrt(2 / pi) * sigma_u
+
+  ## As in PSZ: the local objective is the composed-error likelihood, so the
+  ## local intercept is the frontier itself and takes no mean correction.
+  frontier <- cost_sc * ab[, 1L]
+  frontier_grad <- cost_sc * ab[, 2:q, drop = FALSE]
+
+  list(
+    frontier = frontier, frontier_grad = frontier_grad,
+    residuals = ydat - frontier,
+    sigma_u = sigma_u, sigma_v = sigma_v, lambda = lambda, sigma = sigma,
+    mean_correction = mu, conditional_mean = frontier - cost_sc * mu,
+    iterations = step - 1L, tol_reached = dif, converged = converged,
+    bws = seed$bws
+  )
+}
+
+
+## ---------------------------------------------------------------------------
+## SZ: Simar and Zelenyuk (2011). DEA monotonization of a prior fit.
+##
+## Takes an already-estimated nonparametric frontier and passes its fitted
+## values through an output-oriented DEA, which imposes monotonicity and (under
+## "vrs"/"crs") convexity that the kernel fit does not guarantee. Needs
+## Benchmarking::dea.
+##
+## The source script for this one did not parse -- SZ.fun was missing its
+## opening brace, so its body was a lone warning() call and everything after
+## it ran at file scope. It also referred to `...` without having it in the
+## formals and to an undefined `dist`.
+## ---------------------------------------------------------------------------
+.npsfm_sz <- function(xdat, ydat, bw.sel, bw, cost, rts, prior.fit, log.form) {
+  if (!requireNamespace("Benchmarking", quietly = TRUE)) {
+    stop("method = \"SZ\" requires the 'Benchmarking' package for its DEA step, ",
+      "which is not installed. ",
+      'Install it with install.packages("Benchmarking").',
+      call. = FALSE
+    )
+  }
+  if (cost) {
+    stop("method = \"SZ\" is implemented for production frontiers only ",
+      "(cost = FALSE).",
+      call. = FALSE
+    )
+  }
+
+  ## Stage 1: a smooth frontier to monotonize. Default to SVKZ, as the paper does.
+  base <- NULL
+  if (is.null(prior.fit)) {
+    base <- .npsfm_svkz(xdat, ydat, bw.sel, cost = FALSE)
+    prior.fit <- base$frontier
+  }
+  if (length(prior.fit) != length(ydat)) {
+    stop("`prior.fit` must have one fitted value per observation (",
+      length(ydat), "); got ", length(prior.fit), ".",
+      call. = FALSE
+    )
+  }
+
+  ## DEA operates on levels. The frontier is in logs when the model was fitted
+  ## to logged data, which is the usual convention in this literature.
+  Y <- if (log.form) exp(prior.fit) else prior.fit
+  X <- if (log.form) exp(as.matrix(xdat)) else as.matrix(xdat)
+
+  dea_fit <- Benchmarking::dea(X = X, Y = matrix(Y, ncol = 1L),
+                               RTS = rts, ORIENTATION = "out")
+  eff <- as.numeric(Benchmarking::eff(dea_fit))
+  dea_front <- Y * eff
+
+  frontier <- if (log.form) log(dea_front) else dea_front
+
+  list(
+    frontier = frontier,
+    frontier_grad = if (!is.null(base)) base$frontier_grad else NULL,
+    residuals = ydat - frontier,
+    sigma_u = if (!is.null(base)) base$sigma_u else NA_real_,
+    sigma_v = if (!is.null(base)) base$sigma_v else NA_real_,
+    mean_correction = if (!is.null(base)) base$mean_correction else NA_real_,
+    conditional_mean = if (!is.null(base)) base$conditional_mean else prior.fit,
+    prior.fit = prior.fit, dea.efficiency = eff, rts = rts,
+    bws = if (!is.null(base)) base$bws else NULL
+  )
+}

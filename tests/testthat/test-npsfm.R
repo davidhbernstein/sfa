@@ -131,3 +131,83 @@ test_that("the exponential branch inverts its moments", {
   expect_equal(1 / f$theta, f$sigma.u, tolerance = 1e-8)
   expect_true(all(f$exp_u_hat > 0 & f$exp_u_hat <= 1))
 })
+
+test_that("PSZ returns per-observation sigmas and a convergence code", {
+  skip_if_not_installed("np")
+  skip_on_cran()
+  g <- np_data(80, seed = 3)
+  f <- npsfm(y ~ x1 + x2, data = g$d, method = "PSZ")
+  expect_s3_class(f, "npsfareg")
+  expect_length(f$sigma.u, nrow(g$d))
+  expect_length(f$sigma.v, nrow(g$d))
+  expect_true(all(f$sigma.u > 0))
+  expect_length(f$convergence, nrow(g$d))
+  expect_equal(dim(f$frontier.grad), c(nrow(g$d), 2L))
+  ## "KPST" is an accepted alias and must give the identical fit
+  f2 <- npsfm(y ~ x1 + x2, data = g$d, method = "KPST")
+  expect_equal(f$frontier, f2$frontier)
+  expect_equal(f2$method, "PSZ")
+})
+
+test_that("MY iterates and reports its convergence state", {
+  skip_if_not_installed("np")
+  skip_on_cran()
+  g <- np_data(80, seed = 3)
+  f <- npsfm(y ~ x1 + x2, data = g$d, method = "MY", iter = 5)
+  expect_length(f$sigma.u, 1L)
+  expect_true(f$iterations >= 1L && f$iterations <= 5L)
+  expect_type(f$converged, "logical")
+  expect_true(is.finite(f$lambda) && f$lambda > 0)
+  expect_equal(f$sigma.u / f$sigma.v, f$lambda, tolerance = 1e-6)
+})
+
+test_that("local-likelihood frontiers carry no half-normal mean shift", {
+  skip_if_not_installed("np")
+  skip_on_cran()
+  ## PSZ/MY maximize the composed-error likelihood, so their local intercept
+  ## IS the frontier. Adding sqrt(2/pi)*sigma_u on top of it -- as the
+  ## least-squares methods require -- biases the frontier up by about E[u].
+  ## Guard against that regression: the fitted frontier must sit close to the
+  ## truth, not a systematic ~E[u] above it.
+  g <- np_data(150, seed = 701)
+  for (meth in c("PSZ", "MY")) {
+    f <- npsfm(y ~ x1 + x2, data = g$d, method = meth)
+    bias <- mean(f$frontier - g$m)
+    expect_lt(abs(bias), 0.35)
+    ## and the conditional mean must sit BELOW the frontier by E[u]
+    expect_true(all(f$conditional.mean <= f$frontier + 1e-8))
+  }
+})
+
+test_that("non-half-normal distributions are refused by every method but FLW", {
+  skip_if_not_installed("np")
+  g <- np_data(40)
+  for (meth in c("SVKZ", "PSZ", "MY", "SZ")) {
+    expect_error(
+      npsfm(y ~ x1 + x2, data = g$d, method = meth, dist = "exp"),
+      "normal-half normal"
+    )
+  }
+})
+
+test_that("SZ monotonizes a prior fit and refuses cost frontiers", {
+  skip_if_not_installed("np")
+  skip_if_not_installed("Benchmarking")
+  skip_on_cran()
+  g <- np_data(60, seed = 9)
+  expect_error(
+    npsfm(y ~ x1 + x2, data = g$d, method = "SZ", cost = TRUE),
+    "production frontiers only"
+  )
+  f <- npsfm(y ~ x1 + x2, data = g$d, method = "SZ")
+  expect_length(f$dea.efficiency, nrow(g$d))
+  ## output-oriented DEA efficiencies are >= 1, so the DEA frontier is never
+  ## below the smooth fit it monotonizes
+  expect_true(all(f$dea.efficiency >= 1 - 1e-8))
+  expect_true(all(f$frontier >= f$prior.fit - 1e-8))
+  ## a supplied prior fit of the wrong length is rejected
+  expect_error(
+    npsfm(y ~ x1 + x2, data = g$d, method = "SZ", prior.fit = c(1, 2, 3)),
+    "one fitted value per observation"
+  )
+})
