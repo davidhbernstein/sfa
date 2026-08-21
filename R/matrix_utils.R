@@ -1708,7 +1708,18 @@
   if (is.null(Sigma_i)) {
     return(NULL)
   }
-  Lambda <- V - V %*% t(A) %*% solve(Sig) %*% A %*% V
+  ## Guard this the same way as solve(Sigma) directly above. It was a bare
+  ## solve(), so an optimizer probing a parameter vector where Sig is singular
+  ## got a Lapack EXCEPTION instead of the NULL that every caller here already
+  ## treats as "bad parameters, return the penalty". That surfaced as
+  ## psfm(model_name = "GTRE_FML") dying mid-fit with
+  ## "Lapack routine dgesv: system is exactly singular" under tight optimizer
+  ## caps, rather than simply stepping away from the bad point.
+  Sig_i <- tryCatch(solve(Sig), error = function(err) NULL)
+  if (is.null(Sig_i)) {
+    return(NULL)
+  }
+  Lambda <- V - V %*% t(A) %*% Sig_i %*% A %*% V
   R <- Lambda %*% t(A) %*% Sigma_i
 
   list(
@@ -2038,4 +2049,59 @@
       log(pmax(br, .Machine$double.xmin))
   }
   out
+}
+
+
+## ---------------------------------------------------------------------------
+## Case-insensitive matching for model / estimator names.
+##
+## match.arg() is case SENSITIVE, so psfm(model_name = "gtre") errored with a
+## list of valid names that visibly contained what the user had just typed.
+## None of the five entry points has a case collision among its choices --
+## sfm()'s "THT" and "tHN" differ in more than case -- so folding case is
+## unambiguous and the canonical spelling is always recoverable.
+##
+## Exact (case-insensitive) matches win over partial ones, which matters here:
+## "GTRE" is a prefix of "GTRE_Z", "GTRE_FML", "GTRE_SEQ1" and "GTRE_SEQ2", and
+## must resolve to itself rather than being called ambiguous.
+## ---------------------------------------------------------------------------
+.match_model_name <- function(x, choices, arg = "model_name") {
+  if (missing(x) || is.null(x) || !length(x)) {
+    return(choices[1])
+  }
+  ## The unevaluated default is the whole choice vector; match.arg() treats
+  ## that as "take the first", and so must this.
+  if (length(x) > 1L) {
+    if (identical(as.character(x), as.character(choices))) {
+      return(choices[1])
+    }
+    stop("'", arg, "' must be a single value, not ", length(x), ".", call. = FALSE)
+  }
+  x <- as.character(x)
+  if (is.na(x)) {
+    stop("'", arg, "' must not be NA.", call. = FALSE)
+  }
+
+  lo <- tolower(choices)
+  hit <- match(tolower(x), lo)
+  if (!is.na(hit)) {
+    return(choices[hit])
+  }
+  ## Preserve match.arg()'s partial matching, folded to lower case.
+  p <- pmatch(tolower(x), lo)
+  if (!is.na(p)) {
+    return(choices[p])
+  }
+
+  ## Rank suggestions by edit distance and offer at most two. A wider net
+  ## (agrep at max.distance 0.35) returned seven candidates for one typo,
+  ## which is noise rather than help.
+  dd <- utils::adist(tolower(x), lo)[1, ]
+  near <- choices[order(dd)][seq_len(min(2L, length(choices)))]
+  near <- near[sort(dd)[seq_along(near)] <= max(2, ceiling(nchar(x) / 2))]
+  stop("'", arg, "' = \"", x, "\" is not a recognized choice.",
+    if (length(near)) paste0(" Did you mean ", paste0("\"", near, "\"", collapse = " or "), "?") else "",
+    "\n  Valid choices (case does not matter): ", paste(choices, collapse = ", "),
+    call. = FALSE
+  )
 }

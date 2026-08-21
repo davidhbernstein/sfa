@@ -69,6 +69,7 @@ data_trial <- data_gen_p(t=10,N=100,rand = 16, sig_u = 0.3,sig_v = 0.1, sig_r = 
 
 p.gtre_sml   <- psfm(formula      = y_gtre ~ x1 + x2,
                      model_name   = "GTRE",
+                     estimator    = "sml",
                      data         = data_trial,
                      individual   = "name",
                      PSopt        = TRUE,

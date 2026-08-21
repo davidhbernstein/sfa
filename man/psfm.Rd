@@ -13,6 +13,7 @@
                     PSopt = FALSE, optHessian = TRUE, inefdec = TRUE, Method = "L-BFGS-B",
                     verbose = FALSE, rand.gtre = NULL, rand.psoptim = NULL,
                     OPG_calc = FALSE,
+                    estimator = c("fiml", "sml", "seq1", "seq2"),
                     collinear_action = c("start_only", "error", "warn_drop"),
                     time = NULL, tfe_lambda_max = 100)}
 \arguments{
@@ -30,7 +31,7 @@
   \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
   \item{\code{"K1990"}, \code{"K1990modified"}}{Kumbhakar (1990) time patterns for inefficiency.}
-}}
+} Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
   \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table) -- the panel index is constructed internally from the \code{individual} and \code{time} arguments -- or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
   \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
   \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine. Previously hard-coded (200 in the \code{GTRE_FML} branch, 500 elsewhere) and not settable from the call.}
@@ -51,11 +52,22 @@
   \item{rand.psoptim}{Integer. Seed for replication of psoptim.  Default to \code{NULL}.}
   \item{rand.gtre}{Integer. Seed for replication of the gtre model.  Default to \code{NULL}.}
   \item{OPG_calc}{Logical. Should the outer product of gradients be calculated for inference.  Default to \code{FALSE}.}
+  \item{estimator}{How to estimate the four-component GTRE model, in the same spirit as \code{\link{sfm}}'s \code{estimator}: one model, several routes to it. Applies to \code{model_name = "GTRE"} only, and is ignored with a warning elsewhere.
+\describe{
+  \item{\code{"fiml"}}{\bold{the default.} Full information maximum likelihood through the closed-skew-normal representation. Deterministic -- nothing is integrated by Monte Carlo, so repeated fits to the same data agree exactly. Requires a \bold{balanced} panel.}
+  \item{\code{"sml"}}{Simulated maximum likelihood over Halton draws. Handles unbalanced panels. This is what \code{model_name = "GTRE"} meant through version 1.1.3.}
+  \item{\code{"seq1"}, \code{"seq2"}}{The two-step moment-based estimators. Not maximum likelihood, so they carry no \code{logLik()}.}
+}
+The older names remain and are unchanged: \code{"GTRE_FML"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} select the same three routes directly.
+
+On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took the default, \code{psfm()} warns and falls back to \code{"sml"} -- erroring would make \code{"GTRE"} unusable by default on a whole class of data. If you asked for \code{"fiml"} explicitly it errors instead, rather than silently fitting a different estimator than the one you named.}
   \item{collinear_action}{One of \code{"start_only"} (default), \code{"error"}, or \code{"warn_drop"}. Controls what happens when the \emph{between-individual} design matrix used to build starting values is rank deficient. This is checked separately from the pooled design because the two can differ: time dummies, for example, are routinely estimable in a pooled specification while collapsing onto the intercept once averaged within each unit, which is exactly the situation that makes the internal random-effects initialization fail. \code{"start_only"} keeps the model you asked for and removes the offending columns from the starting-value regression only, taking their starting values from a pooled OLS fit; \code{"error"} stops before estimation and names the offending columns; \code{"warn_drop"} removes those terms from the estimated model. All three report what was found. Only relevant to the models initialized by a random-effects regression (\code{GTRE}, \code{TRE} and their \code{_Z}/\code{SEQ} variants).}
   \item{time}{Character. Name of a time-period column in \code{data}, used by the error-components frontier models (\code{"PL80"}, \code{"BC92"}, \code{"K1990"}, \code{"K1990modified"}). If \code{NULL} (the default), a sequential within-individual time index is constructed from row order, which assumes \code{data} is already sorted chronologically within each individual.}
   \item{tfe_lambda_max}{Numeric. Upper bound placed on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, i.e. \eqn{\sigma_v} is not allowed below about 1\% of \eqn{\sigma}. This is a guard against a genuine degeneracy of Greene's likelihood rather than a convergence tolerance -- see \sQuote{Details}. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
 }
 \details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.
+
+\bold{Choosing how GTRE is estimated.} Since version 1.1.4 the four routes to the four-component model are selected with \code{estimator} rather than by picking among four \code{model_name} values that looked like four different models. \code{model_name = "GTRE"} now defaults to \code{estimator = "fiml"}; through 1.1.3 it fitted the simulated-ML estimator, which is \code{estimator = "sml"}. Scripts that pass \code{"GTRE"} therefore get a different estimator than they did and are warned once per call. The explicit names \code{"GTRE_FML"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} are unaffected.
 
 \bold{Two ways of estimating the same four-component model.} \code{"GTRE"} and \code{"GTRE_FML"} both fit
 \deqn{y_{it} = \beta_0 + x_{it}'\beta + r_i - h_i + v_{it} - u_{it},}

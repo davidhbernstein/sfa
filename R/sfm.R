@@ -42,7 +42,7 @@ sfm <- function(formula,
   ## here and in those three files by resolving model_name via match.arg()
   ## before it's used for anything else.
   call <- match.call()
-  model_name <- match.arg(model_name)
+  model_name <- .match_model_name(model_name, eval(formals()$model_name))
   robust <- match.arg(robust)
   estimator <- match.arg(estimator)
 

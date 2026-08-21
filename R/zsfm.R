@@ -22,7 +22,7 @@ zsfm <- function(formula,
   ## length > 1" for any caller relying on the default rather than specifying
   ## model_name explicitly).
   call <- match.call()
-  model_name <- match.arg(model_name)
+  model_name <- .match_model_name(model_name, eval(formals()$model_name))
 
   .validate_sfa_call(formula, data, "zsfm",
     maxit = list(

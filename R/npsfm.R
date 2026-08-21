@@ -267,7 +267,7 @@ npsfm <- function(formula, data, method = c("FLW", "SVKZ", "PSZ", "KPST", "MY", 
   options(np.messages = isTRUE(verbose))
   on.exit(options(np.messages = old_np_msg), add = TRUE)
 
-  method <- match.arg(method)
+  method <- .match_model_name(method, eval(formals()$method), arg = "method")
   regtype <- match.arg(regtype)
   bw.sel <- match.arg(bw.sel)
   dist <- match.arg(dist)

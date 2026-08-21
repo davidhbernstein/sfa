@@ -9,7 +9,7 @@ optHessian = TRUE, inefdec = TRUE, upper = NA,
 Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
-\item{model_name}{Which mixture specification to fit. \code{"ZISF"} holds the probability of being fully efficient constant across the sample; \code{"ZISF_Z"} lets that probability depend on covariates supplied in the second part of the formula (\code{y ~ x | z}). See \sQuote{Details}.}
+\item{model_name}{Which mixture specification to fit. \code{"ZISF"} holds the probability of being fully efficient constant across the sample; \code{"ZISF_Z"} lets that probability depend on covariates supplied in the second part of the formula (\code{y ~ x | z}). See \sQuote{Details}. Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
 \item{data}{A data frame containing the variables named in \code{formula}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}

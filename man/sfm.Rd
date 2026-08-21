@@ -31,7 +31,7 @@ normal except where stated, and the one-sided inefficiency term \eqn{u} follows:
   \item{\code{"NW"}}{Weibull. Also simulated maximum likelihood.}
   \item{\code{"tHN"}}{half normal, with Student-\emph{t} noise.}
   \item{\code{"THT"}}{half \emph{t}, with Student-\emph{t} noise.}
-}}
+} Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
 \item{data}{A data frame containing the variables named in \code{formula}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}

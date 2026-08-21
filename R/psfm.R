@@ -23,6 +23,7 @@ psfm <- function(formula,
                  rand.gtre = NULL,
                  rand.psoptim = NULL,
                  OPG_calc = FALSE,
+                 estimator = c("fiml", "sml", "seq1", "seq2"),
                  collinear_action = c("start_only", "error", "warn_drop"),
                  time = NULL,
                  tfe_lambda_max = 100) {
@@ -32,8 +33,86 @@ psfm <- function(formula,
   ## length > 1" for any caller relying on the default rather than specifying
   ## model_name explicitly).
   call <- match.call()
-  model_name <- match.arg(model_name)
+  model_name <- .match_model_name(model_name, eval(formals()$model_name))
   collinear_action <- match.arg(collinear_action)
+
+  ## ------------------------------------------------------------------
+  ## `estimator` selects HOW the four-component GTRE model is estimated,
+  ## the way sfm()'s `estimator` chooses between maximum likelihood and
+  ## corrected OLS for one and the same model. The four ways of fitting
+  ## GTRE were previously four separate model_name values, which made
+  ## them look like four different models rather than four routes to the
+  ## same one:
+  ##
+  ##   "fiml" (default)  full information ML through the closed-skew-normal
+  ##                     representation. Deterministic -- nothing is
+  ##                     integrated by Monte Carlo, so repeated fits to the
+  ##                     same data agree exactly. Requires a BALANCED panel.
+  ##   "sml"             simulated ML over Halton draws. Handles unbalanced
+  ##                     panels. This is what "GTRE" meant through 1.1.3.
+  ##   "seq1" / "seq2"   the two-step moment-based estimators. Not maximum
+  ##                     likelihood, so they carry no logLik().
+  ##
+  ## The older names still work and are unchanged: GTRE_FML, GTRE_SEQ1 and
+  ## GTRE_SEQ2 name the same three routes directly.
+  ## ------------------------------------------------------------------
+  estimator_supplied <- !missing(estimator)
+  estimator <- .match_model_name(estimator, eval(formals()$estimator), arg = "estimator")
+
+  if (identical(model_name, "GTRE")) {
+    if (!estimator_supplied) {
+      ## Same situation as the TFE rename above: an existing script asking
+      ## for "GTRE" now gets a different estimator than it did, so say so
+      ## rather than quietly changing the answer.
+      warning("model_name = \"GTRE\" now defaults to estimator = \"fiml\" ",
+        "(full information ML via the closed-skew-normal representation). ",
+        "Through sfa 1.1.3 it fitted the simulated-ML estimator, which is now ",
+        "estimator = \"sml\". Pass `estimator` explicitly to silence this warning.",
+        call. = FALSE
+      )
+    }
+
+    ## FIML is built at a single T, so it cannot fit an unbalanced panel. If
+    ## the user merely took the default, fall back to simulated ML and say so
+    ## -- erroring would make GTRE unusable by default on a whole class of
+    ## data. If they asked for "fiml" deliberately, honour that by telling
+    ## them it cannot be done rather than silently fitting something else.
+    if (identical(estimator, "fiml")) {
+      t_i <- tryCatch(
+        as.numeric(table(as.character(data[, individual]))),
+        error = function(e) NULL
+      )
+      if (!is.null(t_i) && length(t_i) && length(unique(t_i)) != 1L) {
+        if (estimator_supplied) {
+          stop("estimator = \"fiml\" requires a BALANCED panel: the ",
+            "closed-skew-normal representation is built at a single T. Found T ",
+            "ranging from ", min(t_i), " to ", max(t_i), ". Use estimator = ",
+            "\"sml\", which handles unbalanced panels.",
+            call. = FALSE
+          )
+        }
+        warning("Panel is unbalanced (T ranges from ", min(t_i), " to ", max(t_i),
+          "), which the default estimator = \"fiml\" cannot fit. Falling back to ",
+          "estimator = \"sml\" (simulated ML). Pass `estimator` explicitly to ",
+          "choose deliberately.",
+          call. = FALSE
+        )
+        estimator <- "sml"
+      }
+    }
+
+    model_name <- switch(estimator,
+      fiml = "GTRE_FML",
+      sml  = "GTRE",
+      seq1 = "GTRE_SEQ1",
+      seq2 = "GTRE_SEQ2"
+    )
+  } else if (estimator_supplied) {
+    warning("`estimator` only applies to model_name = \"GTRE\"; ignored for \"",
+      model_name, "\".",
+      call. = FALSE
+    )
+  }
 
   ## The meaning of model_name = "TFE" CHANGED in sfa 1.1.3. Through 1.1.2 it
   ## was Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator,

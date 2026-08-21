@@ -1,3 +1,45 @@
+# sfa 1.1.4
+
+## Breaking change
+
+* **`psfm(model_name = "GTRE")` now defaults to full information maximum
+  likelihood.** The four ways of fitting the four-component GTRE model were
+  four separate `model_name` values, which made them look like four different
+  models rather than four routes to the same one. They are now selected with an
+  `estimator` argument, in the same spirit as `sfm()`'s `estimator = c("mle",
+  "cols")`:
+
+  - `"fiml"` (the default) -- full information ML through the closed-skew-normal
+    representation. Deterministic; requires a balanced panel.
+  - `"sml"` -- simulated ML over Halton draws. Handles unbalanced panels. **This
+    is what `"GTRE"` meant through 1.1.3.**
+  - `"seq1"`, `"seq2"` -- the two-step moment estimators.
+
+  Scripts that pass `model_name = "GTRE"` therefore get a different estimator
+  than they did, and are warned once per call. Pass `estimator` explicitly to
+  silence it. The names `"GTRE_FML"`, `"GTRE_SEQ1"` and `"GTRE_SEQ2"` are
+  unchanged and still select the same three routes directly.
+
+  On an **unbalanced** panel `"fiml"` cannot be fitted. Taking the default
+  warns and falls back to `"sml"`, because erroring would make `"GTRE"`
+  unusable by default on a whole class of data; asking for `"fiml"` explicitly
+  errors instead of silently fitting something else.
+
+## New features
+
+* **Model names are matched without regard to case.** `match.arg()` is case
+  sensitive, so `psfm(model_name = "gtre")` used to fail with a list of valid
+  names that visibly contained what the user had just typed. All five entry
+  points now fold case, for `model_name` and for `npsfm()`'s `method`. No entry
+  point has a case collision among its choices -- `sfm()`'s `"THT"` and `"tHN"`
+  differ in more than case -- so the canonical spelling is always recoverable.
+
+  Exact matches beat partial ones, which matters because `"GTRE"` is a prefix
+  of four other names and must resolve to itself. Genuinely ambiguous partials
+  (`"GTRE_S"`, between `GTRE_SEQ1` and `GTRE_SEQ2`) are still rejected rather
+  than guessed at, and an unrecognized name now suggests the two closest valid
+  choices instead of listing everything.
+
 # sfa 1.1.3
 
 ## Breaking change

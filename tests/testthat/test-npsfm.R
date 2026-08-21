@@ -25,7 +25,11 @@ test_that("npsfm() rejects bad input before doing any work", {
   expect_error(npsfm(y ~ x1 + x2, data = g$d, method = "SVKZ", dist = "exp"),
     "normal-half normal"
   )
-  expect_error(npsfm(y ~ x1 + x2, data = g$d, method = "nope"), "'arg'")
+  ## since 1.1.4 the message comes from .match_model_name(), not match.arg()
+  expect_error(npsfm(y ~ x1 + x2, data = g$d, method = "nope"),
+               "not a recognized choice")
+  ## and method is case-insensitive like model_name
+  expect_equal(sfa:::.match_model_name("flw", c("FLW","SVKZ"), arg = "method"), "FLW")
 })
 
 test_that(".flw_neg_cll is finite, positive-lambda only, and minimized near truth", {
