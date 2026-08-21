@@ -330,6 +330,7 @@ summary.sfareg <- function(object, ...) {
   if (is.numeric(object$opt$value)) {
     cat("log likelihood:", -object$opt$value, "\n")
   }
+  .sfa_report_convergence(object)
   ## return original object
   invisible(object)
 }
@@ -345,4 +346,36 @@ print.sfareg <- function(x, ...) {
   if (is.numeric(x$opt$value)) {
     cat("log likelihood:", -x$opt$value, "\n")
   }
+  .sfa_report_convergence(x)
+}
+
+## One line on how the optimizer finished, shown by both print() and
+## summary(). Previously neither said anything at all: a fit that stopped on
+## the iteration cap looked exactly like a converged one.
+.sfa_report_convergence <- function(x) {
+  cc <- x$opt$convergence
+  if (is.null(cc) || !length(cc) || is.na(cc)) {
+    return(invisible(NULL))
+  }
+  if (identical(as.integer(cc), 0L)) {
+    cat("convergence: 0 (converged)\n")
+  } else {
+    cat("convergence: ", cc, " -- ",
+      switch(as.character(cc),
+        "1" = "ITERATION LIMIT REACHED; this is not a converged optimum",
+        "10" = "Nelder-Mead simplex degenerated",
+        "51" = "L-BFGS-B warning",
+        "52" = "L-BFGS-B error",
+        "see ?optim for this code"
+      ), "\n",
+      sep = ""
+    )
+    if (!is.null(x$opt$message)) cat("  optimizer message: ", x$opt$message, "\n", sep = "")
+    ## A non-zero code frequently means only that the final polish stage could
+    ## not improve on an already-converged point; the gradient and Hessian are
+    ## what settle it, and sfa_diagnostics() combines all three.
+    cat("  a non-zero code does not by itself mean the fit failed --\n")
+    cat("  run sfa_diagnostics() on this fit to see the gradient and Hessian.\n")
+  }
+  invisible(NULL)
 }

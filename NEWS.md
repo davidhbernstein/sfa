@@ -184,6 +184,46 @@
 
 ## New methods and arguments
 
+* **`sfa_diagnostics()`, `plot()` for `"sfareg"`, and convergence reporting.**
+  The numerical hardening was already in place -- staged minimizer, clipping
+  constants, analytic gradients where they exist -- but nothing was reported
+  back. A fit carried `optim()`'s convergence code, message, evaluation counts
+  and Hessian, and `print()`/`summary()` showed none of it, so a fit that
+  stopped on the iteration cap printed exactly like a converged one.
+
+  `sfa_diagnostics()` returns the convergence code and what it means, the
+  eigenvalue spectrum and condition number of the Hessian, whether it is
+  positive definite, which parameters load on its flattest direction, the
+  implied parameter correlations, and -- with `keep_objective = TRUE` -- the
+  gradient at the reported optimum. `plot()` draws the Hessian spectrum, the
+  correlation matrix, a likelihood slice per parameter, and the gradient.
+  `print()` and `summary()` now report the convergence code.
+
+  **The code by itself is not diagnostic and is not treated as though it were.**
+  Across `NHN`, `NE` and `NTN` at n = 150, 500 and 1500, code 52
+  ("ABNORMAL_TERMINATION_IN_LNSRCH") appears routinely alongside a maximum
+  relative gradient of ~1e-6 and a positive definite Hessian: the staged
+  minimizer had already converged and `L-BFGS-B` could not step away from the
+  optimum. The same code on `NTN` at n = 150 came with a relative gradient of
+  5e+07 and an indefinite Hessian, a real failure. The verdict therefore
+  combines the code with the gradient and the Hessian, and distinguishes
+  *benign* from *unverified* (a line-search code with no objective retained, so
+  no gradient to settle it) from *failure*. Code 1, the iteration limit, is
+  never treated as benign.
+
+  On a single `NNAK` fit the report reproduces what the convergence sweeps
+  found only across replications: `mu` and `sigu` correlated at 0.998 -- the
+  documented ridge -- with the flattest Hessian direction loading on exactly
+  that pair.
+
+* **`sfm(keep_objective = TRUE)`** stores the likelihood on the fitted object so
+  the gradient and likelihood slices can be computed after the fact. Off by
+  default: a closure carries its enclosing environment, so a fit saved with one
+  serializes the estimation data too (about 38 KB to 1.7 MB on a 200-observation
+  example). Everything else `sfa_diagnostics()` reports works without it.
+
+
+
 * `predict()`, `fitted()` and `residuals()` methods for class `"sfareg"`,
   alongside the existing `coef()`, `vcov()`, `logLik()` and `nobs()`.
   `predict()` accepts `newdata`.

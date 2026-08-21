@@ -10,7 +10,7 @@
     use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper = NA,
     Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi", "mdpd"),
     c_mlqe = 0.20, eta = 0.01, alpha = 0.2, verbose = FALSE,
-    Nsim = "auto", rand.psoptim = NULL,
+    Nsim = "auto", rand.psoptim = NULL, keep_objective = FALSE,
     estimator = c("mle", "cols"), cols_boot = 0, rand.cols = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
@@ -63,7 +63,8 @@ divergence) power parameter, used only when \code{robust = "mdpd"}.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{Nsim}{Number of simulation draws for the simulated-maximum-likelihood models (\code{"NLN"}, \code{"NW"}); ignored by every closed-form model. \code{"auto"} (the default) uses \code{max(400, ceiling(8*sqrt(n)))}. Simulated ML is consistent only if the draw count grows with the sample size -- at a fixed \code{Nsim} the simulation bias does not vanish and every parameter except the frontier slopes converges to the wrong value. The previous fixed default of \code{100} did exactly that: at \eqn{n = 3000} it returned \code{(0.362, 0.821, 1.284, 0.328)} against a truth of \code{(0.3, 1.0, 1.5, 0.5)} for \code{"NW"}, while \code{Nsim = 400} returned \code{(0.298, 1.028, 1.558, 0.509)}. A numeric value below the automatic floor warns. \bold{\code{"NLN"} needs considerably more than the default}: its lognormal tail makes the simulated integral converge slowly, and at \eqn{n = 3000} its estimates were still moving toward the truth at \code{Nsim = 6400}. Raise it until they stop moving.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
-  \item{estimator}{\code{"mle"} (default) or \code{"cols"}. \code{"cols"} selects corrected ordinary least squares instead of maximum likelihood: OLS slopes are kept as they are, the second and third central moments of the OLS residuals are inverted for the scale parameters, and the intercept is shifted up by the implied \eqn{E[u]}. Closed form, no optimizer, deterministic. Implemented for \code{"NHN"}, \code{"NE"} and \code{"NG"}; other models error, because the moment inversion is distribution-specific. See \sQuote{Details}.}
+  \item{keep_objective}{Logical. Store the likelihood function on the fitted object, so that \code{\link{sfa_diagnostics}} can compute the gradient at the optimum and draw likelihood slices. Defaults to \code{FALSE}: a closure carries its enclosing environment, so a fit saved with one serializes the estimation data too -- on a 200-observation example the object grows from about 38 KB to 1.7 MB. Everything else \code{sfa_diagnostics()} reports works without it.}
+\item{estimator}{\code{"mle"} (default) or \code{"cols"}. \code{"cols"} selects corrected ordinary least squares instead of maximum likelihood: OLS slopes are kept as they are, the second and third central moments of the OLS residuals are inverted for the scale parameters, and the intercept is shifted up by the implied \eqn{E[u]}. Closed form, no optimizer, deterministic. Implemented for \code{"NHN"}, \code{"NE"} and \code{"NG"}; other models error, because the moment inversion is distribution-specific. See \sQuote{Details}.}
   \item{cols_boot}{Integer. Number of nonparametric bootstrap resamples used to obtain standard errors under \code{estimator = "cols"}. Zero (the default) skips the bootstrap, in which case only the OLS slope standard errors are reported and the scale parameters and corrected intercept carry \code{NA}. Ignored when \code{estimator = "mle"}.}
   \item{rand.cols}{Integer. Seed for the COLS bootstrap, for reproducibility. The caller's random-number stream is restored afterwards. Default \code{NULL}.}
 }

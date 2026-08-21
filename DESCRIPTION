@@ -11,7 +11,7 @@ Authors@R: c(person("David", "Bernstein",
 Maintainer: David Bernstein <davebernstein1@gmail.com> 
 Description:  Provides a user-friendly framework for estimating a wide variety of cross-sectional and panel stochastic frontier models. Suitable for a broad range of applications, the implementation offers extensive flexibility in specification and estimation techniques. 
 Suggests: knitr, rmarkdown, testthat, sn, np, Benchmarking
-Imports: pso, numDeriv, gsl, plm, minqa, randtoolbox, mnormt, truncnorm, tmvtnorm, Formula, methods, pbapply, pracma, MASS, parallel
+Imports: pso, numDeriv, gsl, plm, minqa, randtoolbox, mnormt, truncnorm, tmvtnorm, Formula, methods, pbapply, pracma, MASS, parallel, graphics, grDevices
 Depends: R (>= 4.0.0)
 License: GPL (>= 2)
 Language: en-US

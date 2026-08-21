@@ -26,6 +26,7 @@ sfm <- function(formula,
                 verbose = FALSE,
                 Nsim = "auto",
                 rand.psoptim = NULL,
+                keep_objective = FALSE,
                 estimator = c("mle", "cols"),
                 cols_boot = 0,
                 rand.cols = NULL) {
@@ -1288,6 +1289,14 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula",
         "coefficients", "std.errors", "t.values", "call"
       )
+    }
+
+    ## Optionally retain the objective, so sfa_diagnostics() can profile the
+    ## likelihood and difference it for a gradient after the fact. OFF by
+    ## default: a closure carries its enclosing environment with it, so a fit
+    ## saved with one serializes the estimation data alongside the results.
+    if (isTRUE(keep_objective) && exists("like.fn", inherits = FALSE)) {
+      results$objective <- like.fn
     }
     return(results)
   } else {
