@@ -33,9 +33,9 @@
 ## exactly (same formula, factored out as a standalone function of
 ## (e, sigma_v, sigma_u) instead of inlined against the optimizer's raw
 ## (lambda, sigma) parameter vector).
-.dens_nhn <- function(e, sigma_v, sigma_u, log = FALSE){
-  sigma   <- sqrt(sigma_v^2 + sigma_u^2)
-  lambda  <- sigma_u / sigma_v
+.dens_nhn <- function(e, sigma_v, sigma_u, log = FALSE) {
+  sigma <- sqrt(sigma_v^2 + sigma_u^2)
+  lambda <- sigma_u / sigma_v
   logdens <- log(2) - log(sigma) + dnorm(e / sigma, log = TRUE) + pnorm(-lambda * e / sigma, log.p = TRUE)
   if (log) logdens else pmax(exp(logdens), .Machine$double.xmin)
 }
@@ -43,9 +43,11 @@
 ## Integral I_p(theta) = int f(e;theta)^p de for the NHN density, via the
 ## substitution t = e/sigma: f(e) = sigma^{-1} g(e/sigma; lambda),
 ## g(t) = 2*dnorm(t)*pnorm(-lambda*t) => int f^p de = sigma^{1-p} int g(t)^p dt.
-.nhn_power_integral <- function(sigma_v, sigma_u, p, rel.tol = 1e-8){
-  if (p <= 1) return(1)
-  sigma  <- sqrt(sigma_v^2 + sigma_u^2)
+.nhn_power_integral <- function(sigma_v, sigma_u, p, rel.tol = 1e-8) {
+  if (p <= 1) {
+    return(1)
+  }
+  sigma <- sqrt(sigma_v^2 + sigma_u^2)
   lambda <- sigma_u / sigma_v
   integrand <- function(t) (2 * dnorm(t) * pnorm(-lambda * t))^p
   val <- integrate(integrand, lower = -Inf, upper = Inf, rel.tol = rel.tol, subdivisions = 400)$value
@@ -68,7 +70,7 @@
 ##   psi  : -( f_i^c/c - I_(1+c)/(1+c) )
 ##   mdpd : -( ((1+c)/c)*f_i^c - I_(1+c) )
 .robust_objective_vec <- function(method = c("mle", "mlqe", "psi", "mdpd"),
-                                  loglik, c = NULL, power_integral_fn = NULL){
+                                  loglik, c = NULL, power_integral_fn = NULL) {
   method <- match.arg(method)
 
   if (method == "mle" || is.null(c) || c <= 1e-10) {
@@ -86,8 +88,12 @@
   }
   I <- power_integral_fn(1 + c)
 
-  if (method == "psi")  return(-(f^c / c - I / (1 + c)))
-  if (method == "mdpd") return(-(((1 + c) / c) * f^c - I))
+  if (method == "psi") {
+    return(-(f^c / c - I / (1 + c)))
+  }
+  if (method == "mdpd") {
+    return(-(((1 + c) / c) * f^c - I))
+  }
 }
 
 ## Generic robust-divergence objective, on the same "negative summed" scale
@@ -109,7 +115,7 @@
 ## with c=0 (say) behaves identically to robust="mle" rather than hitting a
 ## 0/0 in (f^c-1)/c.
 .robust_objective <- function(method = c("mle", "mlqe", "psi", "mdpd"),
-                              loglik, c = NULL, power_integral_fn = NULL){
+                              loglik, c = NULL, power_integral_fn = NULL) {
   method <- match.arg(method)
   vec <- .robust_objective_vec(method, loglik, c, power_integral_fn)
   if (method == "mle" || is.null(c) || c <= 1e-10) {
@@ -151,19 +157,25 @@
 ## Returns a vector of SEs (sqrt of the diagonal), or a vector of NA (silent
 ## -- the caller is expected to have already decided SEs are wanted) if
 ## either matrix inversion fails.
-.sandwich_se_nhn <- function(par_hat, hessian, per_obs_fn){
+.sandwich_se_nhn <- function(par_hat, hessian, per_obs_fn) {
   k <- length(par_hat)
   na_result <- rep(NA_real_, k)
 
   A_inv <- tryCatch(solve(hessian), error = function(e) NULL)
-  if (is.null(A_inv)) return(na_result)
+  if (is.null(A_inv)) {
+    return(na_result)
+  }
 
   G <- tryCatch(numDeriv::jacobian(per_obs_fn, par_hat), error = function(e) NULL)
-  if (is.null(G) || !all(is.finite(G))) return(na_result)
+  if (is.null(G) || !all(is.finite(G))) {
+    return(na_result)
+  }
 
   B <- t(G) %*% G
   V <- tryCatch(A_inv %*% B %*% A_inv, error = function(e) NULL)
-  if (is.null(V)) return(na_result)
+  if (is.null(V)) {
+    return(na_result)
+  }
 
   sqrt(pmax(diag(V), 0))
 }
