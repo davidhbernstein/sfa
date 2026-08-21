@@ -8,10 +8,10 @@
 <!-- badges: end -->
 
 **Stochastic frontier analysis in R.** A single, consistent interface to a wide
-range of cross-sectional, panel, zero-inefficiency and two-tier stochastic
-frontier models, with a common formula syntax for modelling the variance of
-each error component and a common `"sfareg"` result object that works with the
-standard R modelling generics.
+range of cross-sectional, panel, zero-inefficiency, two-tier and nonparametric
+stochastic frontier models, with a common formula syntax for modelling the
+variance of each error component and a common `"sfareg"` result object that
+works with the standard R modelling generics.
 
 Written by David H. Bernstein, Christopher F. Parmeter and Alexander D. Stead.
 
@@ -67,16 +67,20 @@ fit_p <- psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
               data = pd, individual = "name")
 ```
 
-## The four entry points
+## The five entry points
 
-| Function | Fits | Models |
+| Function | Fits | Estimators |
 |---|---|---|
 | `sfm()` | Cross-sectional frontiers | 14 |
 | `psfm()` | Panel frontiers | 15 |
 | `zsfm()` | Zero-inefficiency (latent-class) frontiers | 2 |
 | `ttsfm()` | Two-tier frontiers | 3 |
+| `npsfm()` | Nonparametric frontiers | 5 |
 
-All four return an object of class `"sfareg"`.
+The first four return an object of class `"sfareg"`. `npsfm()` returns
+`"npsfareg"` instead — a kernel-estimated frontier has no parameter vector with
+standard errors, so `coef()`, `vcov()` and `logLik()` would have nothing to
+return.
 
 ### `sfm()` — cross-sectional
 
@@ -134,6 +138,37 @@ covariates (`ZISF_Z`).
 normal), and `TTNLS` (nonlinear least squares, no distributional assumption
 beyond the means of the two one-sided components).
 
+### `npsfm()` — nonparametric
+
+Estimates the frontier by kernel regression instead of assuming it linear.
+
+| `method` | Estimator |
+|---|---|
+| `FLW` | Fan, Li and Weersink (1996). Kernel regression for `E[y\|x]`, then the scale parameters from the residuals. Also supports `dist = "exp"`, `"gamma"`, `"unif"` |
+| `SVKZ` | Simar, Van Keilegom and Zelenyuk (2017). Local method of moments; `sigma_u(x)` and `sigma_v(x)` vary with the covariates |
+| `PSZ` (alias `KPST`) | Park, Simar and Zelenyuk. Local maximum likelihood |
+| `MY` | Martins-Filho and Yao. Iterative local likelihood |
+| `SZ` | Simar and Zelenyuk (2011). DEA monotonization of a prior smooth fit |
+
+```r
+f <- npsfm(y ~ x1 + x2, data = d, method = "FLW", dist = "hn")
+head(fitted(f))       # the estimated frontier
+head(f$exp_u_hat)     # technical efficiency
+```
+
+`PSZ` and `MY` run one numerical optimization per observation — for `MY`, per
+observation per iteration — so expect them to be one to two orders of magnitude
+slower than `FLW`. `npsfm()` takes a single-part formula and rejects a `| z`
+segment: its heteroskedasticity is nonparametric in the covariates themselves.
+
+Kernel regression comes from [**np**](https://CRAN.R-project.org/package=np),
+and `SZ` additionally needs **Benchmarking**. Both are in `Suggests`, not
+`Imports`, so they are only required if you actually call `npsfm()`:
+
+```r
+install.packages(c("np", "Benchmarking"))
+```
+
 ## Formula syntax
 
 Variance determinants are supplied in extra pipe-delimited segments:
@@ -170,13 +205,20 @@ errors and *t*-values. Its column names vary by model: several models report the
 `lambda = sigma_u/sigma_v`, `sigma = sqrt(sigma_u^2 + sigma_v^2)`
 reparameterisation rather than the raw scale parameters.
 
+`npsfm()` fits are the exception. They carry no `out` matrix and no standard
+errors, so only `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()`
+apply; read the frontier, its gradients and the scale estimates off the returned
+object (`$frontier`, `$frontier.grad`, `$sigma.u`, `$sigma.v`).
+
 ## Simulating data
 
 `data_gen_cs()` and `data_gen_p()` generate cross-sectional and panel data with
 known true parameters. Each returns a data frame with one response column per
 model family (`y_pcs`, `y_pcs_z`, `y_pcs_r`, `y_tre_z`, ...), so a given
 `model_name` is matched to the column generated under its own assumptions. These
-generators are how the package's estimators are checked against known truth.
+generators are how the package's estimators are checked against known truth,
+including `npsfm()`'s — `NPSFM_FLW` and `NPSFM_SVKZ` are registered in the
+root-n convergence framework and both pass.
 
 ## Included data
 

@@ -18,6 +18,17 @@ The package's dependency on `frontier` has been removed (along with eight
 others), and the R requirement has been lowered from `R (>= 4.4.0)` to
 `R (>= 4.0.0)`.
 
+This version adds a fifth entry point, `npsfm()`, for nonparametric stochastic
+frontier models. It needs kernel regression from `np`, and its `"SZ"` method
+additionally needs `Benchmarking`. Both are declared in **Suggests** rather than
+Imports, since nothing else in the package uses them: `npsfm()` tests for each
+at run time and stops with an install instruction if it is absent, and its
+examples and tests are guarded with `requireNamespace()` / `skip_if_not_installed()`
+so they are skipped rather than failing where those packages are unavailable.
+`npsfm()` returns an object of class `"npsfareg"`, not `"sfareg"` — a
+kernel-estimated frontier has no parameter vector with standard errors, so the
+`coef`/`vcov`/`logLik` methods do not apply to it.
+
 ## Test environments
 
 * local macOS 15 (aarch64-apple-darwin), R 4.5.2
