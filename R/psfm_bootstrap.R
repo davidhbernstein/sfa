@@ -571,6 +571,19 @@ psfm_bootstrap <- function(psfm_object,
   cl <- parallel::makeCluster(numCores)
   on.exit(parallel::stopCluster(cl), add = TRUE)
 
+  ## PSOCK workers start as fresh R sessions with the default library path, not
+  ## the parent's. If sfa is installed anywhere other than a default library --
+  ## a project library, renv/packrat, a user-set R_LIBS_USER, or the temporary
+  ## <pkg>.Rcheck tree that R CMD check installs into -- the workers' library()
+  ## call below fails with "there is no package called 'sfa'" and the whole
+  ## bootstrap dies in checkForRemoteErrors(). On Unix the workers usually
+  ## inherit R_LIBS from the parent's environment and the problem stays hidden;
+  ## on Windows they do not, which is where this first showed up (the vignette's
+  ## psfm_bootstrap() chunk failed on windows-latest while both Linux runners
+  ## passed). Pushing the parent's search path to the workers makes the call
+  ## resolve the same way in the parent and the workers on every platform.
+  parallel::clusterCall(cl, function(paths) .libPaths(paths), .libPaths())
+
   parallel::clusterExport(
     cl,
     varlist = c("data", "form", "model_name", "out", "simulate_dgp",

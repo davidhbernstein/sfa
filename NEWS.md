@@ -180,6 +180,21 @@
 
 ## Bug fixes
 
+* **`psfm_bootstrap()` failed on Windows whenever `sfa` was not installed in a
+  default library.** The function distributes work over PSOCK cluster workers,
+  which start as fresh R sessions holding the *default* library path rather than
+  the parent session's. Where the parent had found `sfa` somewhere else -- a
+  project library, `renv`/`packrat`, a user-set `R_LIBS_USER`, or the temporary
+  `sfa.Rcheck` tree that `R CMD check` installs into -- the workers' `library()`
+  call could not see it, and the bootstrap died in
+  `parallel:::checkForRemoteErrors()` with `there is no package called 'sfa'`.
+  On Unix the workers generally inherit `R_LIBS` from the parent's environment,
+  which hid the bug; on Windows they do not. Where the workers instead found a
+  *different*, older copy of `sfa` in a default library, they silently ran the
+  bootstrap against that version rather than the one the user had loaded. The
+  parent's `.libPaths()` is now pushed to the workers before any package is
+  loaded, so both sessions resolve every package identically.
+
 * **`stats::dlnorm` was used without being imported.** The rewritten `"NLN"`
   likelihood and its efficiency block call `dlnorm()`, but `NAMESPACE` did not
   import it, so the call resolved only via the search path rather than the
