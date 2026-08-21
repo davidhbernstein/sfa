@@ -11,19 +11,21 @@
 ## typically <=10-20) this pure-R fold is actually faster than the C call it
 ## replaces, since it avoids matrixStats' per-call setup overhead.
 ## ------------------------------------------------------------
-.col_prods <- function(x){
-  x  <- as.matrix(x)
+.col_prods <- function(x) {
+  x <- as.matrix(x)
   cp <- x[1, ]
-  if(nrow(x) > 1){
-    for(r in 2:nrow(x)) cp <- cp * x[r, ]
+  if (nrow(x) > 1) {
+    for (r in 2:nrow(x)) cp <- cp * x[r, ]
   }
   cp
 }
 
 
 ## Helper: column-wise (or vector) demeaning (replaces Jmisc::demean)
-.demean <- function(x){
-  if(is.vector(x)) return(x - mean(x))
+.demean <- function(x) {
+  if (is.vector(x)) {
+    return(x - mean(x))
+  }
   apply(x, 2, function(col) col - mean(col))
 }
 
@@ -47,39 +49,51 @@
                                maxit = list(), flags = list()) {
   if (missing(formula) || !inherits(formula, "formula")) {
     stop(fn, "(): `formula` must be a formula, e.g. y ~ x1 + x2. ",
-         if (missing(formula)) "It was not supplied."
-         else paste0("Got an object of class ",
-                     paste(class(formula), collapse = "/"), "."),
-         call. = FALSE)
+      if (missing(formula)) {
+        "It was not supplied."
+      } else {
+        paste0(
+          "Got an object of class ",
+          paste(class(formula), collapse = "/"), "."
+        )
+      },
+      call. = FALSE
+    )
   }
   if (missing(data) || is.null(data)) {
     stop(fn, "(): `data` must be supplied.", call. = FALSE)
   }
   if (!inherits(data, "data.frame")) {
     stop(fn, "(): `data` must be a data.frame (a tibble, data.table or ",
-         "plm::pdata.frame is fine). Got an object of class ",
-         paste(class(data), collapse = "/"), ".", call. = FALSE)
+      "plm::pdata.frame is fine). Got an object of class ",
+      paste(class(data), collapse = "/"), ".",
+      call. = FALSE
+    )
   }
   if (nrow(data) < n_min) {
     stop(fn, "(): `data` has ", nrow(data), " row",
-         if (nrow(data) == 1L) "" else "s",
-         "; at least ", n_min, " is required to fit a model.", call. = FALSE)
+      if (nrow(data) == 1L) "" else "s",
+      "; at least ", n_min, " is required to fit a model.",
+      call. = FALSE
+    )
   }
 
   for (nm in names(maxit)) {
     v <- maxit[[nm]]
     if (!is.numeric(v) || length(v) != 1L || is.na(v) || v < 1) {
       stop(fn, "(): `", nm, "` must be a single positive number of iterations. ",
-           "Got ", paste(utils::capture.output(utils::str(v)), collapse = " "), ".",
-           call. = FALSE)
+        "Got ", paste(utils::capture.output(utils::str(v)), collapse = " "), ".",
+        call. = FALSE
+      )
     }
   }
   for (nm in names(flags)) {
     v <- flags[[nm]]
     if (!is.logical(v) || length(v) != 1L || is.na(v)) {
       stop(fn, "(): `", nm, "` must be TRUE or FALSE. Got ",
-           paste(utils::capture.output(utils::str(v)), collapse = " "), ".",
-           call. = FALSE)
+        paste(utils::capture.output(utils::str(v)), collapse = " "), ".",
+        call. = FALSE
+      )
     }
   }
   invisible(TRUE)
@@ -143,18 +157,18 @@
 ## eigenvector. Base R only (eigen()); no dependency on statmod/gaussquad.
 ## Used by .log_mvn_cdf_rank1() below.
 ## ------------------------------------------------------------
-.gauss_hermite_nodes <- function(n = 64L){
+.gauss_hermite_nodes <- function(n = 64L) {
   n <- as.integer(n)
-  if(n < 5L) stop("n must be at least 5.", call. = FALSE)
-  i    <- seq_len(n - 1L)
-  J    <- matrix(0, n, n)
-  off  <- sqrt(i / 2)
+  if (n < 5L) stop("n must be at least 5.", call. = FALSE)
+  i <- seq_len(n - 1L)
+  J <- matrix(0, n, n)
+  off <- sqrt(i / 2)
   J[cbind(i, i + 1L)] <- off
   J[cbind(i + 1L, i)] <- off
-  eg      <- eigen(J, symmetric = TRUE)
-  nodes   <- eg$values
+  eg <- eigen(J, symmetric = TRUE)
+  nodes <- eg$values
   weights <- sqrt(pi) * (eg$vectors[1L, ]^2)
-  ord     <- order(nodes)
+  ord <- order(nodes)
   list(nodes = nodes[ord], weights = weights[ord])
 }
 
@@ -171,18 +185,20 @@
 ## truncated-t quantile function. Applying a fixed rule there turns one
 ## integrate() call per observation into a single matrix operation.
 ## ------------------------------------------------------------
-.gauss_legendre_01 <- function(n = 64L){
+.gauss_legendre_01 <- function(n = 64L) {
   n <- as.integer(n)
-  if(n < 5L) stop("n must be at least 5.", call. = FALSE)
-  i    <- seq_len(n - 1L)
-  J    <- matrix(0, n, n)
-  off  <- i/sqrt(4*i^2 - 1)
+  if (n < 5L) stop("n must be at least 5.", call. = FALSE)
+  i <- seq_len(n - 1L)
+  J <- matrix(0, n, n)
+  off <- i / sqrt(4 * i^2 - 1)
   J[cbind(i, i + 1L)] <- off
   J[cbind(i + 1L, i)] <- off
-  eg      <- eigen(J, symmetric = TRUE)
-  ord     <- order(eg$values)
-  list(nodes   = (eg$values[ord] + 1)/2,
-       weights = eg$vectors[1L, ord]^2)
+  eg <- eigen(J, symmetric = TRUE)
+  ord <- order(eg$values)
+  list(
+    nodes = (eg$values[ord] + 1) / 2,
+    weights = eg$vectors[1L, ord]^2
+  )
 }
 
 
@@ -217,26 +233,26 @@
 ## lambda in [0.05, 150] and nu in [2.05, 200] is 4e-5, reached only in the
 ## degenerate lambda > 100 corner; it is ~1e-6 or better for lambda <= 70.
 ## ------------------------------------------------------------
-.thn_m_for <- function(lambda){
+.thn_m_for <- function(lambda) {
   ## The optimizer WILL visit sigma_v -> 0, so lambda arrives as Inf or NaN.
   ## Clamp before the arithmetic: 64*ceiling(24*lambda/64) overflows the
   ## integer range for large lambda and as.integer() then returns NA, which
   ## surfaces far away as "missing value where TRUE/FALSE needed" inside the
   ## quadrature.
   lambda <- suppressWarnings(as.numeric(lambda))
-  if(!is.finite(lambda) || lambda < 1) lambda <- 1
+  if (!is.finite(lambda) || lambda < 1) lambda <- 1
   lambda <- min(lambda, 200)
-  max(96L, min(4096L, as.integer(64*ceiling(24*lambda/64))))
+  max(96L, min(4096L, as.integer(64 * ceiling(24 * lambda / 64))))
 }
 
 .thn_nodes <- local({
   cache <- list()
-  function(m = 96L, s_max = 8){
+  function(m = 96L, s_max = 8) {
     key <- paste(m, s_max, sep = "_")
-    if(is.null(cache[[key]])){
+    if (is.null(cache[[key]])) {
       gl <- .gauss_legendre_01(m)
       ## .gauss_legendre_01() weights sum to 1 on (0,1); rescale to [0, s_max].
-      cache[[key]] <<- list(s = s_max*gl$nodes, w = s_max*gl$weights)
+      cache[[key]] <<- list(s = s_max * gl$nodes, w = s_max * gl$weights)
     }
     cache[[key]]
   }
@@ -245,20 +261,22 @@
 ## Returns the quadrature pieces shared by the density and the efficiency
 ## predictor: the observation-by-node matrix of f_v values and the node weights
 ## already multiplied by the half-normal factor.
-.thn_parts <- function(e, sigma_v, sigma_u, nu){
-  nd <- .thn_nodes(.thn_m_for(sigma_u/sigma_v))
-  s  <- nd$s
+.thn_parts <- function(e, sigma_v, sigma_u, nu) {
+  nd <- .thn_nodes(.thn_m_for(sigma_u / sigma_v))
+  s <- nd$s
   ## The t density is written out rather than calling dt() on the whole
   ## observations-by-nodes matrix. Its normalising constant is a scalar, so
   ## only exp(-(nu+1)/2 * log1p(x^2/nu)) has to touch every element; dt()
   ## redoes the lgamma work per call. Identical to 1e-12 and 2.7x faster at
   ## m = 128, n = 1000, which matters because this is the whole cost of the
   ## model -- it is evaluated thousands of times per fit.
-  x  <- outer(as.numeric(e), sigma_u*s, "+")/sigma_v
-  kc <- exp(lgamma((nu + 1)/2) - lgamma(nu/2))/(sqrt(nu*pi)*sigma_v)
-  list(fv = kc*exp(-((nu + 1)/2)*log1p(x*x/nu)),
-       wu = nd$w * sqrt(2/pi) * exp(-s^2/2),
-       s  = s)
+  x <- outer(as.numeric(e), sigma_u * s, "+") / sigma_v
+  kc <- exp(lgamma((nu + 1) / 2) - lgamma(nu / 2)) / (sqrt(nu * pi) * sigma_v)
+  list(
+    fv = kc * exp(-((nu + 1) / 2) * log1p(x * x / nu)),
+    wu = nd$w * sqrt(2 / pi) * exp(-s^2 / 2),
+    s = s
+  )
 }
 
 ## Largest lambda = sigma_u/sigma_v the quadrature is validated at. At the
@@ -279,23 +297,26 @@
 ## able to report.
 .THN_LAMBDA_MAX <- 170
 
-.log_d_thn <- function(e, sigma_v, sigma_u, nu){
-  n   <- length(e)
-  lam <- suppressWarnings(sigma_u/sigma_v)
-  if(!is.finite(lam) || lam > .THN_LAMBDA_MAX)
+.log_d_thn <- function(e, sigma_v, sigma_u, nu) {
+  n <- length(e)
+  lam <- suppressWarnings(sigma_u / sigma_v)
+  if (!is.finite(lam) || lam > .THN_LAMBDA_MAX) {
     return(rep(-1e6, n))
+  }
   p <- .thn_parts(e, sigma_v, sigma_u, nu)
   log(pmax(as.numeric(p$fv %*% p$wu), .Machine$double.xmin))
 }
 
 ## E[exp(-u)|e] and E[u|e] by the same node set -- numerator and denominator
 ## share it, so the Bayes rule is exact up to the quadrature error above.
-.thn_eff <- function(e, sigma_v, sigma_u, nu){
-  p   <- .thn_parts(e, sigma_v, sigma_u, nu)
+.thn_eff <- function(e, sigma_v, sigma_u, nu) {
+  p <- .thn_parts(e, sigma_v, sigma_u, nu)
   den <- pmax(as.numeric(p$fv %*% p$wu), .Machine$double.xmin)
-  u   <- sigma_u * p$s
-  list(exp_u_hat = pmin(pmax(as.numeric(p$fv %*% (p$wu*exp(-u)))/den, 0), 1),
-       u_hat     = pmax(as.numeric(p$fv %*% (p$wu*u))/den, 0))
+  u <- sigma_u * p$s
+  list(
+    exp_u_hat = pmin(pmax(as.numeric(p$fv %*% (p$wu * exp(-u))) / den, 0), 1),
+    u_hat = pmax(as.numeric(p$fv %*% (p$wu * u)) / den, 0)
+  )
 }
 
 
@@ -313,15 +334,19 @@
 ## tolerance (~1e-3 on the log scale) while being ~30x faster and
 ## deterministic (no Monte Carlo noise).
 ## ------------------------------------------------------------
-.log_mvn_cdf_rank1 <- function(upper, c, gh){
+.log_mvn_cdf_rank1 <- function(upper, c, gh) {
   upper <- as.numeric(upper)
-  if(length(upper) == 0L) return(0)
-  if(c < 1e-14) return(sum(pnorm(upper, log.p = TRUE)))
+  if (length(upper) == 0L) {
+    return(0)
+  }
+  if (c < 1e-14) {
+    return(sum(pnorm(upper, log.p = TRUE)))
+  }
 
-  sc      <- sqrt(c)
+  sc <- sqrt(c)
   s_nodes <- sqrt(2) * gh$nodes
   log_terms <- numeric(length(s_nodes))
-  for(r in seq_along(s_nodes)){
+  for (r in seq_along(s_nodes)) {
     log_terms[r] <- log(gh$weights[r]) + sum(pnorm(upper - sc * s_nodes[r], log.p = TRUE))
   }
   m <- max(log_terms)
@@ -339,7 +364,7 @@
 ## exact given the specific 1/T normalizer used in like.tfe()'s E_t1).
 ## Matches mnormt::dmnorm() to floating-point precision.
 ## ------------------------------------------------------------
-.log_within_mvn_density <- function(eps_star, sigma2){
+.log_within_mvn_density <- function(eps_star, sigma2) {
   m <- length(eps_star)
   q <- sum(eps_star^2) + sum(eps_star)^2
   -0.5 * m * log(2 * pi) - 0.5 * m * log(sigma2) + 0.5 * log(m + 1) - q / (2 * sigma2)
@@ -361,31 +386,41 @@
 ## (lambda=sigma_u/sigma_v, sigma).
 ## ------------------------------------------------------------
 .fit_nhn_intercept <- function(y, inefdec_n = 1, maxit.bobyqa = 200, maxit.psoptim = 20,
-                                maxit.optim = 100, PSopt = FALSE, verbose = FALSE){
-  like_fn <- function(x){
-    sigma_v <- x[1]; sigma_u <- x[2]; intercept <- x[3]
-    if(!is.finite(sigma_v) || !is.finite(sigma_u) || sigma_v <= 0 || sigma_u <= 0) return(1e12)
-    eps <- inefdec_n*(y - intercept)
-    sigmaSq <- sigma_v*sigma_v + sigma_u*sigma_u
-    z  <- -sigma_u*eps/(sigma_v*sqrt(sigmaSq))
-    ll <- log(2) - 0.5*log(2*pi) - 0.5*log(sigmaSq) - (eps*eps)/(2*sigmaSq) + pnorm(z, log.p = TRUE)
+                               maxit.optim = 100, PSopt = FALSE, verbose = FALSE) {
+  like_fn <- function(x) {
+    sigma_v <- x[1]
+    sigma_u <- x[2]
+    intercept <- x[3]
+    if (!is.finite(sigma_v) || !is.finite(sigma_u) || sigma_v <= 0 || sigma_u <= 0) {
+      return(1e12)
+    }
+    eps <- inefdec_n * (y - intercept)
+    sigmaSq <- sigma_v * sigma_v + sigma_u * sigma_u
+    z <- -sigma_u * eps / (sigma_v * sqrt(sigmaSq))
+    ll <- log(2) - 0.5 * log(2 * pi) - 0.5 * log(sigmaSq) - (eps * eps) / (2 * sigmaSq) + pnorm(z, log.p = TRUE)
     -sum(ll[is.finite(ll)])
   }
-  start_v <- c(sd(y)/sqrt(2), sd(y)/sqrt(2), mean(y))
+  start_v <- c(sd(y) / sqrt(2), sd(y) / sqrt(2), mean(y))
   lower_v <- c(.SFA_CONSTANTS$MIN_POSITIVE, .SFA_CONSTANTS$MIN_POSITIVE, -Inf)
 
-  Opt.Bobyqa <- opt.bobyqa(fn=like_fn, start_v=start_v, lower.bobyqa=lower_v,
-                            maxit.bobyqa=maxit.bobyqa, bob.TF=TRUE, verbose=verbose)
+  Opt.Bobyqa <- opt.bobyqa(
+    fn = like_fn, start_v = start_v, lower.bobyqa = lower_v,
+    maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose
+  )
   start_v <- Opt.Bobyqa$start_v
 
   differ <- 2
-  Opt.Psoptim <- opt.psoptim(fn=like_fn, start_v, lower.psoptim=c(lower_v[1:2], start_v[3]-differ),
-                              upper.psoptim=c(start_v[1:2]+differ, start_v[3]+differ),
-                              maxit.psoptim=maxit.psoptim, psopt.TF=PSopt, verbose=verbose)
+  Opt.Psoptim <- opt.psoptim(
+    fn = like_fn, start_v, lower.psoptim = c(lower_v[1:2], start_v[3] - differ),
+    upper.psoptim = c(start_v[1:2] + differ, start_v[3] + differ),
+    maxit.psoptim = maxit.psoptim, psopt.TF = PSopt, verbose = verbose
+  )
   start_v <- Opt.Psoptim$start_v
 
-  Opt.Optim <- opt.optim(fn=like_fn, start_v=start_v, lower.optim=lower_v, upper.optim=rep(Inf,3),
-                          maxit.optim=maxit.optim, opt.TF=TRUE, method="L-BFGS-B", optHessian=TRUE, verbose=verbose)
+  Opt.Optim <- opt.optim(
+    fn = like_fn, start_v = start_v, lower.optim = lower_v, upper.optim = rep(Inf, 3),
+    maxit.optim = maxit.optim, opt.TF = TRUE, method = "L-BFGS-B", optHessian = TRUE, verbose = verbose
+  )
   opt <- Opt.Optim$opt
   list(par = opt$par, hessian = opt$hessian, value = opt$value)
 }
@@ -420,16 +455,17 @@
 ## for PL80, length 1 for BC92, length 2 for K1990/K1990modified. `Tref` is
 ## only used by BC92.
 ## ------------------------------------------------------------
-.build_Bit <- function(model_name, t_i, Tref = NA_real_, decay_par = numeric(0)){
+.build_Bit <- function(model_name, t_i, Tref = NA_real_, decay_par = numeric(0)) {
   switch(model_name,
-    "PL80"          = rep(1, length(t_i)),
-    "BC92"          = exp(-decay_par[1]*(t_i - Tref)),
-    "K1990"         = 1/(1 + exp(decay_par[1]*t_i + decay_par[2]*t_i^2)),
+    "PL80" = rep(1, length(t_i)),
+    "BC92" = exp(-decay_par[1] * (t_i - Tref)),
+    "K1990" = 1 / (1 + exp(decay_par[1] * t_i + decay_par[2] * t_i^2)),
     "K1990modified" = {
       Ti_own <- max(t_i)
-      1 + decay_par[1]*(t_i - Ti_own) + decay_par[2]*(t_i - Ti_own)^2
+      1 + decay_par[1] * (t_i - Ti_own) + decay_par[2] * (t_i - Ti_own)^2
     },
-    stop("Unknown decay model_name: ", model_name, call. = FALSE))
+    stop("Unknown decay model_name: ", model_name, call. = FALSE)
+  )
 }
 
 
@@ -463,35 +499,41 @@
 ## Returns pooled and between rank, the offending column names (via the QR
 ## pivot ordering), and the between condition number.
 ## ------------------------------------------------------------
-.check_collinearity <- function(formula, data, individual, tol = 1e-8){
-
+.check_collinearity <- function(formula, data, individual, tol = 1e-8) {
   vars_needed <- intersect(unique(c(all.vars(formula), individual)), names(data))
   df_est <- data[stats::complete.cases(as.data.frame(data)[, vars_needed, drop = FALSE]), ,
-                 drop = FALSE]
+    drop = FALSE
+  ]
 
   X <- tryCatch(stats::model.matrix(formula, data = df_est), error = function(e) NULL)
-  if(is.null(X) || !ncol(X)) return(NULL)
+  if (is.null(X) || !ncol(X)) {
+    return(NULL)
+  }
 
   qx <- qr(X, tol = tol)
-  pooled_drop <- if(qx$rank < ncol(X)) colnames(X)[qx$pivot[(qx$rank + 1L):ncol(X)]] else character(0)
+  pooled_drop <- if (qx$rank < ncol(X)) colnames(X)[qx$pivot[(qx$rank + 1L):ncol(X)]] else character(0)
 
   ## Between-individual means of each column -- the design plm's
   ## error-components step actually inverts.
   idv <- as.character(df_est[[individual]])
-  if(length(idv) != nrow(X)) return(NULL)
+  if (length(idv) != nrow(X)) {
+    return(NULL)
+  }
   Z <- rowsum(as.data.frame(X), group = idv, reorder = FALSE)
   Z <- as.matrix(Z / as.numeric(table(idv)[rownames(Z)]))
 
   qz <- qr(Z, tol = tol)
-  between_drop <- if(qz$rank < ncol(Z)) colnames(Z)[qz$pivot[(qz$rank + 1L):ncol(Z)]] else character(0)
+  between_drop <- if (qz$rank < ncol(Z)) colnames(Z)[qz$pivot[(qz$rank + 1L):ncol(Z)]] else character(0)
 
-  list(pooled_rank  = qx$rank, pooled_cols  = ncol(X),  pooled_drop  = pooled_drop,
-       between_rank = qz$rank, between_cols = ncol(Z),  between_drop = between_drop,
-       between_condition_number = tryCatch(kappa(Z), error = function(e) NA_real_))
+  list(
+    pooled_rank = qx$rank, pooled_cols = ncol(X), pooled_drop = pooled_drop,
+    between_rank = qz$rank, between_cols = ncol(Z), between_drop = between_drop,
+    between_condition_number = tryCatch(kappa(Z), error = function(e) NA_real_)
+  )
 }
 
 ## Human-readable rendering of the above, used by psfm()'s error/warning.
-.collinearity_message <- function(chk, action){
+.collinearity_message <- function(chk, action) {
   paste0(
     "Collinearity detected in the random-effects starting-value regression ",
     "used to initialize this model.\n",
@@ -499,8 +541,11 @@
     " columns (rank ", chk$pooled_rank, ").\n",
     "  The between-individual starting-value matrix has ", chk$between_cols,
     " columns but rank ", chk$between_rank,
-    if(is.finite(chk$between_condition_number))
-      paste0(" (condition number ", format(chk$between_condition_number, digits = 3), ")") else "",
+    if (is.finite(chk$between_condition_number)) {
+      paste0(" (condition number ", format(chk$between_condition_number, digits = 3), ")")
+    } else {
+      ""
+    },
     ".\n",
     "  Linearly dependent in the starting-value step: ",
     paste(chk$between_drop, collapse = ", "), "\n",
@@ -509,13 +554,18 @@
         "  Estimation stopped (collinear_action = \"error\"). Options: simplify the\n",
         "  time controls (e.g. broader period groups or a time trend), supply\n",
         "  start_val manually, or use collinear_action = \"start_only\" to keep the\n",
-        "  requested formula and drop these columns from initialization only."),
+        "  requested formula and drop these columns from initialization only."
+      ),
       "warn_drop" = paste0(
-        "  These columns were DROPPED FROM THE MODEL (collinear_action = \"warn_drop\")."),
+        "  These columns were DROPPED FROM THE MODEL (collinear_action = \"warn_drop\")."
+      ),
       "start_only" = paste0(
         "  The likelihood is still estimated using the requested formula; these\n",
         "  columns were dropped only from the starting-value regression, and their\n",
-        "  starting values were taken from a pooled OLS fit.")))
+        "  starting values were taken from a pooled OLS fit."
+      )
+    )
+  )
 }
 
 
@@ -524,21 +574,29 @@
 ## dropping the term requires the term label, not the column name. A term is
 ## dropped only if ALL of its columns are implicated, so a single aliased
 ## level never silently removes an entire factor.
-.terms_for_columns <- function(formula, data, cols){
-  if(!length(cols)) return(character(0))
-  X  <- tryCatch(stats::model.matrix(formula, data = data), error = function(e) NULL)
-  if(is.null(X)) return(character(0))
+.terms_for_columns <- function(formula, data, cols) {
+  if (!length(cols)) {
+    return(character(0))
+  }
+  X <- tryCatch(stats::model.matrix(formula, data = data), error = function(e) NULL)
+  if (is.null(X)) {
+    return(character(0))
+  }
   asg <- attr(X, "assign")
-  tl  <- attr(stats::terms(formula), "term.labels")
-  if(is.null(asg) || !length(tl)) return(character(0))
+  tl <- attr(stats::terms(formula), "term.labels")
+  if (is.null(asg) || !length(tl)) {
+    return(character(0))
+  }
   hit <- match(cols, colnames(X))
   hit <- hit[!is.na(hit)]
-  if(!length(hit)) return(character(0))
+  if (!length(hit)) {
+    return(character(0))
+  }
   out <- character(0)
-  for(k in unique(asg[hit])){
-    if(k == 0L) next                       ## intercept, never dropped here
+  for (k in unique(asg[hit])) {
+    if (k == 0L) next ## intercept, never dropped here
     cols_k <- which(asg == k)
-    if(all(cols_k %in% hit)) out <- c(out, tl[k])
+    if (all(cols_k %in% hit)) out <- c(out, tl[k])
   }
   out
 }
@@ -548,16 +606,19 @@
 ## identify with its pooled OLS estimate (falling back to 0 if even that is
 ## unavailable). Keeps the starting vector conformable with the likelihood's
 ## parameter layout, which is what the optimizer scaffold expects.
-.expand_start_beta <- function(beta_raw, x_vars_vec, formula, data){
-  if(is.null(x_vars_vec) || !length(x_vars_vec)) return(beta_raw)
+.expand_start_beta <- function(beta_raw, x_vars_vec, formula, data) {
+  if (is.null(x_vars_vec) || !length(x_vars_vec)) {
+    return(beta_raw)
+  }
   out <- stats::setNames(rep(NA_real_, length(x_vars_vec)), x_vars_vec)
   common <- intersect(names(beta_raw), x_vars_vec)
   out[common] <- beta_raw[common]
-  if(anyNA(out)){
+  if (anyNA(out)) {
     pooled <- tryCatch(stats::coef(stats::lm(formula, data = as.data.frame(data))),
-                       error = function(e) NULL)
+      error = function(e) NULL
+    )
     miss <- names(out)[is.na(out)]
-    if(!is.null(pooled)){
+    if (!is.null(pooled)) {
       got <- intersect(miss, names(pooled))
       out[got] <- pooled[got]
     }
@@ -583,57 +644,78 @@
 ## more than nine of them. Converting through character preserves the numeric
 ## ordering.
 ## ------------------------------------------------------------
-.as_panel_data <- function(data, individual, time = NULL){
-
-  if(missing(individual) || is.null(individual))
+.as_panel_data <- function(data, individual, time = NULL) {
+  if (missing(individual) || is.null(individual)) {
     stop("psfm() needs `individual`: the name of the column identifying each ",
-         "cross-sectional unit (firm, region, ...).", call. = FALSE)
+      "cross-sectional unit (firm, region, ...).",
+      call. = FALSE
+    )
+  }
 
   ## Already indexed: leave it alone, so existing pdata.frame callers keep
   ## their exact current behaviour.
-  if(inherits(data, "pdata.frame")) return(data)
+  if (inherits(data, "pdata.frame")) {
+    return(data)
+  }
 
   data <- as.data.frame(data)
 
-  if(!(is.character(individual) && length(individual) == 1L))
+  if (!(is.character(individual) && length(individual) == 1L)) {
     stop("`individual` must be a single column name given as a character string.",
-         call. = FALSE)
-  if(!(individual %in% names(data)))
+      call. = FALSE
+    )
+  }
+  if (!(individual %in% names(data))) {
     stop("`individual` column '", individual, "' was not found in `data`. ",
-         "Available columns: ", paste(names(data), collapse = ", "), call. = FALSE)
+      "Available columns: ", paste(names(data), collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   has_time <- !is.null(time) && !identical(time, FALSE)
-  if(has_time){
-    if(!(is.character(time) && length(time) == 1L))
+  if (has_time) {
+    if (!(is.character(time) && length(time) == 1L)) {
       stop("`time` must be a single column name given as a character string.",
-           call. = FALSE)
-    if(!(time %in% names(data)))
+        call. = FALSE
+      )
+    }
+    if (!(time %in% names(data))) {
       stop("`time` column '", time, "' was not found in `data`. ",
-           "Available columns: ", paste(names(data), collapse = ", "), call. = FALSE)
+        "Available columns: ", paste(names(data), collapse = ", "),
+        call. = FALSE
+      )
+    }
   }
 
   ## Sort numerically where the column is numeric, so that period 10 follows
   ## period 9 rather than period 1.
-  .norm_index <- function(v){
-    if(is.factor(v)) v <- as.character(v)
-    if(is.numeric(v)) return(factor(v, levels = sort(unique(v))))
+  .norm_index <- function(v) {
+    if (is.factor(v)) v <- as.character(v)
+    if (is.numeric(v)) {
+      return(factor(v, levels = sort(unique(v))))
+    }
     num <- suppressWarnings(as.numeric(v))
-    if(!anyNA(num)) return(factor(v, levels = as.character(sort(unique(num)))))
+    if (!anyNA(num)) {
+      return(factor(v, levels = as.character(sort(unique(num)))))
+    }
     factor(v)
   }
 
   data[[individual]] <- .norm_index(data[[individual]])
-  if(has_time) data[[time]] <- .norm_index(data[[time]])
+  if (has_time) data[[time]] <- .norm_index(data[[time]])
 
-  idx <- if(has_time) c(individual, time) else individual
+  idx <- if (has_time) c(individual, time) else individual
   out <- tryCatch(plm::pdata.frame(data, index = idx),
-                  error = function(e)
-                    stop("Could not construct a panel index from `individual`='",
-                         individual,
-                         if(has_time) paste0("' and `time`='", time) else "",
-                         "': ", conditionMessage(e),
-                         ". Check for duplicate individual-time pairs.",
-                         call. = FALSE))
+    error = function(e) {
+      stop("Could not construct a panel index from `individual`='",
+        individual,
+        if (has_time) paste0("' and `time`='", time) else "",
+        "': ", conditionMessage(e),
+        ". Check for duplicate individual-time pairs.",
+        call. = FALSE
+      )
+    }
+  )
   out
 }
 
@@ -660,18 +742,23 @@
 ## (numDeriv's own accuracy). Supplying this to nlminb roughly halves the
 ## runtime again relative to a numerically differentiated gradient.
 ## ------------------------------------------------------------
-.grad_nhn <- function(x, Y, data_i_vars, inefdec_n = 1){
-  lam <- x[1]; sig <- x[2]; beta <- x[-c(1,2)]
-  if(!is.finite(lam) || !is.finite(sig) || lam <= 0 || sig <= 0)
+.grad_nhn <- function(x, Y, data_i_vars, inefdec_n = 1) {
+  lam <- x[1]
+  sig <- x[2]
+  beta <- x[-c(1, 2)]
+  if (!is.finite(lam) || !is.finite(sig) || lam <= 0 || sig <= 0) {
     return(rep(0, length(x)))
-  Xm  <- as.matrix(data_i_vars)
-  eps <- as.numeric(inefdec_n*(Y - Xm %*% beta))
-  a   <- eps/sig
-  b   <- -lam*a
-  m   <- exp(dnorm(b, log = TRUE) - pnorm(b, log.p = TRUE))
-  g   <- c(sum(a*m),
-           -sum((a^2 - 1 + lam*a*m)/sig),
-           -colSums((inefdec_n*Xm/sig) * (a + lam*m)))
+  }
+  Xm <- as.matrix(data_i_vars)
+  eps <- as.numeric(inefdec_n * (Y - Xm %*% beta))
+  a <- eps / sig
+  b <- -lam * a
+  m <- exp(dnorm(b, log = TRUE) - pnorm(b, log.p = TRUE))
+  g <- c(
+    sum(a * m),
+    -sum((a^2 - 1 + lam * a * m) / sig),
+    -colSums((inefdec_n * Xm / sig) * (a + lam * m))
+  )
   g[!is.finite(g)] <- 0
   g
 }
@@ -711,22 +798,22 @@
 ## in log space keeps full precision -- without this, ~15% of uniform-model
 ## efficiency scores came back pinned at the 1.0 clamp instead of their true
 ## value.
-.log_pnorm_diff <- function(a, b){
+.log_pnorm_diff <- function(a, b) {
   use_upper <- (a + b) > 0
   la <- ifelse(use_upper, pnorm(-b, log.p = TRUE), pnorm(a, log.p = TRUE))
   lb <- ifelse(use_upper, pnorm(-a, log.p = TRUE), pnorm(b, log.p = TRUE))
   lb + log(-expm1(pmin(la - lb, -.Machine$double.eps)))
 }
 
-.te_battese_coelli <- function(mu_star, sigma_star){
+.te_battese_coelli <- function(mu_star, sigma_star) {
   sigma_star <- pmax(sigma_star, .SFA_CONSTANTS$MIN_POSITIVE)
-  z   <- mu_star / sigma_star
+  z <- mu_star / sigma_star
   out <- exp(-mu_star + 0.5 * sigma_star^2 +
-               pnorm(z - sigma_star, log.p = TRUE) - pnorm(z, log.p = TRUE))
+    pnorm(z - sigma_star, log.p = TRUE) - pnorm(z, log.p = TRUE))
   pmin(pmax(out, 0), 1)
 }
 
-.jlms_u <- function(mu_star, sigma_star){
+.jlms_u <- function(mu_star, sigma_star) {
   sigma_star <- pmax(sigma_star, .SFA_CONSTANTS$MIN_POSITIVE)
   z <- mu_star / sigma_star
   pmax(mu_star + sigma_star * exp(dnorm(z, log = TRUE) - pnorm(z, log.p = TRUE)), 0)
@@ -770,8 +857,8 @@
 ## misassigns firm effects; reorder = FALSE returns first-appearance order,
 ## which is only 1..ngroups if the data happen to be sorted. Reading the
 ## returned rownames back as integers is correct under either arrangement.
-.gsum <- function(x, gid, ngroups){
-  s   <- rowsum(as.numeric(x), gid, reorder = FALSE)
+.gsum <- function(x, gid, ngroups) {
+  s <- rowsum(as.numeric(x), gid, reorder = FALSE)
   out <- numeric(ngroups)
   out[as.integer(rownames(s))] <- s[, 1L]
   out
@@ -801,13 +888,15 @@
 ## The groupwise mean of `r` is always a valid lower bracket: there the first
 ## score term sums to zero by construction and the second is strictly positive.
 .tfe_alpha_profile <- function(r, gid, ngroups, lambda, sigma,
-                               tol = 1e-11, maxit = 100L){
-  if(!is.finite(lambda) || !is.finite(sigma) || lambda <= 0 || sigma <= 0) return(NULL)
+                               tol = 1e-11, maxit = 100L) {
+  if (!is.finite(lambda) || !is.finite(sigma) || lambda <= 0 || sigma <= 0) {
+    return(NULL)
+  }
 
   s2 <- sigma * sigma
   ls <- lambda / sigma
 
-  score_curv <- function(alpha){
+  score_curv <- function(alpha) {
     e <- r - alpha[gid]
     a <- -ls * e
     m <- exp(dnorm(a, log = TRUE) - pnorm(a, log.p = TRUE))
@@ -820,27 +909,29 @@
     w <- m * (a + m)
     w[!is.finite(w)] <- 0
     w <- pmin(pmax(w, 0), 1)
-    list(g = .gsum(e / s2 + ls * m, gid, ngroups),
-         h = .gsum(-1 / s2 - (ls * ls) * w, gid, ngroups))
+    list(
+      g = .gsum(e / s2 + ls * m, gid, ngroups),
+      h = .gsum(-1 / s2 - (ls * ls) * w, gid, ngroups)
+    )
   }
 
   n_i <- .gsum(rep(1, length(r)), gid, ngroups)
-  lo  <- .gsum(r, gid, ngroups) / pmax(n_i, 1)   ## score > 0 here, by construction
-  hi   <- lo
-  need <- rep(TRUE, ngroups)        ## still to be bracketed from above
+  lo <- .gsum(r, gid, ngroups) / pmax(n_i, 1) ## score > 0 here, by construction
+  hi <- lo
+  need <- rep(TRUE, ngroups) ## still to be bracketed from above
   step <- max(4 * sigma * (1 + lambda), 1e-6)
-  for(k in seq_len(80L)){
+  for (k in seq_len(80L)) {
     hi[need] <- hi[need] + step
-    need     <- score_curv(hi)$g >= 0
-    if(!any(need)) break
-    step     <- step * 2
+    need <- score_curv(hi)$g >= 0
+    if (!any(need)) break
+    step <- step * 2
   }
 
   alpha <- 0.5 * (lo + hi)
-  for(it in seq_len(maxit)){
-    sc  <- score_curv(alpha)
+  for (it in seq_len(maxit)) {
+    sc <- score_curv(alpha)
     pos <- sc$g > 0
-    lo[pos]  <- pmax(lo[pos],  alpha[pos])
+    lo[pos] <- pmax(lo[pos], alpha[pos])
     hi[!pos] <- pmin(hi[!pos], alpha[!pos])
 
     stp <- ifelse(is.finite(sc$h) & sc$h < 0, -sc$g / sc$h, 0)
@@ -848,11 +939,13 @@
     bad <- !is.finite(new) | new <= lo | new >= hi
     new[bad] <- 0.5 * (lo[bad] + hi[bad])
 
-    done  <- max(abs(new - alpha)) < tol * (1 + max(abs(alpha)))
+    done <- max(abs(new - alpha)) < tol * (1 + max(abs(alpha)))
     alpha <- new
-    if(done) break
+    if (done) break
   }
-  if(!all(is.finite(alpha))) return(NULL)
+  if (!all(is.finite(alpha))) {
+    return(NULL)
+  }
   alpha
 }
 
@@ -863,20 +956,20 @@
 ## If vars is empty, return an intercept-only design so that
 ## the same code path nests the homoskedastic special case.
 ## ------------------------------------------------------------
-.make_var_design <- function(data, vars, rows = NULL, int_name = "int"){
-  if(length(vars) == 0){
-    n_rows <- if(is.null(rows)) nrow(data) else length(rows)
+.make_var_design <- function(data, vars, rows = NULL, int_name = "int") {
+  if (length(vars) == 0) {
+    n_rows <- if (is.null(rows)) nrow(data) else length(rows)
     out <- matrix(1, nrow = n_rows, ncol = 1)
     colnames(out) <- int_name
     return(out)
   }
-  
+
   out <- as.matrix(data[, vars, drop = FALSE])
-  
-  if(!is.null(rows)){
+
+  if (!is.null(rows)) {
     out <- out[rows, , drop = FALSE]
   }
-  
+
   out
 }
 
@@ -899,11 +992,11 @@
 ## no value is ever altered, and a real breakdown still isSymmetric()==
 ## FALSE afterwards.
 ## ------------------------------------------------------------
-.safe_symmetrize <- function(M){
+.safe_symmetrize <- function(M) {
   S <- 0.5 * (M + t(M))
-  if(!is.null(dimnames(S)) &&
-     !isTRUE(isSymmetric(S, tol = sqrt(.Machine$double.eps))) &&
-     isTRUE(isSymmetric(S, tol = sqrt(.Machine$double.eps), check.attributes = FALSE))){
+  if (!is.null(dimnames(S)) &&
+    !isTRUE(isSymmetric(S, tol = sqrt(.Machine$double.eps))) &&
+    isTRUE(isSymmetric(S, tol = sqrt(.Machine$double.eps), check.attributes = FALSE))) {
     dimnames(S) <- NULL
   }
   S
@@ -924,46 +1017,45 @@
                           ridge_mult = 10,
                           max_tries = 8,
                           name = "matrix") {
-  
   M <- .safe_symmetrize(M)
   p <- nrow(M)
   I_p <- diag(p)
-  
+
   ## First try: Cholesky path
-  for(k in 0:max_tries){
-    ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-    M_try <- if(ridge == 0) M else M + ridge * I_p
-    
+  for (k in 0:max_tries) {
+    ridge <- if (k == 0) 0 else base_ridge * ridge_mult^(k - 1)
+    M_try <- if (ridge == 0) M else M + ridge * I_p
+
     chol_obj <- tryCatch(chol(M_try), error = function(e) NULL)
-    
-    if(!is.null(chol_obj)){
+
+    if (!is.null(chol_obj)) {
       M_inv <- chol2inv(chol_obj)
       return(list(
         value   = .safe_symmetrize(M_inv),
         ridge   = ridge,
         success = TRUE,
-        method  = if(ridge == 0) "chol" else "chol_ridge"
+        method  = if (ridge == 0) "chol" else "chol_ridge"
       ))
     }
   }
-  
+
   ## Second try: direct solve fallback
-  for(k in 0:max_tries){
-    ridge <- if(k == 0) 0 else base_ridge * ridge_mult^(k - 1)
-    M_try <- if(ridge == 0) M else M + ridge * I_p
-    
+  for (k in 0:max_tries) {
+    ridge <- if (k == 0) 0 else base_ridge * ridge_mult^(k - 1)
+    M_try <- if (ridge == 0) M else M + ridge * I_p
+
     sol <- tryCatch(solve(M_try), error = function(e) NULL)
-    
-    if(!is.null(sol)){
+
+    if (!is.null(sol)) {
       return(list(
         value   = .safe_symmetrize(sol),
         ridge   = ridge,
         success = TRUE,
-        method  = if(ridge == 0) "solve" else "solve_ridge"
+        method  = if (ridge == 0) "solve" else "solve_ridge"
       ))
     }
   }
-  
+
   stop(sprintf("Unable to invert %s even after ridging.", name), call. = FALSE)
 }
 
@@ -979,38 +1071,40 @@
                                ridge_mult = 10,
                                max_tries = 8,
                                name = "posterior system") {
-  
   invVEE <- .safe_inverse(VEE_i,
-                          base_ridge = base_ridge,
-                          ridge_mult = ridge_mult,
-                          max_tries  = max_tries,
-                          name       = "VEE_i")
-  
+    base_ridge = base_ridge,
+    ridge_mult = ridge_mult,
+    max_tries  = max_tries,
+    name       = "VEE_i"
+  )
+
   invSIG <- .safe_inverse(SIG_i,
-                          base_ridge = base_ridge,
-                          ridge_mult = ridge_mult,
-                          max_tries  = max_tries,
-                          name       = "SIG_i")
-  
+    base_ridge = base_ridge,
+    ridge_mult = ridge_mult,
+    max_tries  = max_tries,
+    name       = "SIG_i"
+  )
+
   K <- .safe_symmetrize(invVEE$value + t(A_i) %*% invSIG$value %*% A_i)
-  
+
   invK <- .safe_inverse(K,
-                        base_ridge = base_ridge,
-                        ridge_mult = ridge_mult,
-                        max_tries  = max_tries,
-                        name       = name)
-  
+    base_ridge = base_ridge,
+    ridge_mult = ridge_mult,
+    max_tries  = max_tries,
+    name       = name
+  )
+
   ARR <- invK$value %*% t(A_i) %*% invSIG$value
-  
+
   list(
     LAM = .safe_symmetrize(invK$value),
     ARR = ARR,
     invVEE_method = invVEE$method,
     invSIG_method = invSIG$method,
-    invK_method   = invK$method,
-    ridge_VEE     = invVEE$ridge,
-    ridge_SIG     = invSIG$ridge,
-    ridge_K       = invK$ridge
+    invK_method = invK$method,
+    ridge_VEE = invVEE$ridge,
+    ridge_SIG = invSIG$ridge,
+    ridge_K = invK$ridge
   )
 }
 
@@ -1019,23 +1113,21 @@
 .format_formula <- function(input_val) {
   # Convert formula object to a single string
   input_string <- paste(format(input_val), collapse = "")
-  
+
   # Split by pipes
   parts <- trimws(strsplit(input_string, "\\|")[[1]])
-  
+
   # Replace empty parts with "1"
   parts[parts == ""] <- "1"
-  
+
   # Pad with "1" until there are 3 components
   while (length(parts) < 3) {
     parts <- c(parts, "1")
   }
-  
+
   # Return as a formula
- return(as.formula(paste(parts, collapse = " | ")))
+  return(as.formula(paste(parts, collapse = " | ")))
 }
-
-
 
 
 ## ------------------------------------------------------------
@@ -1057,14 +1149,13 @@
 ## from an actual model.matrix rather than text parsing), so duplicating
 ## that here would just be a second source of truth.
 ## ------------------------------------------------------------
-.parse_pipe_formula <- function(formula){
-
-  f       <- Formula::Formula(formula)
+.parse_pipe_formula <- function(formula) {
+  f <- Formula::Formula(formula)
   n_parts <- length(f)[2]
 
-  formula_x  <- formula(f, lhs = 1, rhs = 1)
-  formula_z  <- if(n_parts >= 2) formula(f, lhs = 1, rhs = 2) else NULL
-  formula_zp <- if(n_parts >= 3) formula(f, lhs = 1, rhs = 3) else NULL
+  formula_x <- formula(f, lhs = 1, rhs = 1)
+  formula_z <- if (n_parts >= 2) formula(f, lhs = 1, rhs = 2) else NULL
+  formula_zp <- if (n_parts >= 3) formula(f, lhs = 1, rhs = 3) else NULL
 
   y_var <- all.vars(formula_x)[1]
 
@@ -1080,20 +1171,19 @@
 
 ## function to handle gtre lower bounds for sigmas
 .generate_sfa_bounds <- function(input_formula, prep, inf_sub = -Inf) {
-  
   # 1. Split formula into parts
   f_char <- paste(format(input_formula), collapse = "")
   parts <- trimws(strsplit(f_char, "\\|")[[1]])
-  while(length(parts) < 3) parts <- c(parts, "1")
+  while (length(parts) < 3) parts <- c(parts, "1")
   parts[parts == ""] <- "1"
-  
+
   # 2. Start with Variance Components (2 params)
   lower_bounds <- rep(.SFA_CONSTANTS$MIN_POSITIVE, 2)
-  
+
   # 3. Beta Section (prep$n_x_vars params)
   lower_bounds <- c(lower_bounds, rep(inf_sub, prep$n_x_vars))
-  
-  # 4. Delta Section 
+
+  # 4. Delta Section
   # If "1", it's 1 param. If variables, it's n_z_eff params.
   if (parts[2] == "1") {
     # lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
@@ -1101,8 +1191,8 @@
   } else {
     lower_bounds <- c(lower_bounds, rep(inf_sub, prep$n_z_vars))
   }
-  
-  # 5. Delta_p Section 
+
+  # 5. Delta_p Section
   # If "1", it's 1 param. If variables, it's n_zp_eff params.
   if (parts[3] == "1") {
     # lower_bounds <- c(lower_bounds, .SFA_CONSTANTS$MIN_POSITIVE)
@@ -1110,10 +1200,9 @@
   } else {
     lower_bounds <- c(lower_bounds, rep(inf_sub, prep$n_zp_vars))
   }
-  
+
   return(lower_bounds)
 }
-
 
 
 .check_model_formula_pipes <- function(formula, model_name) {
@@ -1134,7 +1223,7 @@
     # --- 0 Pipes Allowed (1 Part) ---
     "TFE"        = 1,     "TFE_WMLE"   = 1,   "GTRE_SEQ1"     = 1,
     "GTRE_SEQ2"  = 1,     "SSFE"       = 1,   "PL80"          = 1,
-    "BC92"       = 1,     "K1990"      = 1,   "K1990modified" = 1, 
+    "BC92"       = 1,     "K1990"      = 1,   "K1990modified" = 1,
     "NR"         = 1,     "THT"        = 1,   "NTN"           = 1,
     "NG"         = 1,     "ZISF"       = 1,   "NNAK"          = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,
@@ -1150,24 +1239,24 @@
     "GTRE_Z"     = 3,     "TTNE"       = 3,   "TTHN"          = 3,
     "TTNLS"      = 3
   )
-  
+
   # 2. Check if the provided model name is valid
   if (!(model_name %in% names(max_parts_map))) {
     stop(paste("Unknown model_name:", model_name), call. = FALSE)
   }
-  
+
   # 3. Parse the formula and count RHS parts separated by '|'
   f <- Formula::Formula(formula)
   rhs_parts <- length(f)[2] # Index 2 extracts the RHS parts vector length
-  
+
   # 4. Get the max allowed parts for this specific model
   allowed_parts <- max_parts_map[model_name]
-  
+
   # 5. Enforce the limit
   if (rhs_parts > allowed_parts) {
     formula_str <- paste(deparse(formula), collapse = " ")
     max_pipes <- allowed_parts - 1
-    
+
     stop(paste0(
       "Invalid formula structure for model '", model_name, "'!\n",
       "Formula provided: ", formula_str, "\n",
@@ -1175,7 +1264,7 @@
       "Found ", (rhs_parts - 1), " pipe separator(s) (", rhs_parts, " parts) instead."
     ), call. = FALSE)
   }
-  
+
   return(invisible(TRUE))
 }
 
@@ -1214,64 +1303,78 @@
 ## and Waldman call this "Type I failure"; it is common in small samples and is
 ## precisely the diagnostic COLS is useful for. Returns $wrong_skew = TRUE so
 ## the caller can warn.
-.cols_fit <- function(Y, X, model_name, intercept_col = 1L){
-  Y <- as.numeric(Y); X <- as.matrix(X)
+.cols_fit <- function(Y, X, model_name, intercept_col = 1L) {
+  Y <- as.numeric(Y)
+  X <- as.matrix(X)
   fit <- stats::lm.fit(X, Y)
-  b   <- fit$coefficients
-  e   <- as.numeric(fit$residuals)
-  n   <- length(e)
-  k   <- sum(!is.na(b))
-  e   <- e - mean(e)
+  b <- fit$coefficients
+  e <- as.numeric(fit$residuals)
+  n <- length(e)
+  k <- sum(!is.na(b))
+  e <- e - mean(e)
 
   m2 <- mean(e^2)
   m3 <- mean(e^3)
   m4 <- mean(e^4)
 
   wrong <- !is.finite(m3) || m3 >= 0
-  pars  <- switch(model_name,
+  pars <- switch(model_name,
     "NHN" = {
-      su <- if(wrong) 0 else (m3/(sqrt(2/pi)*(1 - 4/pi)))^(1/3)
-      list(sigma_v = sqrt(max(m2 - su^2*(1 - 2/pi), .Machine$double.eps)),
-           sigma_u = su, extra = NULL, eu = su*sqrt(2/pi))
+      su <- if (wrong) 0 else (m3 / (sqrt(2 / pi) * (1 - 4 / pi)))^(1 / 3)
+      list(
+        sigma_v = sqrt(max(m2 - su^2 * (1 - 2 / pi), .Machine$double.eps)),
+        sigma_u = su, extra = NULL, eu = su * sqrt(2 / pi)
+      )
     },
     "NE" = {
-      su <- if(wrong) 0 else (-m3/2)^(1/3)
-      list(sigma_v = sqrt(max(m2 - su^2, .Machine$double.eps)),
-           sigma_u = su, extra = NULL, eu = su)
+      su <- if (wrong) 0 else (-m3 / 2)^(1 / 3)
+      list(
+        sigma_v = sqrt(max(m2 - su^2, .Machine$double.eps)),
+        sigma_u = su, extra = NULL, eu = su
+      )
     },
     "NG" = {
-      k4 <- m4 - 3*m2^2
+      k4 <- m4 - 3 * m2^2
       bad <- wrong || !is.finite(k4) || k4 <= 0
-      su <- if(bad) 0 else -k4/(3*m3)
-      sh <- if(bad || su <= 0) 1 else -m3/(2*su^3)
-      list(sigma_v = sqrt(max(m2 - sh*su^2, .Machine$double.eps)),
-           sigma_u = su, extra = c(mu = sh), eu = sh*su)
+      su <- if (bad) 0 else -k4 / (3 * m3)
+      sh <- if (bad || su <= 0) 1 else -m3 / (2 * su^3)
+      list(
+        sigma_v = sqrt(max(m2 - sh * su^2, .Machine$double.eps)),
+        sigma_u = su, extra = c(mu = sh), eu = sh * su
+      )
     },
     stop("COLS is implemented for model_name \"NHN\", \"NE\" and \"NG\" only. ",
-         "The moment inversion is distribution-specific and no closed form is ",
-         "available for \"", model_name, "\".", call. = FALSE))
+      "The moment inversion is distribution-specific and no closed form is ",
+      "available for \"", model_name, "\".",
+      call. = FALSE
+    )
+  )
 
   ## The only coefficient COLS corrects. OLS slopes are already consistent.
   b_cols <- b
-  if(!is.na(intercept_col) && intercept_col >= 1 && intercept_col <= length(b))
+  if (!is.na(intercept_col) && intercept_col >= 1 && intercept_col <= length(b)) {
     b_cols[intercept_col] <- b[intercept_col] + pars$eu
+  }
 
   ## Slope standard errors are the ordinary OLS ones and are valid as such.
   ## The intercept's is NOT -- it inherits the sampling error of a third-moment
   ## estimate, which OLS knows nothing about -- and neither sigma has one at
   ## all in closed form here, so both are returned as NA rather than as a
   ## number that would be read as inference. Use cols_boot for those.
-  s2  <- sum(e^2)/(n - k)
-  R   <- qr.R(fit$qr)
-  V   <- tryCatch(chol2inv(R)*s2, error = function(err) matrix(NA_real_, k, k))
+  s2 <- sum(e^2) / (n - k)
+  R <- qr.R(fit$qr)
+  V <- tryCatch(chol2inv(R) * s2, error = function(err) matrix(NA_real_, k, k))
   se_b <- sqrt(pmax(diag(V), 0))
-  if(!is.na(intercept_col) && intercept_col >= 1 && intercept_col <= length(se_b))
+  if (!is.na(intercept_col) && intercept_col >= 1 && intercept_col <= length(se_b)) {
     se_b[intercept_col] <- NA_real_
+  }
 
-  list(beta = b_cols, se_beta = se_b, sigma_v = pars$sigma_v,
-       sigma_u = pars$sigma_u, extra = pars$extra, eu = pars$eu,
-       residuals = as.numeric(Y - X %*% b_cols), wrong_skew = wrong,
-       moments = c(m2 = m2, m3 = m3, m4 = m4))
+  list(
+    beta = b_cols, se_beta = se_b, sigma_v = pars$sigma_v,
+    sigma_u = pars$sigma_u, extra = pars$extra, eu = pars$eu,
+    residuals = as.numeric(Y - X %*% b_cols), wrong_skew = wrong,
+    moments = c(m2 = m2, m3 = m3, m4 = m4)
+  )
 }
 
 
@@ -1285,7 +1388,7 @@
 ## which does not just guard the log -- it floors the per-observation
 ## contribution at -23.03 and makes the objective FLAT across the whole region
 ## beyond it, so every badly-fitting parameter vector scores the same.
-.log_add2 <- function(a, b){
+.log_add2 <- function(a, b) {
   m <- pmax(a, b)
   out <- m + log(exp(a - m) + exp(b - m))
   ## m = -Inf means both terms are -Inf; the arithmetic above gives NaN there.
@@ -1323,29 +1426,40 @@
 ## Returns the full start vector (sigma_v, sigma_u, betas), or NULL when the
 ## residuals are wrongly skewed and the moment equations have no admissible
 ## solution; the caller then falls back to the old flat start.
-.nr_start <- function(epsilon_hat, beta_0_st, beta_hat){
+.nr_start <- function(epsilon_hat, beta_0_st, beta_hat) {
   e <- as.numeric(epsilon_hat)
-  if(!length(e) || any(!is.finite(e))) return(NULL)
-  e  <- e - mean(e)
+  if (!length(e) || any(!is.finite(e))) {
+    return(NULL)
+  }
+  e <- e - mean(e)
   m2 <- mean(e^2)
   m3 <- mean(e^3)
-  if(!is.finite(m2) || !is.finite(m3) || m2 <= 0 || m3 >= 0) return(NULL)
+  if (!is.finite(m2) || !is.finite(m3) || m2 <= 0 || m3 >= 0) {
+    return(NULL)
+  }
 
-  g1  <- 2*sqrt(pi)*(pi - 3)/(4 - pi)^1.5      ## 0.6311, Rayleigh skewness
-  vu  <- (-m3/g1)^(2/3)                        ## Var(u)
-  su  <- sqrt(vu/(1 - pi/4))
+  g1 <- 2 * sqrt(pi) * (pi - 3) / (4 - pi)^1.5 ## 0.6311, Rayleigh skewness
+  vu <- (-m3 / g1)^(2 / 3) ## Var(u)
+  su <- sqrt(vu / (1 - pi / 4))
   ## A wrong-skew-free sample can still put all of the spread in u. Keep a
   ## floor under sigma_v rather than starting at zero: the likelihood divides
   ## eps by sigma_v, so a zero start is not merely a poor guess, it makes the
   ## first objective evaluation non-finite.
-  sv  <- sqrt(max(m2 - vu, 0.01*m2))
-  if(!is.finite(su) || !is.finite(sv) || su <= 0) return(NULL)
+  sv <- sqrt(max(m2 - vu, 0.01 * m2))
+  if (!is.finite(su) || !is.finite(sv) || su <= 0) {
+    return(NULL)
+  }
 
   ## OLS puts the intercept E[u] below the frontier; shift it back up.
-  b0  <- if(is.na(beta_0_st)) NA else unname(beta_0_st) + su*sqrt(pi)/2
-  out <- if(is.na(beta_0_st)) unname(c(sv, su, beta_hat))
-         else                 unname(c(sv, su, b0, beta_hat))
-  if(any(!is.finite(out))) return(NULL)
+  b0 <- if (is.na(beta_0_st)) NA else unname(beta_0_st) + su * sqrt(pi) / 2
+  out <- if (is.na(beta_0_st)) {
+    unname(c(sv, su, beta_hat))
+  } else {
+    unname(c(sv, su, b0, beta_hat))
+  }
+  if (any(!is.finite(out))) {
+    return(NULL)
+  }
   out
 }
 
@@ -1384,47 +1498,51 @@
 ## Returns a LIST of candidate parameter vectors (sigma_v, sigma_u, mu, betas).
 ## The caller evaluates the likelihood at each and keeps the best.
 .ng_start_candidates <- function(epsilon_hat, beta_0_st, beta_hat,
-                                 mu_grid = c(0.5, 1, 2, 4, 8)){
-  e  <- as.numeric(epsilon_hat)
-  e  <- e - mean(e)
-  n  <- length(e)
-  if(!n || any(!is.finite(e))) return(list())
+                                 mu_grid = c(0.5, 1, 2, 4, 8)) {
+  e <- as.numeric(epsilon_hat)
+  e <- e - mean(e)
+  n <- length(e)
+  if (!n || any(!is.finite(e))) {
+    return(list())
+  }
 
   k2 <- mean(e^2)
   k3 <- mean(e^3)
-  k4 <- mean(e^4) - 3*k2^2
+  k4 <- mean(e^4) - 3 * k2^2
   sd_e <- sqrt(max(k2, .Machine$double.eps))
 
   ## Anchor for E[u]. Half-normal third moment first (steady), gamma cumulants
   ## as a cross-check. Both need negative skew; a wrong-skew sample carries no
   ## inefficiency signal, so fall back to a fraction of the residual spread.
-  kk    <- sqrt(2/pi)*(1 - 4/pi)               ## < 0
-  eu_hn <- if(is.finite(k3) && k3 < 0) sqrt(2/pi)*(k3/kk)^(1/3) else NA_real_
-  eu    <- if(is.finite(eu_hn) && eu_hn > 0) eu_hn else 0.5*sd_e
-  eu    <- min(max(eu, 1e-3), 10*sd_e)
+  kk <- sqrt(2 / pi) * (1 - 4 / pi) ## < 0
+  eu_hn <- if (is.finite(k3) && k3 < 0) sqrt(2 / pi) * (k3 / kk)^(1 / 3) else NA_real_
+  eu <- if (is.finite(eu_hn) && eu_hn > 0) eu_hn else 0.5 * sd_e
+  eu <- min(max(eu, 1e-3), 10 * sd_e)
 
-  mk <- function(sv, su, m){
-    if(!is.finite(sv) || !is.finite(su) || !is.finite(m) ||
-       sv <= 0 || su <= 0 || m <= 0) return(NULL)
-    b0 <- if(is.na(beta_0_st)) NULL else unname(beta_0_st) + m*su
+  mk <- function(sv, su, m) {
+    if (!is.finite(sv) || !is.finite(su) || !is.finite(m) ||
+      sv <= 0 || su <= 0 || m <= 0) {
+      return(NULL)
+    }
+    b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + m * su
     unname(c(sv, su, m, b0, beta_hat))
   }
 
   cands <- list()
 
   ## The gamma-cumulant solution, when the moments admit one.
-  if(is.finite(k3) && k3 < 0 && is.finite(k4) && k4 > 0){
-    th <- -k4/(3*k3)
-    P  <- -k3/(2*th^3)
-    sv <- sqrt(max(k2 - P*th^2, (0.05*sd_e)^2))
+  if (is.finite(k3) && k3 < 0 && is.finite(k4) && k4 > 0) {
+    th <- -k4 / (3 * k3)
+    P <- -k3 / (2 * th^3)
+    sv <- sqrt(max(k2 - P * th^2, (0.05 * sd_e)^2))
     cands <- c(cands, list(mk(sv, th, P)))
   }
 
   ## Along the ridge: E[u] fixed at the anchor, shape swept over the grid, and
   ## sigma_v taking whatever variance the gamma component does not explain.
-  for(m in mu_grid){
-    su <- eu/m
-    sv <- sqrt(max(k2 - m*su^2, (0.05*sd_e)^2))
+  for (m in mu_grid) {
+    su <- eu / m
+    sv <- sqrt(max(k2 - m * su^2, (0.05 * sd_e)^2))
     cands <- c(cands, list(mk(sv, su, m)))
   }
 
@@ -1461,22 +1579,27 @@
 ## residuals and for ranef() by construction but not for an arbitrary vector.
 ## Feeding it uncentred data silently inflates m2 and biases m3, and gamma
 ## saturates at its min(1, .) cap.
-.gtre_two_step <- function(epsilon_hat, alpha_hat, beta_0_st){
+.gtre_two_step <- function(epsilon_hat, alpha_hat, beta_0_st) {
   ## pi - 4 < 0, so k < 0 and k*m3 >= 0 given the min(0, .) truncation below;
   ## the fractional powers stay real.
-  k <- sqrt(pi/2) * (pi/(pi - 4))
-  lvl <- function(z){
-    z  <- as.numeric(z)
+  k <- sqrt(pi / 2) * (pi / (pi - 4))
+  lvl <- function(z) {
+    z <- as.numeric(z)
     m2 <- mean(z^2)
-    m3 <- min(0, mean(z^3))     ## wrong-skew draws carry no inefficiency signal
-    list(gamma   = min(1, 1/(m2*(k*m3)^(-2/3) + (2/pi))),
-         sigmaSq = m2 + (2/pi)*(k*m3)^(2/3),
-         shift   = sqrt(2/pi)*(k*m3)^(1/3))
+    m3 <- min(0, mean(z^3)) ## wrong-skew draws carry no inefficiency signal
+    list(
+      gamma = min(1, 1 / (m2 * (k * m3)^(-2 / 3) + (2 / pi))),
+      sigmaSq = m2 + (2 / pi) * (k * m3)^(2 / 3),
+      shift = sqrt(2 / pi) * (k * m3)^(1 / 3)
+    )
   }
-  e <- lvl(epsilon_hat); a <- lvl(alpha_hat)
-  list(gamma_uv   = e$gamma, sigmaSq_uv = e$sigmaSq,
-       gamma_hr   = a$gamma, sigmaSq_hr = a$sigmaSq,
-       beta_0     = beta_0_st + e$shift + a$shift)
+  e <- lvl(epsilon_hat)
+  a <- lvl(alpha_hat)
+  list(
+    gamma_uv = e$gamma, sigmaSq_uv = e$sigmaSq,
+    gamma_hr = a$gamma, sigmaSq_hr = a$sigmaSq,
+    beta_0 = beta_0_st + e$shift + a$shift
+  )
 }
 
 
@@ -1536,61 +1659,75 @@
 ## mnormt::pmnorm()'s Genz algorithm, which is both slow (it dominated the
 ## whole fit) and STOCHASTIC, so it would leave the log-likelihood noisy and
 ## the numerical Hessian unreliable. This route is deterministic.
-.csn_gtre_parts <- function(sig_r, sig_v, sig_h, sig_u, BigT){
-  if(any(!is.finite(c(sig_r, sig_v, sig_h, sig_u))) ||
-     sig_v <= 0 || sig_r < 0 || sig_h <= 0 || sig_u <= 0) return(NULL)
+.csn_gtre_parts <- function(sig_r, sig_v, sig_h, sig_u, BigT) {
+  if (any(!is.finite(c(sig_r, sig_v, sig_h, sig_u))) ||
+    sig_v <= 0 || sig_r < 0 || sig_h <= 0 || sig_u <= 0) {
+    return(NULL)
+  }
 
-  a <- sig_v^2 + sig_u^2          ## Sig = a I + b 11'
+  a <- sig_v^2 + sig_u^2 ## Sig = a I + b 11'
   b <- sig_r^2 + sig_h^2
-  if(a <= 0 || a + BigT*b <= 0) return(NULL)
+  if (a <= 0 || a + BigT * b <= 0) {
+    return(NULL)
+  }
 
   ## Sig^{-1} = (1/a) I - cc 11'   (Sherman-Morrison on the equicorrelated form)
-  cc <- b / (a * (a + BigT*b))
+  cc <- b / (a * (a + BigT * b))
 
   ## Lambda blocks, from V - (AV)' Sig^{-1} (AV) with AV = -[sig_h^2 1, sig_u^2 I]
-  s2h <- sig_h^2; s2u <- sig_u^2
-  p   <- s2h - s2h^2 * (BigT/a - cc*BigT^2)          ## Lambda[1,1]
-  q   <- -s2h * s2u * (1/a - cc*BigT)                ## Lambda[1, j+1]
+  s2h <- sig_h^2
+  s2u <- sig_u^2
+  p <- s2h - s2h^2 * (BigT / a - cc * BigT^2) ## Lambda[1,1]
+  q <- -s2h * s2u * (1 / a - cc * BigT) ## Lambda[1, j+1]
   ## The T-block of Lambda is  (d + e) on the diagonal and e off it, so the
   ## rank-one part contributes e everywhere and what is left on the diagonal is
   ## d itself. Subtracting e a second time here (i.e. writing d - e) drives D
   ## negative at perfectly ordinary parameter values -- at sigma = (0.2, 0.3,
   ## 0.4, 1.0) with T = 5 it gives -0.005 -- which trips the guard below and
   ## makes the likelihood return its penalty exactly where the truth lies.
-  d   <- s2u - s2u^2 / a                             ## Lambda[2,2] - e
-  e   <- s2u^2 * cc                                  ## off-diagonal of the T-block
-  if(!is.finite(e) || e <= 0) return(NULL)
+  d <- s2u - s2u^2 / a ## Lambda[2,2] - e
+  e <- s2u^2 * cc ## off-diagonal of the T-block
+  if (!is.finite(e) || e <= 0) {
+    return(NULL)
+  }
 
-  w  <- c(q/sqrt(e), rep(sqrt(e), BigT))
-  D  <- c(p - q^2/e, rep(d, BigT))
-  if(any(!is.finite(D)) || any(D <= 0)) return(NULL)
+  w <- c(q / sqrt(e), rep(sqrt(e), BigT))
+  D <- c(p - q^2 / e, rep(d, BigT))
+  if (any(!is.finite(D)) || any(D <= 0)) {
+    return(NULL)
+  }
 
   ## R = Lambda A' Sigma^{-1}, still needed to form the CDF argument.
-  OneT  <- matrix(1, BigT, 1); EyeT <- diag(BigT)
-  A     <- -cbind(OneT, EyeT)
-  V     <- diag(c(s2h, rep(s2u, BigT)))
+  OneT <- matrix(1, BigT, 1)
+  EyeT <- diag(BigT)
+  A <- -cbind(OneT, EyeT)
+  V <- diag(c(s2h, rep(s2u, BigT)))
   Sigma <- sig_v^2 * EyeT + sig_r^2 * tcrossprod(OneT)
-  Sig   <- a * EyeT + b * tcrossprod(OneT)
+  Sig <- a * EyeT + b * tcrossprod(OneT)
   Sigma_i <- tryCatch(solve(Sigma), error = function(err) NULL)
-  if(is.null(Sigma_i)) return(NULL)
+  if (is.null(Sigma_i)) {
+    return(NULL)
+  }
   Lambda <- V - V %*% t(A) %*% solve(Sig) %*% A %*% V
-  R      <- Lambda %*% t(A) %*% Sigma_i
+  R <- Lambda %*% t(A) %*% Sigma_i
 
-  list(Sig = .safe_symmetrize(Sig), R = R, w = w, D = D,
-       log_c = -(BigT + 1) * log(2))
+  list(
+    Sig = .safe_symmetrize(Sig), R = R, w = w, D = D,
+    log_c = -(BigT + 1) * log(2)
+  )
 }
 
 ## log Phi_q(z; 0, D + w w') for every firm at once, by the rank-one reduction:
 ## with X = sqrt(D) xi + w eta, Pr(X <= z) = E_eta[ prod_j Phi((z_j - w_j eta)/sqrt(D_j)) ].
-.log_csn_cdf_rank1 <- function(Z, w, D, gh){
+.log_csn_cdf_rank1 <- function(Z, w, D, gh) {
   sd_j <- sqrt(D)
   nodes <- sqrt(2) * gh$nodes
-  lw    <- log(gh$weights) - 0.5*log(pi)
-  acc   <- matrix(NA_real_, nrow(Z), length(nodes))
-  for(r in seq_along(nodes)){
+  lw <- log(gh$weights) - 0.5 * log(pi)
+  acc <- matrix(NA_real_, nrow(Z), length(nodes))
+  for (r in seq_along(nodes)) {
     ## sweep the node shift across columns, then sum log Phi along each row
-    acc[, r] <- lw[r] + rowSums(pnorm(sweep(Z, 2, w*nodes[r], "-") /
-                                        rep(sd_j, each = nrow(Z)), log.p = TRUE))
+    acc[, r] <- lw[r] + rowSums(pnorm(sweep(Z, 2, w * nodes[r], "-") /
+      rep(sd_j, each = nrow(Z)), log.p = TRUE))
   }
   m <- apply(acc, 1, max)
   m + log(rowSums(exp(acc - m)))
@@ -1598,34 +1735,43 @@
 
 ## Negative summed log-likelihood. `gid` is an integer group id in 1..ngroups
 ## whose rows are already ordered within firm; the panel must be balanced.
-.csn_gtre_loglik <- function(par, Y, X, gid, ngroups, BigT, gh){
+.csn_gtre_loglik <- function(par, Y, X, gid, ngroups, BigT, gh) {
   k <- ncol(X)
-  b0    <- par[1]
-  beta  <- par[2:(k + 1)]
+  b0 <- par[1]
+  beta <- par[2:(k + 1)]
   sig_r <- par[k + 2]
   sig_v <- par[k + 3]
   sig_h <- par[k + 4]
   sig_u <- par[k + 5]
 
   P <- .csn_gtre_parts(sig_r, sig_v, sig_h, sig_u, BigT)
-  if(is.null(P)) return(1e12)
+  if (is.null(P)) {
+    return(1e12)
+  }
 
   eps <- as.numeric(Y - b0 - X %*% beta)
-  E   <- matrix(eps[order(gid)], nrow = ngroups, ncol = BigT, byrow = TRUE)
+  E <- matrix(eps[order(gid)], nrow = ngroups, ncol = BigT, byrow = TRUE)
 
   ## Density term: same covariance for every firm, so evaluate all at once on
   ## the centred residuals rather than once per firm.
   ld <- tryCatch(mnormt::dmnorm(E, mean = rep(0, BigT), varcov = P$Sig, log = TRUE),
-                 error = function(e) NULL)
-  if(is.null(ld) || any(!is.finite(ld))) return(1e12)
+    error = function(e) NULL
+  )
+  if (is.null(ld) || any(!is.finite(ld))) {
+    return(1e12)
+  }
 
   ## CDF term. Rank-one reduction, evaluated for all firms at once.
-  Z  <- E %*% t(P$R)                       ## ngroups x (T+1)
+  Z <- E %*% t(P$R) ## ngroups x (T+1)
   lp <- tryCatch(.log_csn_cdf_rank1(Z, P$w, P$D, gh), error = function(e) NULL)
-  if(is.null(lp) || any(!is.finite(lp))) return(1e12)
+  if (is.null(lp) || any(!is.finite(lp))) {
+    return(1e12)
+  }
 
   ll <- sum(ld + lp - P$log_c)
-  if(!is.finite(ll)) return(1e12)
+  if (!is.finite(ll)) {
+    return(1e12)
+  }
   -ll
 }
 
@@ -1694,8 +1840,10 @@
 ## ------------------------------------------------------------
 .phased_start <- function(fn, start_v, idx, lower = .SFA_CONSTANTS$MIN_POSITIVE,
                           grid = c(0.5, 1, 2), int_idx = NULL, max_pts = 81L,
-                          polish = TRUE, maxit = 60L, verbose = FALSE){
-  if(!length(idx)) return(start_v)
+                          polish = TRUE, maxit = 60L, verbose = FALSE) {
+  if (!length(idx)) {
+    return(start_v)
+  }
   base <- start_v
 
   ## Profile the intercept at a candidate point. The intercept and the mean of
@@ -1705,21 +1853,34 @@
   ## makes good candidates look bad and is why the first version of this helper
   ## made things worse rather than better. The likelihood is smooth and
   ## single-peaked in the intercept, so a 1-D optimize() is reliable and cheap.
-  prof <- function(cand){
-    if(is.null(int_idx)) return(list(par = cand, val = tryCatch(fn(cand), error = function(e) Inf)))
+  prof <- function(cand) {
+    if (is.null(int_idx)) {
+      return(list(par = cand, val = tryCatch(fn(cand), error = function(e) Inf)))
+    }
     b0 <- cand[int_idx]
-    w  <- max(abs(b0), 1) * 2
-    o  <- tryCatch(stats::optimize(function(v){ cc <- cand; cc[int_idx] <- v
-                                                vv <- tryCatch(fn(cc), error = function(e) Inf)
-                                                if(is.finite(vv)) vv else 1e12 },
-                                   interval = c(b0 - w, b0 + w), tol = 1e-4),
-                   error = function(e) NULL)
-    if(is.null(o)) return(list(par = cand, val = tryCatch(fn(cand), error = function(e) Inf)))
+    w <- max(abs(b0), 1) * 2
+    o <- tryCatch(
+      stats::optimize(
+        function(v) {
+          cc <- cand
+          cc[int_idx] <- v
+          vv <- tryCatch(fn(cc), error = function(e) Inf)
+          if (is.finite(vv)) vv else 1e12
+        },
+        interval = c(b0 - w, b0 + w), tol = 1e-4
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(o)) {
+      return(list(par = cand, val = tryCatch(fn(cand), error = function(e) Inf)))
+    }
     cand[int_idx] <- o$minimum
     list(par = cand, val = o$objective)
   }
 
-  p0 <- prof(base); best <- p0$par; fbest <- if(is.finite(p0$val)) p0$val else Inf
+  p0 <- prof(base)
+  best <- p0$par
+  fbest <- if (is.finite(p0$val)) p0$val else Inf
 
   ## --- stage 1: COORDINATE-WISE grid over the efficiency block -------------
   ## One parameter varied at a time rather than a full factorial. With the
@@ -1727,31 +1888,40 @@
   ## so a 3^4 factorial would cost more than the optimizer it is meant to save.
   ## Coordinate-wise finds the same scale corrections at a fraction of that.
   g <- setdiff(unique(grid), 1)
-  for(j in idx){
-    for(fac in g){
+  for (j in idx) {
+    for (fac in g) {
       cand <- best
-      cand[j] <- max(best[j]*fac, lower)
+      cand[j] <- max(best[j] * fac, lower)
       pj <- prof(cand)
-      if(is.finite(pj$val) && pj$val < fbest){ fbest <- pj$val; best <- pj$par }
+      if (is.finite(pj$val) && pj$val < fbest) {
+        fbest <- pj$val
+        best <- pj$par
+      }
     }
   }
-  if(verbose) cat(sprintf("  phased: grid -> %.4f\n", fbest))
+  if (verbose) cat(sprintf("  phased: grid -> %.4f\n", fbest))
 
   ## --- stage 2: optimize the efficiency block AND the intercept together ---
-  if(polish){
+  if (polish) {
     blk <- c(idx, int_idx)
-    sub_fn <- function(p){
-      cand <- best; cand[blk] <- p
+    sub_fn <- function(p) {
+      cand <- best
+      cand[blk] <- p
       v <- tryCatch(fn(cand), error = function(e) Inf)
-      if(is.finite(v)) v else 1e12
+      if (is.finite(v)) v else 1e12
     }
     lo <- c(rep_len(lower, length(idx)), rep(-Inf, length(int_idx)))
-    op <- tryCatch(stats::nlminb(start = best[blk], objective = sub_fn, lower = lo,
-                                 control = list(iter.max = maxit, eval.max = 2L*maxit)),
-                   error = function(e) NULL)
-    if(!is.null(op) && is.finite(op$objective) && op$objective < fbest){
-      best[blk] <- op$par; fbest <- op$objective
-      if(verbose) cat(sprintf("  phased: block polish -> %.4f\n", fbest))
+    op <- tryCatch(
+      stats::nlminb(
+        start = best[blk], objective = sub_fn, lower = lo,
+        control = list(iter.max = maxit, eval.max = 2L * maxit)
+      ),
+      error = function(e) NULL
+    )
+    if (!is.null(op) && is.finite(op$objective) && op$objective < fbest) {
+      best[blk] <- op$par
+      fbest <- op$objective
+      if (verbose) cat(sprintf("  phased: block polish -> %.4f\n", fbest))
     }
   }
   best
@@ -1782,17 +1952,17 @@
 ## firm index (non-decreasing), and the return value is the length-N vector of
 ## per-firm log simulated densities.
 ## ------------------------------------------------------------
-.gtre_sim_logdens <- function(E, lambda, sigma, gid, ngroups){
-  z1 <- E/sigma
-  z2 <- -E*lambda/sigma
+.gtre_sim_logdens <- function(E, lambda, sigma, gid, ngroups) {
+  z1 <- E / sigma
+  z2 <- -E * lambda / sigma
   z1[z1 > .SFA_CONSTANTS$CLIP_Z1_UPPER] <- .SFA_CONSTANTS$CLIP_Z1_UPPER
   z1[z1 < .SFA_CONSTANTS$CLIP_Z1_LOWER] <- .SFA_CONSTANTS$CLIP_Z1_LOWER
   z2[z2 > .SFA_CONSTANTS$CLIP_Z2_UPPER] <- .SFA_CONSTANTS$CLIP_Z2_UPPER
   z2[z2 < .SFA_CONSTANTS$CLIP_Z2_LOWER] <- .SFA_CONSTANTS$CLIP_Z2_LOWER
 
-  lt <- log(2/sigma) + dnorm(z1, log = TRUE) + pnorm(z2, log.p = TRUE)
-  lp <- rowsum(lt, gid, reorder = FALSE)        ## N x R, log product over t
-  m  <- do.call(pmax, as.data.frame(lp))         ## row maxima, no apply()
+  lt <- log(2 / sigma) + dnorm(z1, log = TRUE) + pnorm(z2, log.p = TRUE)
+  lp <- rowsum(lt, gid, reorder = FALSE) ## N x R, log product over t
+  m <- do.call(pmax, as.data.frame(lp)) ## row maxima, no apply()
   m + log(rowMeans(exp(lp - m)))
 }
 
@@ -1837,30 +2007,35 @@
 ## is positive there), so the original form is well conditioned and is kept;
 ## its argument is clipped only to stop 1F1 overflowing for very negative z.
 ## ------------------------------------------------------------
-.log_pcf <- function(nu, z){
-  z   <- as.numeric(z)
-  a   <- -nu
+.log_pcf <- function(nu, z) {
+  z <- as.numeric(z)
+  a <- -nu
   out <- rep(NA_real_, length(z))
-  ok  <- is.finite(z)
-  if(!any(ok)) return(out)
+  ok <- is.finite(z)
+  if (!any(ok)) {
+    return(out)
+  }
 
   hi <- ok & z > 0.5
   lo <- ok & !(z > 0.5)
 
-  if(any(hi)){
-    u <- tryCatch(gsl::hyperg_U(a/2, 0.5, z[hi]^2/2), error = function(e) NULL)
-    out[hi] <- if(is.null(u)) NA_real_
-               else (nu/2)*log(2) - z[hi]^2/4 + log(pmax(u, .Machine$double.xmin))
+  if (any(hi)) {
+    u <- tryCatch(gsl::hyperg_U(a / 2, 0.5, z[hi]^2 / 2), error = function(e) NULL)
+    out[hi] <- if (is.null(u)) {
+      NA_real_
+    } else {
+      (nu / 2) * log(2) - z[hi]^2 / 4 + log(pmax(u, .Machine$double.xmin))
+    }
   }
-  if(any(lo)){
+  if (any(lo)) {
     zz <- z[lo]
     ## Clip the 1F1 argument: exp(z^2/2) overflows past z ~ 37, and the series
     ## branch only ever sees z <= 0.5 where the result is finite anyway.
-    q  <- pmin(zz^2/2, .SFA_CONSTANTS$EXP_CLIP_UPPER)
-    br <- gsl::hyperg_1F1(-nu/2, 0.5, q)/gamma((1-nu)/2) -
-          sqrt(2)*zz*gsl::hyperg_1F1((1-nu)/2, 1.5, q)/gamma(-nu/2)
-    out[lo] <- (nu/2)*log(2) + 0.5*log(pi) - zz^2/4 +
-               log(pmax(br, .Machine$double.xmin))
+    q <- pmin(zz^2 / 2, .SFA_CONSTANTS$EXP_CLIP_UPPER)
+    br <- gsl::hyperg_1F1(-nu / 2, 0.5, q) / gamma((1 - nu) / 2) -
+      sqrt(2) * zz * gsl::hyperg_1F1((1 - nu) / 2, 1.5, q) / gamma(-nu / 2)
+    out[lo] <- (nu / 2) * log(2) + 0.5 * log(pi) - zz^2 / 4 +
+      log(pmax(br, .Machine$double.xmin))
   }
   out
 }
