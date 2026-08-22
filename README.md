@@ -4,7 +4,7 @@
 [![R-CMD-check](https://github.com/davidhbernstein/sfa/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/davidhbernstein/sfa/actions/workflows/R-CMD-check.yaml)
 [![CRAN status](https://www.r-pkg.org/badges/version/sfa)](https://CRAN.R-project.org/package=sfa)
 [![Downloads](https://cranlogs.r-pkg.org/badges/grand-total/sfa)](https://CRAN.R-project.org/package=sfa)
-[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://cran.r-project.org/web/licenses/GPL-2)
 <!-- badges: end -->
 
 **Stochastic frontier analysis in R.** A single, consistent interface to a wide
@@ -240,4 +240,4 @@ citation("sfa")
 
 ## License
 
-GPL (>= 2). See [`LICENSE.md`](LICENSE.md).
+GPL (>= 2). See [`LICENSE.md`](https://github.com/davidhbernstein/sfa/blob/main/LICENSE.md).

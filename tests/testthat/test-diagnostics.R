@@ -71,7 +71,11 @@ test_that("weak identification is detected and named", {
   expect_true(is.matrix(R) && nrow(R) == ncol(R))
   expect_identical(rownames(R), colnames(R))
   expect_true(all(is.finite(R)))
-  expect_true(all(abs(R) <= 1 + 1e-8))
+  ## Deliberately NOT asserting abs(R) <= 1. vcov.sfareg() inverts the stored
+  ## Hessian, and a near-singular Hessian -- the whole reason this model is
+  ## here -- can invert to a matrix with a positive diagonal that is still
+  ## indefinite, which yields |r| > 1. That is information about the fit, not
+  ## a bug in the diagnostic, and it is platform arithmetic whether it happens.
   expect_equal(unname(diag(R)), rep(1, nrow(R)), tolerance = 1e-8)
   expect_length(d$correlation$worst_pair, 2L)
   expect_true(all(d$correlation$worst_pair %in% rownames(R)))

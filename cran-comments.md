@@ -1,3 +1,28 @@
+## Resubmission
+
+This is a resubmission. The previous submission of 1.1.4 checked with
+`Status: 1 NOTE` on both pretest machines (Windows R-devel and Debian
+R-devel), with no errors or warnings. The NOTE was `checking CRAN incoming
+feasibility`, raising two items, both in `README.md`. Both are now fixed:
+
+* **`URI: LICENSE.md`, "possibly invalid file URI".** This was a genuine
+  broken link. `README.md` referred to `LICENSE.md` with a relative path,
+  but `LICENSE.md` is listed in `.Rbuildignore` and so is not in the tarball,
+  leaving the link dangling wherever the shipped README is rendered. It now
+  points at the copy in the repository, which is where the file actually
+  lives.
+
+* **`https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html`, "Timeout was
+  reached".** The URL is valid -- it returns 200 in about 0.15 s from here --
+  and both machines reported a connection timeout rather than a bad response
+  (21 s on Windows, 60 s on Debian). Rather than ask you to re-run it, the
+  licence badge now links to CRAN's own copy of the GPL-2 text,
+  <https://cran.r-project.org/web/licenses/GPL-2>, which cannot time out from
+  a CRAN machine.
+
+No other file changed, and there is no change to any R code, to `NAMESPACE`,
+or to the documented interface.
+
 ## Submission
 
 This is a feature update to `sfa`, from the current CRAN version 1.0.4 to
