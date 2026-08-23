@@ -1,3 +1,23 @@
+# sfa 1.1.5
+
+* **The `intro_to_psfm` vignette now builds in a fraction of the time.** At
+  CRAN's request, the models it fits are sized as toy illustrations rather
+  than as estimation exercises: the simulated panel is 70 firms over 6
+  periods instead of 100 over 10, the simulated-ML fits draw 50 Halton
+  points via `halton_num` rather than the default
+  `ceiling(sqrt(nrow(data))) + 100`, and the `psfm_bootstrap()` example
+  uses 5 replications on a 30-firm panel instead of 10 on 60. Vignette
+  rebuild time falls by roughly a factor of five. The reported estimates
+  therefore differ from previous versions, and the vignette now says
+  plainly that they are not to be read as a serious fit.
+
+* Every model fit in that vignette now sets `rand.gtre` and `rand.psoptim`.
+  With `PSopt = TRUE` the particle-swarm stage draws from the session's RNG,
+  so the vignette's results previously changed from one build to the next;
+  they are now reproducible.
+
+* No change to any R code, to `NAMESPACE`, or to the documented interface.
+
 # sfa 1.1.4
 
 ## Breaking change

@@ -1,32 +1,51 @@
 ## Resubmission
 
-This is a resubmission. The previous submission of 1.1.4 checked with
-`Status: 1 NOTE` on both pretest machines (Windows R-devel and Debian
-R-devel), with no errors or warnings. The NOTE was `checking CRAN incoming
-feasibility`, raising two items, both in `README.md`. Both are now fixed:
+This is a resubmission, addressing Uwe Ligges's request to reduce the
+vignette build time. Both pretests of 1.1.4 checked `Status: OK`, and
+`checking re-building of vignette outputs` was reported at 10 minutes.
 
-* **`URI: LICENSE.md`, "possibly invalid file URI".** This was a genuine
-  broken link. `README.md` referred to `LICENSE.md` with a relative path,
-  but `LICENSE.md` is listed in `.Rbuildignore` and so is not in the tarball,
-  leaving the link dangling wherever the shipped README is rendered. It now
-  points at the copy in the repository, which is where the file actually
-  lives.
+The package has one vignette, `intro_to_psfm`, which fits panel stochastic
+frontier models by simulated maximum likelihood over Halton draws. It now
+uses toy data and few iterations throughout, following your first two
+suggestions:
 
-* **`https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html`, "Timeout was
-  reached".** The URL is valid -- it returns 200 in about 0.15 s from here --
-  and both machines reported a connection timeout rather than a bad response
-  (21 s on Windows, 60 s on Debian). Rather than ask you to re-run it, the
-  licence badge now links to CRAN's own copy of the GPL-2 text,
-  <https://cran.r-project.org/web/licenses/GPL-2>, which cannot time out from
-  a CRAN machine.
+* the simulated panel is 70 firms over 6 periods, down from 100 over 10;
 
-No other file changed, and there is no change to any R code, to `NAMESPACE`,
-or to the documented interface.
+* the simulated-ML fits pass `halton_num = 50`, where the default is
+  `ceiling(sqrt(nrow(data))) + 100` -- about 130 draws at the old data size.
+  The number of draws is the dominant cost in these likelihoods;
+
+* the parametric-bootstrap example runs 5 replications on a 30-firm panel,
+  down from 10 replications on 60 firms. Each replication refits the model,
+  so this was the single most expensive chunk;
+
+* the second simulated data set has been dropped. It was generated with
+  arguments identical to the first, so the `GTRE_Z` section now reuses the
+  panel already in hand.
+
+Measured here, rendering the vignette went from 68.8 s to 13.2 s, a factor
+of 5.2. I have not shrunk it further because the four-component GTRE model
+becomes genuinely unstable on very short panels -- below about 70 firms its
+efficiency-posterior step can fail to invert on some random seeds -- and I
+would rather the vignette be fast than be fast and fragile. The chosen size
+was checked against 12 seeds with no failures.
+
+Two related points, in the interest of the vignette staying cheap and
+predictable to check:
+
+* every fit now sets `rand.gtre` and `rand.psoptim`. With `PSopt = TRUE` the
+  particle-swarm stage draws from the session RNG, so the vignette's printed
+  results previously changed from build to build. They are now reproducible.
+
+* the vignette states explicitly that its settings are chosen to build
+  quickly and that the estimates are not to be read as a serious fit.
+
+No R code, `NAMESPACE`, or documented interface changed in this version.
 
 ## Submission
 
 This is a feature update to `sfa`, from the current CRAN version 1.0.4 to
-1.1.4. It bundles the work of five development versions (1.1.0-1.1.4) that
+1.1.5. It bundles the work of six development versions (1.1.0-1.1.5) that
 were never submitted, so `NEWS.md` is correspondingly long.
 
 There are **no reverse dependencies on CRAN**, so no other package is affected
