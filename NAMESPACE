@@ -1,4 +1,4 @@
-export(zsfm, psfm, sfm, ttsfm, npsfm, sfa_diagnostics, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
+export(zsfm, psfm, sfm, ttsfm, npsfm, sfa_diagnostics, efficiency_ci, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
 
 import("methods")
 import("plm") # import whole package

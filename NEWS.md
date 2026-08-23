@@ -1,3 +1,40 @@
+# sfa 1.1.6 (development)
+
+* **New function `efficiency_ci()`: Horrace and Schmidt (1996) confidence
+  intervals for individual inefficiency.** `sfa` has always reported point
+  predictions of `u_i` -- `u_hat` (Jondrow et al. 1982) and `exp_u_hat`
+  (Battese and Coelli 1988) -- and nothing about how sharply either is pinned
+  down. Both are posterior means of `u` given the composed residual, and the
+  posterior is a truncated normal in closed form, so the interval costs no
+  estimation beyond the fit itself. Returns a data frame of
+  `u_lower`/`u_hat`/`u_upper` and the corresponding technical-efficiency
+  bounds, at any `level`.
+
+  Available for `sfm()`'s `"NHN"`, `"NHN_Z"`, `"NE"` and `"NTN"`, whose
+  posterior really is a truncated normal. Other models have a posterior of a
+  different shape, and the function says so by name rather than returning a
+  number the formulas do not support.
+
+  These intervals condition on the fitted parameters: they do not narrow as
+  `n` grows, because they measure the irreducible difficulty of splitting one
+  residual into noise and inefficiency, not estimation uncertainty. That is
+  worth knowing before reading an efficiency ranking closely -- on a routine
+  200-observation half-normal fit the median 90% interval for a single unit
+  spans about 0.49 in efficiency, against a total spread of 0.85 across all
+  the point predictions.
+
+* **`sfm(estimator = "mols")` is accepted as a synonym for
+  `estimator = "cols"`.** What the package computes under that name is the
+  *modified* OLS moment estimator of Olson, Schmidt and Waldman (1980) -- it
+  inverts the second and third central moments of the OLS residuals -- and not
+  Winsten's *corrected* OLS, which shifts the intercept by the largest
+  residual and estimates no variance parameters. The documentation now names
+  it MOLS and draws the distinction. `"cols"` is unchanged and not deprecated.
+
+* Fitted `"sfareg"` objects from the four models above carry a new
+  `$u_posterior` component (`mu_star`, `sigma_star`), which is what
+  `efficiency_ci()` reads.
+
 # sfa 1.1.5
 
 * **The `intro_to_psfm` vignette now builds in a fraction of the time.** At

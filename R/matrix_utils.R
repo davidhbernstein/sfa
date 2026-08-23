@@ -821,6 +821,64 @@
 
 
 ## ------------------------------------------------------------
+## Helper: Horrace and Schmidt (1996) intervals for u_i
+##
+## JLMS and Battese-Coelli report the posterior MEAN of u given the composed
+## residual; this reports a posterior INTERVAL, off the same (mu_star,
+## sigma_star) and with no extra estimation. u | e is N(mu_star, sigma_star^2)
+## truncated to [0, Inf), so with A = Phi(mu_star/sigma_star),
+##
+##   F(u) = [Phi((u - mu_star)/sigma_star) - (1 - A)] / A
+##
+## and inverting at alpha/2 and 1 - alpha/2 gives the bounds in closed form:
+##
+##   L = mu_star + sigma_star Phi^{-1}(1 - (1 - alpha/2) A)
+##   U = mu_star + sigma_star Phi^{-1}(1 - (alpha/2) A)
+##
+## Both are evaluated as upper-tail quantiles in LOG space --
+## qnorm(log(c) + log A, lower.tail = FALSE, log.p = TRUE) -- rather than by
+## forming 1 - c*A directly. A is Phi of a ratio that is strongly negative for
+## a nearly efficient unit, so it underflows to 0 there; the naive form then
+## asks for qnorm(1), returns Inf, and loses the bound for exactly the units an
+## applied reader cares most about. In logs mu_star and sigma_star * qnorm(...)
+## cancel to a finite number near zero instead.
+##
+## WHAT THESE ARE NOT. They condition on the fitted parameters, so they carry
+## no allowance for estimation error in beta or the sigmas: they say where u_i
+## sits given e_i and a known frontier, not where it sits given the data.
+## Horrace and Schmidt are explicit about this, and it is why the intervals do
+## not shrink as n grows. They are still far more informative than the point
+## predictor alone, and are what applied work reports.
+##
+## The efficiency interval follows by monotonicity -- exp(-u) is decreasing in
+## u, so the bounds swap: [exp(-U), exp(-L)].
+.horrace_schmidt_ci <- function(mu_star, sigma_star, level = 0.95) {
+  if (!is.numeric(level) || length(level) != 1L || !is.finite(level) ||
+    level <= 0 || level >= 1) {
+    stop("`level` must be a single number strictly between 0 and 1.", call. = FALSE)
+  }
+  sigma_star <- pmax(sigma_star, .SFA_CONSTANTS$MIN_POSITIVE)
+  n <- max(length(mu_star), length(sigma_star))
+  mu_star <- rep_len(mu_star, n)
+  sigma_star <- rep_len(sigma_star, n)
+
+  alpha <- 1 - level
+  log_A <- pnorm(mu_star / sigma_star, log.p = TRUE)
+
+  lower <- mu_star + sigma_star *
+    qnorm(log(1 - alpha / 2) + log_A, lower.tail = FALSE, log.p = TRUE)
+  upper <- mu_star + sigma_star *
+    qnorm(log(alpha / 2) + log_A, lower.tail = FALSE, log.p = TRUE)
+
+  ## u is non-negative by construction; only rounding can push the lower bound
+  ## below zero, and the ordering can only invert the same way.
+  lower <- pmax(lower, 0)
+  upper <- pmax(upper, lower)
+  list(lower = lower, upper = upper)
+}
+
+
+## ------------------------------------------------------------
 ## Helpers: Greene (2005) true fixed effects stochastic frontier
 ##
 ## The TFE model is the ordinary normal/half-normal composed-error frontier

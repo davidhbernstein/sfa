@@ -27,7 +27,7 @@ sfm <- function(formula,
                 Nsim = "auto",
                 rand.psoptim = NULL,
                 keep_objective = FALSE,
-                estimator = c("mle", "cols"),
+                estimator = c("mle", "cols", "mols"),
                 cols_boot = 0,
                 rand.cols = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes()
@@ -45,6 +45,17 @@ sfm <- function(formula,
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   robust <- match.arg(robust)
   estimator <- match.arg(estimator)
+
+  ## "mols" and "cols" select the same estimator, and the literature's name for
+  ## it is MOLS. What .cols_fit() implements is the MODIFIED OLS of Olson,
+  ## Schmidt and Waldman (1980): it inverts the second and third central
+  ## moments of the OLS residuals for the two scale parameters and shifts the
+  ## intercept by the implied E[u]. That is not Winsten's corrected OLS, which
+  ## shifts the intercept by the largest residual and estimates no sigmas at
+  ## all. The package shipped this under estimator = "cols" from the start, so
+  ## that spelling keeps working and is not deprecated; "mols" is accepted so
+  ## that readers who know the method by its usual name can find it.
+  estimator <- if (estimator == "mols") "cols" else estimator
 
   if (estimator == "cols" && robust != "mle") {
     stop("`robust` applies to the maximum-likelihood estimator only. ",
@@ -877,6 +888,13 @@ sfm <- function(formula,
     out[2, ] <- tryCatch(st_err, error = function(e) rep(NA_real_, ncol(out)))
     out[3, ] <- tryCatch(t_val, error = function(e) rep(NA_real_, ncol(out)))
 
+    ## The posterior of u given the composed residual, for the models where it
+    ## is a truncated normal. Recorded here rather than recomputed later so
+    ## efficiency_ci() works off exactly the quantities the point predictors
+    ## used; left NULL for the models whose posterior is some other shape, and
+    ## efficiency_ci() reports that rather than guessing.
+    u_post <- NULL
+
     ## JLMS TE Measurements
     if (model_name %in% c("NHN")) {
       beta <- opt$par[-c(1:2)]
@@ -902,6 +920,7 @@ sfm <- function(formula,
       med_u_hat <- exp(-mu.star + sig.star * qnorm(0.5 * pnorm(mu.star / sig.star)))
       med_u_hat <- pmax(med_u_hat, 0)
       med_u_hat <- pmin(med_u_hat, 1)
+      u_post <- list(mu_star = mu.star, sigma_star = rep_len(sig.star, length(mu.star)))
     }
 
     if (model_name == "NE") {
@@ -918,6 +937,7 @@ sfm <- function(formula,
       mu_star <- -eps_hat - (sig_v^2) / sig_u
       exp_u_hat <- .te_battese_coelli(mu_star, sig_v)
       u_hat <- .jlms_u(mu_star, sig_v)
+      u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_v, length(mu_star)))
     }
 
     if (model_name == "NTN") {
@@ -936,6 +956,7 @@ sfm <- function(formula,
       sig_star <- sig_u * sig_v / sig
       exp_u_hat <- .te_battese_coelli(mu_star, sig_star)
       u_hat <- .jlms_u(mu_star, sig_star)
+      u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_star, length(mu_star)))
     }
 
     if (model_name == "NU") {
@@ -1159,6 +1180,10 @@ sfm <- function(formula,
       exp_u_hat <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / pmax((1 - pnorm(inner)), .Machine$double.xmin)) * exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)
+      u_post <- list(
+        mu_star = as.numeric(-eps_hat * sig_u^2 / sig^2),
+        sigma_star = as.numeric(sig_star)
+      )
     }
 
     if (model_name %in% c("NG", "NNAK")) {
@@ -1297,6 +1322,14 @@ sfm <- function(formula,
     ## saved with one serializes the estimation data alongside the results.
     if (isTRUE(keep_objective) && exists("like.fn", inherits = FALSE)) {
       results$objective <- like.fn
+    }
+
+    ## Appended after the per-model lists above rather than threaded through
+    ## each of them: those are built positionally and renamed in a second step,
+    ## so adding two elements to every branch is a much larger edit than adding
+    ## them once here, and a much easier one to get wrong.
+    if (!is.null(u_post)) {
+      results$u_posterior <- u_post
     }
     return(results)
   } else {

@@ -129,3 +129,26 @@ test_that("unsupported models and incompatible options error clearly", {
 test_that("estimator defaults to mle, leaving existing calls untouched", {
   expect_equal(eval(formals(sfm)$estimator)[1], "mle")
 })
+
+test_that("estimator = \"mols\" is an exact synonym for \"cols\"", {
+  skip_on_cran()
+  ## What .cols_fit() implements is Olson, Schmidt and Waldman's MODIFIED OLS,
+  ## not Winsten's corrected OLS, so the method is findable under both names.
+  ## The two must not drift into being two code paths.
+  d <- cs_small(N = 400)
+  a <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d, estimator = "cols")
+  b <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d, estimator = "mols")
+  expect_equal(a$out, b$out)
+  expect_equal(a$exp_u_hat, b$exp_u_hat)
+  ## The stored tag stays "cols", so anything reading $estimator downstream --
+  ## and every fit saved by an earlier version -- keeps working.
+  expect_equal(b$estimator, "cols")
+})
+
+test_that("an unknown estimator is rejected rather than silently ignored", {
+  expect_error(
+    sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = cs_small(N = 100),
+        estimator = "winsten"),
+    "should be one of"
+  )
+})
