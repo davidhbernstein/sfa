@@ -78,7 +78,8 @@ explicit choice. The warnings are intended to remain for one release cycle.
 
 This version adds a fifth entry point, `npsfm()`, for nonparametric stochastic
 frontier models. It needs kernel regression from `np`, and its `"SZ"` method
-additionally needs `Benchmarking`. Both are declared in **Suggests** rather
+solves an output-oriented DEA as one linear program per unit using `lpSolve`.
+Both are declared in **Suggests** rather
 than **Imports**, since nothing else in the package uses them: `npsfm()` tests
 for each at run time and stops with an install instruction if it is absent, and
 its examples and tests are guarded with `requireNamespace()` /

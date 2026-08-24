@@ -162,11 +162,13 @@ slower than `FLW`. `npsfm()` takes a single-part formula and rejects a `| z`
 segment: its heteroskedasticity is nonparametric in the covariates themselves.
 
 Kernel regression comes from [**np**](https://CRAN.R-project.org/package=np),
-and `SZ` additionally needs **Benchmarking**. Both are in `Suggests`, not
-`Imports`, so they are only required if you actually call `npsfm()`:
+and `SZ`'s DEA step solves one linear program per unit with
+[**lpSolve**](https://CRAN.R-project.org/package=lpSolve). Both are in
+`Suggests`, not `Imports`, so they are only required if you actually call
+`npsfm()`:
 
 ```r
-install.packages(c("np", "Benchmarking"))
+install.packages(c("np", "lpSolve"))
 ```
 
 ## Formula syntax

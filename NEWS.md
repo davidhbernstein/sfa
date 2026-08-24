@@ -23,6 +23,19 @@
   spans about 0.49 in efficiency, against a total spread of 0.85 across all
   the point predictions.
 
+* **`Benchmarking` is no longer a suggested package.** `npsfm(method = "SZ")`
+  called `Benchmarking::dea()` for its DEA step, which meant one of `sfa`'s own
+  methods could not run without a competing frontier package installed. The
+  step is a textbook output-oriented envelopment program, so it is now solved
+  in the package as one linear program per unit, via the new internal
+  `.dea_out()`. `Suggests` gains `lpSolve` -- a general-purpose LP solver
+  (pure C, no system libraries, no frontier code) -- and loses `Benchmarking`.
+
+  Results are unchanged. The replacement was checked against
+  `Benchmarking::dea()`/`eff()` over all four returns-to-scale settings at
+  n = 30, 80 and 150, with one to three inputs and one to two outputs:
+  agreement to 3e-12 or better throughout.
+
 * **New function `marginal_effects()`: what the `_Z` models' `delta`
   coefficients actually mean for inefficiency.** For a fit whose inefficiency
   scale depends on covariates, it returns the per-observation
