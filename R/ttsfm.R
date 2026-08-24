@@ -17,10 +17,7 @@ ttsfm <- function(formula,
                   verbose = FALSE,
                   rand.psoptim = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
-  ## see sfm.R's identical fix for why (calling the pipe check on the raw,
-  ## unresolved multi-choice model_name default errored "the condition has
-  ## length > 1" for any caller relying on the default rather than specifying
-  ## model_name explicitly).
+  ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
 
@@ -129,14 +126,7 @@ ttsfm <- function(formula,
       # if (sigv<= 1e-6){stop("Variance too small")}
 
       ## Numerical safety (added to fix a real "non-finite value supplied by
-      ## optim" error reported from the TTNE example): the raw parameters
-      ## feeding sigu/sigw are unbounded below at the bobyqa stage (see
-      ## .generate_sfa_bounds()'s default inf_sub = -Inf), so exp() of a very
-      ## negative linear predictor can underflow sigu/sigw to exact 0 during
-      ## optimization -- especially now that the sign-convention fix means the
-      ## optimizer actually explores toward good-fit regions instead of away
-      ## from them. Flooring here prevents division-by-exact-zero from turning
-      ## into Inf/NaN a few lines down.
+      ## optim" error reported from the TTNE example).
       sigu <- pmax(sigu, .SFA_CONSTANTS$MIN_POSITIVE)
       sigw <- pmax(sigw, .SFA_CONSTANTS$MIN_POSITIVE)
 
@@ -147,15 +137,7 @@ ttsfm <- function(formula,
       alpha <- e / sigu + (sigv^2) / (2 * sigu^2)
       beta <- -e / sigv - sigv / sigu
 
-      ## Clip the exp() arguments before exponentiating. The floor above keeps
-      ## sigu/sigw away from exact 0, but alpha/a can still be astronomically
-      ## large when sigu/sigw are merely very small (e.g. sigv^2/(2*sigu^2)
-      ## with sigu near MIN_POSITIVE is order 1e29), which would overflow exp()
-      ## to Inf -- the confirmed root cause of the optim() failure. Same
-      ## defensive pattern as .SFA_CONSTANTS$CLIP_Z1_UPPER elsewhere in this
-      ## package (psfm.R), applied here to exp() overflow rather than
-      ## pnorm/dnorm precision. Only the upper side needs clipping: very
-      ## negative alpha/a just sends exp() to 0, which is fine.
+      ## Clip the exp() arguments before exponentiating.
       alpha[alpha > .SFA_CONSTANTS$EXP_CLIP_UPPER] <- .SFA_CONSTANTS$EXP_CLIP_UPPER
       a[a > .SFA_CONSTANTS$EXP_CLIP_UPPER] <- .SFA_CONSTANTS$EXP_CLIP_UPPER
 
@@ -169,13 +151,8 @@ ttsfm <- function(formula,
 
       ll <- -log(denom) + log((pnorm(beta) * term1) + (pnorm(b) * term2))
 
-      ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize by
-      ## default, see opts.R -- none of them flip the sign), so this must return
-      ## the NEGATIVE summed log-likelihood for the optimizer to converge toward
-      ## the MLE rather than away from it. Every other likelihood in this
-      ## package follows the same negative-sum convention (see psfm.R's fn_1,
-      ## which returns -prod_vec_n), and print.sfareg/summary.sfareg both
-      ## display log-likelihood as -object$opt$value.
+      ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize
+      ## by default, see opts.R -- none of them flip the sign).
       if (any(is.na(ll))) {
         return(.Machine$double.xmax)
       }
@@ -196,24 +173,7 @@ ttsfm <- function(formula,
     names(prep) <- c("n_x_vars", "n_z_vars", "n_zp_vars")
 
     ## Bounds: .generate_sfa_bounds() returns one lower bound per beta/delta/
-    ## delta_p slot, but TTNE's actual parameter vector has an extra slot
-    ## between beta and delta -- p[nr+1] = log(sigma_v) (see fn() above). The
-    ## append() calls below insert a bound for that slot at the matching
-    ## position. This used to insert `.SFA_CONSTANTS$MIN_POSITIVE` (a floor
-    ## meant for POST-exp() values like sigma_u/sigma_w inside fn(), to avoid
-    ## division by exact zero) -- but p[nr+1] itself is PRE-exp(), i.e. on the
-    ## same log-scale as beta/delta, which .generate_sfa_bounds() correctly
-    ## bounds with -Inf/inf_sub, not a near-zero positive floor. Using
-    ## MIN_POSITIVE (~2.22e-16) here silently forced log(sigma_v) >= ~0, i.e.
-    ## sigma_v >= ~1, for every fit regardless of the data -- confirmed via a
-    ## 20-replication Monte Carlo run where TTNE's/TTHN's fitted sigma_v pinned
-    ## to exactly this floor 20/20 times, with the true-parameter log-likelihood
-    ## verified to be *better* than the fitted solution's (887 vs 912 NLL on one
-    ## test draw), proving the optimizer was blocked from reaching the true
-    ## optimum rather than the likelihood itself favoring sigma_v -> its bound.
-    ## Fixed to use -Inf (stage 1) / the same inf_sub already computed for the
-    ## surrounding beta/delta bounds (stages 2-3), matching the scale used
-    ## everywhere else in this scaffold.
+    ## delta_p slot.
     lower.BOB0 <- .generate_sfa_bounds(formula, prep)[-c(1:2)]
     lower.BOB <- append(lower.BOB0, -Inf, after = n_x_vars)
 
@@ -232,25 +192,8 @@ ttsfm <- function(formula,
     start_feval <- Opt.Bobyqa$start_feval
     bob1 <- Opt.Bobyqa$bob1
 
-    ## ---- Stage 2: psoptim
-    ## Every OTHER parameter's window here is [min(start_v of all other slots) -
-    ## differ, start_v[j] + differ] -- a shared scalar lower bound but a
-    ## per-parameter (self-referential) upper bound. That's fine as long as every
-    ## parameter stays roughly the same order of magnitude as the others, which
-    ## beta/delta/delta_p normally do. sigma_v's raw parameter does NOT stay in
-    ## that range once optimization pushes it toward the boundary-degenerate
-    ## region of the likelihood (sigma_v -> 0) -- when that
-    ## happens the shared lower bound (tied to the OTHER parameters' scale) can
-    ## end up ABOVE this slot's own self-referential upper bound, an inverted
-    ## [lower > upper] window. `optim(method="L-BFGS-B")` at stage 3 hard-errors
-    ## ("ERROR: NO FEASIBLE SOLUTION") on an inverted box constraint, and -- this
-    ## was the actual bug -- the calling code never checked opt$convergence
-    ## before accepting opt$par as the final answer, so a fit that had genuinely
-    ## FAILED at stage 3 was silently reported as if it had converged normally
-    ## (with garbage-looking opt$value, e.g. a denormalized ~1e-314). Fixed by
-    ## making this slot's lower bound self-referential too (start_v[sigv] -
-    ## differ), matching the scale its own upper bound already uses, so its
-    ## window can never invert regardless of how far optimization has pushed it.
+    ## ---- Stage 2: psoptim Every OTHER parameter's window here is
+    ## [min(start_v of all other slots) - differ, start_v[j] + differ].
     differ <- 10
     lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
     lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
@@ -303,14 +246,7 @@ ttsfm <- function(formula,
     }
 
     ## Guard against the "silently accept a failed optim() call" bug described
-    ## above: L-BFGS-B's optim() sets a non-zero $convergence code (and a
-    ## $message like "ERROR: NO FEASIBLE SOLUTION") when it fails outright
-    ## rather than actually optimizing -- previously nothing checked this, so a
-    ## failed stage 3 was reported as if it had converged, with opt$par left at
-    ## whatever stage 2 happened to produce (and opt$value/opt$hessian garbage).
-    ## The bound fix above should prevent this specific infeasibility from
-    ## occurring in the first place, but stop() here rather than silently
-    ## returning a wrong answer if optim() fails for any other reason.
+    ## above.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
       stop(sprintf(
         "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
@@ -353,9 +289,7 @@ ttsfm <- function(formula,
 
         if (!is.null(alphahat)) {
           ## Was `alpha.hat` (an undefined global -- flagged by R CMD check's
-          ## "no visible binding for global variable" NOTE); the actual
-          ## parameter passed into this function is `alphahat` (no dot), so
-          ## this branch previously errored any time it was actually taken.
+          ## "no visible binding for global variable" NOTE).
           ep.hat <- y - xx %*% p[1:nr] - alphahat
         }
 
@@ -406,8 +340,7 @@ ttsfm <- function(formula,
         exp(a2) * pnorm(b2))
 
       ## Now calculate the M1 and M2 metrics (these are information deficiency
-      ## relative to the actual price) and M5 and M6 metrics (these are information
-      ## deficiency relative to balanced price).
+      ## relative to the actual price) and M5 and M6 metrics.
       M1.ne <- 1 - Eemw.cond
       M2.ne <- Eeu.cond - 1
 
@@ -430,12 +363,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     return(results)
   } else if (model_name == "TTHN") {
-    ## Normal - Half Normal - Half Normal two-tier stochastic frontier,
-    ## generalized to allow zu/zp determinants of sigma_u and sigma_w the same
-    ## way the TTNE branch above does. Optimization uses this package's
-    ## standard bobyqa -> psoptim -> optim scaffold (a MINIMIZER stack), so the
-    ## likelihood below returns the negative summed log-likelihood -- see the
-    ## sign-convention note below.
+    ## Normal - Half Normal - Half Normal two-tier stochastic frontier.
     fn <- function(p) {
       nr <- n_x_vars ## number of regressors in regression
       nzu <- n_z_vars ## number of determinants for u component
@@ -446,11 +374,7 @@ ttsfm <- function(formula,
       sigw <- exp((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
 
       ## Numerical safety, same rationale as the analogous fix in the TTNE
-      ## branch above: theta1/theta2/omega1/omega2 below divide by sigv, sigu
-      ## and sigw, any of which can underflow to exact 0 during optimization
-      ## since their raw parameters are unbounded below at the bobyqa stage.
-      ## Flooring prevents division-by-exact-zero producing Inf/NaN that could
-      ## reach optim() as a non-finite objective value.
+      ## branch above: theta1/theta2/omega1/omega2 below divide by sigv.
       sigv <- pmax(sigv, .SFA_CONSTANTS$MIN_POSITIVE)
       sigu <- pmax(sigu, .SFA_CONSTANTS$MIN_POSITIVE)
       sigw <- pmax(sigw, .SFA_CONSTANTS$MIN_POSITIVE)
@@ -471,12 +395,7 @@ ttsfm <- function(formula,
       x1 <- e / omega1
       x2 <- e / omega2
 
-      ## Bivariate standard normal CDF Phi2(x, 0; rho), evaluated
-      ## observation-by-observation because rho varies by row whenever
-      ## zu/zp determinants are present (mnormt::pmnorm takes one varcov
-      ## at a time). This is the main cost of this likelihood; if TTHN
-      ## is used heavily, swap for a vectorized bivariate normal CDF
-      ## (e.g. the 'pbivnorm' package) as a follow-up optimization.
+      ## Bivariate standard normal CDF Phi2(x, 0; rho).
       biv_cdf <- function(xvec, rhovec) {
         mapply(function(xx, rr) {
           mnormt::pmnorm(c(xx, 0), mean = c(0, 0), varcov = matrix(c(1, rr, rr, 1), 2, 2))
@@ -484,9 +403,7 @@ ttsfm <- function(formula,
       }
 
       ## Defensive tryCatch: a pathological parameter draw during optimization
-      ## (e.g. rho hitting +-1) can make the bivariate normal CDF call error out
-      ## rather than just return a bad value; catch that and penalize instead
-      ## of letting it kill the whole optim() run.
+      ## (e.g.
       D <- suppressWarnings(tryCatch(
         biv_cdf(x1, rho1) - biv_cdf(x2, rho2),
         error = function(e) NULL
@@ -589,8 +506,7 @@ ttsfm <- function(formula,
     }
 
     ## See the identical guard in the TTNE branch above for the full
-    ## explanation: stop() rather than silently accepting a failed stage-3
-    ## optim() call (non-zero $convergence) as if it had converged.
+    ## explanation.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
       stop(sprintf(
         "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
@@ -621,11 +537,7 @@ ttsfm <- function(formula,
     out[3, ] <- t_val
 
     ## Information-deficiency metrics, generalized to a parameter-vector input
-    ## the same way metrics.ne() above is. More experimental than the
-    ## likelihood above: this involves ~12 bivariate-normal-CDF evaluations per
-    ## call (each observation-by-observation via mnormt::pmnorm, same caveat as
-    ## the likelihood's biv_cdf). It is purely a post-estimation diagnostic --
-    ## it cannot affect the parameter estimates above even if it is wrong.
+    ## the same way metrics.ne() above is.
     metrics.hn <- function(p, e = NULL, y = Y, xx = data_i_vars, zu = data_z_vars, zw = data_zp_vars) {
       nr <- ncol(xx)
       nzu <- ncol(zu)
@@ -652,9 +564,7 @@ ttsfm <- function(formula,
       rho1 <- lambda1 / sqrt(1 + lambda1^2)
       rho2 <- -lambda2 / sqrt(1 + lambda2^2)
 
-      ## General bivariate standard normal CDF Phi2(x, y; rho), observation by
-      ## observation (see biv_cdf() in the likelihood above for why this can't
-      ## be a single vectorized call when rho varies by row).
+      ## General bivariate standard normal CDF Phi2(x, y; rho).
       .biv2 <- function(xvec, yvec, rhovec) {
         n <- max(length(xvec), length(yvec), length(rhovec))
         xvec <- rep_len(xvec, n)
@@ -719,21 +629,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     return(results)
   } else if (model_name == "TTNLS") {
-    ## Two-tier stochastic frontier via nonlinear least squares: treats u/w via
-    ## the scaling-property trick (e = y - x'beta + sigma_u - sigma_w) and
-    ## minimizes sum(e^2), with no distributional assumption on v/u/w beyond
-    ## their means -- a genuinely different, non-likelihood-based estimator
-    ## from TTNE/TTHN above.
-    ##
-    ## p[nr+1] ("sigv" in the shared out/start_v layout set up before this
-    ## if/else block) is an inert placeholder here -- NLS per
-    ## twotier.nls() has no sigma_v term at all, but reusing the same
-    ## start_v/out structure as TTNE/TTHN keeps that shared setup code
-    ## completely untouched. That parameter has ~zero curvature in the
-    ## sum-of-squares objective, so it will just sit near its starting value
-    ## under optimization, and is explicitly excluded from the Hessian before
-    ## inverting for standard errors below (its own std.error is reported as
-    ## NA) since including it would make the Hessian singular.
+    ## Two-tier stochastic frontier via nonlinear least squares.
     fn <- function(p) {
       nr <- n_x_vars
       nzu <- n_z_vars
@@ -832,8 +728,7 @@ ttsfm <- function(formula,
     }
 
     ## See the identical guard in the TTNE branch above for the full
-    ## explanation: stop() rather than silently accepting a failed stage-3
-    ## optim() call (non-zero $convergence) as if it had converged.
+    ## explanation.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
       stop(sprintf(
         "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
@@ -864,29 +759,8 @@ ttsfm <- function(formula,
         st_err[-drop_idx] <- se_sub
       }
     }
-    ## ---------------------------------------------------------------------------
-    ## The scale parameters are NOT IDENTIFIED by this objective, and reporting the
-    ## numbers the optimizer happens to leave in them is misleading.
-    ##
-    ## The residual above is e = Y - X'beta + sigma_u - sigma_w, so the two scales
-    ## enter only through their DIFFERENCE -- and because X carries the intercept,
-    ## that difference is in turn perfectly confounded with beta_0. Least squares
-    ## can identify the frontier SLOPES and the single composite
-    ## beta_0 + sigma_w - sigma_u, and nothing more. The sum-of-squares surface is
-    ## exactly flat in the remaining directions, so sigma_u and sigma_w simply sit
-    ## wherever they started.
-    ##
-    ## The convergence sweep shows this precisely: across 200 replications at five
-    ## sample sizes their MSE slope is 0.000 to three decimals -- unchanged whether
-    ## the DGP uses sigma_w = sigma_u or sigma_w = 0.3 against sigma_u = 1, which
-    ## rules out identification-under-symmetry as the cause. The same run also
-    ## shows what the confounding does to the intercept: at sigma_w = sigma_u the
-    ## offset is exactly zero and beta_0 converges normally (slope -0.851), while
-    ## at sigma_w = 0.3 the offset is -0.7 and beta_0 stops converging (-0.025).
-    ##
-    ## So they are returned as NA rather than as their starting values. Users who
-    ## want them need a distributional assumption -- i.e. TTNE or TTHN.
-    ## ---------------------------------------------------------------------------
+    ## The scale parameters are NOT IDENTIFIED by this objective, so they
+    ## are reported as NA rather than as numbers.
     nls_unident <- (n_x_vars + 1):length(opt$par)
     if (any(is.finite(opt$par[nls_unident]))) {
       warning("ttsfm(model_name = \"TTNLS\"): nonlinear least squares identifies the ",
@@ -907,8 +781,7 @@ ttsfm <- function(formula,
     out[3, ] <- t_val
 
     ## Information-deficiency metrics: unlike TTNE/TTHN these are direct
-    ## functions of sigma_u/sigma_w only, not conditional on epsilon, since NLS
-    ## gives point estimates of u/w rather than a distribution to condition on.
+    ## functions of sigma_u/sigma_w only, not conditional on epsilon.
     metrics.nls <- function(p, zu = data_z_vars, zw = data_zp_vars) {
       nr <- ncol(data_i_vars)
       nzu <- ncol(zu)

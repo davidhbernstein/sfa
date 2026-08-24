@@ -17,10 +17,7 @@ zsfm <- function(formula,
                  verbose = FALSE,
                  rand.psoptim = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
-  ## see sfm.R's identical fix for why (calling the pipe check on the raw,
-  ## unresolved multi-choice model_name default errored "the condition has
-  ## length > 1" for any caller relying on the default rather than specifying
-  ## model_name explicitly).
+  ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
 
@@ -107,10 +104,8 @@ zsfm <- function(formula,
 
       if (model_name == "ZISF") {
         gamma <- x[1]
-        ## exp(-|gamma|), so the likelihood is EXACTLY symmetric in gamma and the
-        ## optimizer may legitimately return either sign. Every other use of gamma
-        ## must therefore apply the same |.| -- see the JLMS block below, which
-        ## used exp(-gamma) and so produced prob > 1 for a negative estimate.
+        ## exp(-|gamma|), so the likelihood is EXACTLY symmetric in gamma and
+        ## the optimizer may legitimately return either sign.
         prob <- exp(-abs(gamma))
         sigvsq <- x[2]^2
         sigusq <- x[3]^2
@@ -123,10 +118,7 @@ zsfm <- function(formula,
 
         f1 <- -0.5 * log(2 * pi * sigvsq) - (0.5 / sigvsq) * eps^2
         f2 <- log(2 / sig) + log(dnorm(-eps / sig)) + log(pnorm(-eps * lambda / sig))
-        ## Mixed on the LOG scale. Forming prob*exp(f1)+(1-prob)*exp(f2) underflows
-        ## to 0 when an observation is unlikely under both regimes, and the old
-        ## log(f + 1e-10) then floored that at -23.03 -- flattening the objective
-        ## exactly where the optimizer needs a gradient.
+        ## Mixed on the LOG scale.
         like <- .log_add2(log(prob) + f1, log1p(-prob) + f2)
       }
 
@@ -134,15 +126,12 @@ zsfm <- function(formula,
         gamma <- x[(n_x_vars + 3):(n_x_vars + 2 + n_z_vars)] ## lets put gammas last
 
         ## plogis(), not exp(eta)/(1+exp(eta)): the explicit form overflows to
-        ## Inf/Inf = NaN once eta passes ~710, which the optimizer can reach while
-        ## searching. Identical values everywhere the old form was finite.
+        ## Inf/Inf = NaN once eta passes ~710.
         if (logit) {
           prob <- plogis(data_z %*% gamma)
         }
-        ## NOTE: this is pnorm(eta)/(1+pnorm(eta)), which is bounded ABOVE BY 0.5 --
-        ## it is not the probit link. Left as-is deliberately: changing it would
-        ## change results for logit = FALSE, which is a modelling decision rather
-        ## than a cleanup. The convergence sweep uses the logit branch (the default).
+        ## NOTE: this is pnorm(eta)/(1+pnorm(eta)), which is bounded ABOVE BY
+        ## 0.5 -- it is not the probit link.
         if (!logit) {
           prob <- pnorm(data_z %*% gamma) / (1 + pnorm(data_z %*% gamma))
         }
@@ -220,23 +209,12 @@ zsfm <- function(formula,
 
     ## JLMS
     if (model_name %in% c("ZISF", "ZISF_Z")) {
-      ## Branch on the MODEL, not on is.na(n_z_vars). The two are meant to say the
-      ## same thing, but only one of them is the actual contract: the parameter
-      ## layout is a property of the model_name, and the likelihood above already
-      ## branches that way. Keying the predictor off a different condition invites
-      ## the two to disagree -- if n_z_vars ever arrives as 0 rather than NA for a
-      ## no-z fit, this block would silently read ZISF's parameters with ZISF_Z's
-      ## layout and report efficiencies for a model that was never estimated.
+      ## Branch on the MODEL, not on is.na(n_z_vars).
       if (model_name == "ZISF") {
         beta <- opt$par[-c(1:3)]
         z <- 1
         gamma <- opt$par[1]
-        ## exp(-|gamma|), matching the likelihood that was actually maximised. This
-        ## read exp(-gamma), which for a NEGATIVE estimate returns prob > 1 -- and a
-        ## negative estimate is not a pathology here: the likelihood uses |gamma| and
-        ## is therefore exactly symmetric, so +g and -g fit identically and the
-        ## optimizer may return either. post.prob and jlms were silently wrong
-        ## whenever it returned the negative one.
+        ## exp(-|gamma|), matching the likelihood that was actually maximised.
         prob <- exp(-abs(gamma))
 
         sigvsq <- opt$par[2]^2

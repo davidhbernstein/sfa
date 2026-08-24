@@ -1,51 +1,8 @@
-## ---------------------------------------------------------------------------
 ## Marginal effects of the variance determinants on inefficiency
-##
-## The _Z models let sigma_u depend on covariates, and sfa reported the
-## delta coefficients and nothing else. A delta is not what applied work
-## reports, because it is not interpretable on its own: it is a coefficient in
-## a log-link for a scale parameter, so its units are neither those of u nor
-## those of z, and its magnitude cannot be compared across models whose link
-## differs. What gets reported is d E[u]/d z_k and d Var[u]/d z_k.
-##
-## Both are closed form. Writing s = sigma_u(z) and taking the half-normal
-## case, E[u] = s sqrt(2/pi) and Var[u] = s^2 (1 - 2/pi), so every derivative
-## reduces to d s/d z_k times a constant, and the constant cancels into E[u]
-## or Var[u] itself:
-##
-##   SD link,        sigma_u = exp(z'delta):        d s/d z_k = delta_k s
-##   variance link,  sigma_u = sqrt(exp(z'delta)):  d s/d z_k = (delta_k/2) s
-##
-## giving, for BOTH the half-normal and the exponential,
-##
-##   SD link:        dE[u]/dz_k = delta_k E[u],       dVar[u]/dz_k = 2 delta_k Var[u]
-##   variance link:  dE[u]/dz_k = (delta_k/2) E[u],   dVar[u]/dz_k = delta_k Var[u]
-##
-## THE FACTOR OF TWO IS THE POINT. sfm()'s NHN_Z/NE_Z put the linear predictor
-## on the standard deviation and psfm()'s TRE_Z/GTRE_Z put it on the variance
-## (see CLAUDE.md, and entry C1 of the horserace gap list). Reading a delta
-## from one family with the other family's convention in mind is off by
-## exactly this factor. Reporting the marginal effect rather than the
-## coefficient removes the trap, because the marginal effect is on the scale
-## of u either way.
-##
-## The effects are per observation, because sigma_u varies with z. The
-## average over observations -- the "average marginal effect" -- is the
-## conventional summary and is returned as an attribute.
-## ---------------------------------------------------------------------------
 
 
-## marginal_effects(object, average = FALSE)
-##
-## Constant columns of the z design are dropped: the derivative with respect to
-## an intercept is not a marginal effect, and reporting delta_0 * E[u] in a
-## column headed "(Intercept)" invites it to be read as one.
-##
-## Standard errors are NOT reported. The marginal effect is a nonlinear
-## function of both delta and z, so its sampling distribution needs either the
-## delta method through the full vcov or a bootstrap; neither is free, and a
-## number presented without one would be read as inference. psfm_bootstrap()
-## is the existing route for that on the panel side.
+## Constant columns of the z design are dropped: the derivative with respect
+## to an intercept is not a marginal effect.
 marginal_effects <- function(object, average = FALSE) {
   if (!inherits(object, "sfareg")) {
     stop("`object` must be an \"sfareg\" fit, as returned by sfm().", call. = FALSE)

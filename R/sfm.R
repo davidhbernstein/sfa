@@ -36,17 +36,7 @@ sfm <- function(formula,
                 estimator = c("mle", "cols", "mols"),
                 cols_boot = 0,
                 rand.cols = NULL) {
-  ## call/model_name resolution moved ahead of .check_model_formula_pipes()
-  ## (was previously called below, on the raw, possibly-multi-choice default
-  ## `model_name` argument -- e.g. sfm(formula, data=d), i.e. every caller who
-  ## relies on model_name's default rather than specifying it explicitly, hits
-  ## `if(!(model_name %in% names(max_parts_map)))` with a length-9 logical
-  ## vector, which errors "the condition has length > 1" on R >= 4.3. This was
-  ## a real, latent bug affecting the package's simplest possible call pattern
-  ## -- confirmed broken before this fix, and confirmed to affect
-  ## zsfm()/psfm()/ttsfm() identically (same call ordering in each). Fixed
-  ## here and in those three files by resolving model_name via match.arg()
-  ## before it's used for anything else.
+  ## call/model_name resolution moved ahead of .check_model_formula_pipes().
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   robust <- match.arg(robust)
@@ -62,15 +52,8 @@ sfm <- function(formula,
     stop("`antithetics` must be TRUE or FALSE.", call. = FALSE)
   }
 
-  ## "mols" and "cols" select the same estimator, and the literature's name for
-  ## it is MOLS. What .cols_fit() implements is the MODIFIED OLS of Olson,
-  ## Schmidt and Waldman (1980): it inverts the second and third central
-  ## moments of the OLS residuals for the two scale parameters and shifts the
-  ## intercept by the implied E[u]. That is not Winsten's corrected OLS, which
-  ## shifts the intercept by the largest residual and estimates no sigmas at
-  ## all. The package shipped this under estimator = "cols" from the start, so
-  ## that spelling keeps working and is not deprecated; "mols" is accepted so
-  ## that readers who know the method by its usual name can find it.
+  ## "mols" and "cols" select the same estimator, and the literature's name
+  ## for it is MOLS.
   estimator <- if (estimator == "mols") "cols" else estimator
 
   if (estimator == "cols" && robust != "mle") {
@@ -95,11 +78,7 @@ sfm <- function(formula,
   .check_model_formula_pipes(formula, model_name)
 
   ## Robust divergence estimation (MLqE/Psi/MDPD, see R/robust_divergence.R)
-  ## is currently only wired up for model_name == "NHN" -- see that file's
-  ## header comment for the staged-rollout rationale and what's needed to
-  ## extend it to the other models. Erroring clearly here rather than
-  ## silently ignoring `robust` for other models or (worse) applying it
-  ## incorrectly.
+  ## is currently only wired up for model_name == "NHN".
   if (robust != "mle" && model_name != "NHN") {
     stop("robust = '", robust, "' is currently only implemented for model_name = ",
       "\"NHN\" (see R/robust_divergence.R). Use model_name = \"NHN\", or ",
@@ -166,21 +145,13 @@ sfm <- function(formula,
   Y <- DR2$Y
   data_i_vars <- DR2$data_i_vars
 
-  ## ---------------------------------------------------------------------------
-  ## Corrected ordinary least squares. Closed form, so it returns here rather
-  ## than falling through to the likelihood and optimizer stack below. See
-  ## .cols_fit() in matrix_utils.R for the moment inversions and for why the
-  ## wrong-skew case is surfaced rather than smoothed over.
-  ## ---------------------------------------------------------------------------
+  ## Corrected ordinary least squares.
   if (estimator == "cols") {
     Start.Time <- start.time()
     Xc <- as.matrix(data_i_vars)
     Yc <- inefdec_n * as.numeric(Y)
     ## data_i_vars carries make.names()-mangled labels ("X.Intercept."), while
-    ## x_vars_vec keeps the real ones; the rest of sfm() names its output from
-    ## x_vars_vec, so do the same here. Locating the intercept by the mangled
-    ## name silently returns NA and the E[u] correction -- the whole point of
-    ## COLS -- is then never applied, leaving an ordinary OLS intercept.
+    ## x_vars_vec keeps the real ones.
     icol <- match("(Intercept)", x_vars_vec)
     if (is.na(icol)) {
       .const <- which(apply(Xc, 2, function(z) length(unique(z)) == 1L))
@@ -204,9 +175,7 @@ sfm <- function(formula,
     se_v <- c(NA_real_, NA_real_, if (is.null(CF$extra)) NULL else NA_real_, CF$se_beta)
     nm_v <- c("sigv", "sigu", names(CF$extra), x_vars_vec)
 
-    ## Optional nonparametric bootstrap. The closed-form estimator is cheap, so
-    ## resampling is the practical route to standard errors for the moment-based
-    ## parameters and for the corrected intercept, neither of which OLS can give.
+    ## Optional nonparametric bootstrap.
     boot_mat <- NULL
     if (is.numeric(cols_boot) && length(cols_boot) == 1L && cols_boot >= 1) {
       .rng_state <- .rng_snapshot()
@@ -263,58 +232,13 @@ sfm <- function(formula,
     return(results)
   }
 
-  ## Fixed low-discrepancy draws for the simulated-ML models (NLN, NW). The
-  ## lognormal and Weibull composed densities have no closed form -- f(e) is
-  ## E_u[phi((e+u)/sigma_v)/sigma_v], approximated here by averaging over draws
-  ## of u. The draws MUST be generated once, outside the likelihood: redrawing
-  ## inside would make the objective stochastic across optimizer iterations and
-  ## it would never converge. Same halton()/burn-in idiom already used for the
-  ## GTRE/TRE integrals in data_proc().
-  ## Draws are PER OBSERVATION (an n x Nsim matrix), not one shared row reused
-  ## for every unit: sharing a single set of draws correlates the simulation
-  ## error across observations and visibly biases the variance parameters.
-  ##
-  ## The parameter-free part of each inverse CDF is precomputed here, so the
-  ## likelihood never calls qlnorm()/qweibull() on n*Nsim points per iteration:
-  ##   lognormal  u = exp(mu + sigma_u * qnorm(h))       -> cache qnorm(h)
-  ##   Weibull    u = sigma_u * (-log(1-h))^(1/k)        -> cache -log(1-h)
+  ## Fixed low-discrepancy draws for the simulated-ML models (NLN, NW).
   FiMat <- HDraw <- NULL
   if (model_name %in% c("NLN", "NW")) {
     n_obs <- length(as.numeric(Y))
 
-    ## ---- how many simulation draws -------------------------------------------
-    ## Simulated ML is consistent only if the number of draws grows with the
-    ## sample size; at a FIXED Nsim the simulation bias does not vanish and the
-    ## estimator converges to the wrong point. The old default of 100 was fixed,
-    ## and the convergence sweep caught exactly that failure: NLN and NW were the
-    ## only two SML models in sfm() and the only two whose non-slope parameters
-    ## converged, on well-determined lines, at a rate near n^-0.35 instead of
-    ## n^-1, each to a fixed wrong value while their frontier slopes stayed
-    ## textbook.
-    ##
-    ## Direct check at n = 3000 (truth 0.3, 1.0, 1.5, 0.5):
-    ##   NW  Nsim = 100 -> 0.362, 0.821, 1.284, 0.328   (badly biased)
-    ##       Nsim = 400 -> 0.298, 1.028, 1.558, 0.509   (essentially exact)
-    ##       and stable at 1600 and 6400.
-    ##
-    ## "auto" therefore scales the draws with sqrt(n), with a floor of 400. The
-    ## floor matters: 8*sqrt(3000) is only 438, so small samples would otherwise
-    ## get too few.
-    ##
-    ## NLN NEEDS MORE THAN THIS. Its lognormal tail makes the simulated integral
-    ## converge much more slowly -- at n = 3000 it was still visibly moving
-    ## toward the truth at Nsim = 6400 (0.327, 0.893, -0.393, 0.419). Raise Nsim
-    ## well above the default for that model, and treat its estimates as
-    ## simulation-biased until they stop moving.
-    ## The auto rule is per model, because the two no longer integrate the same
-    ## shape. NW still averages the normal kernel over Weibull draws and needs the
-    ## draws its own spike demands. NLN is now integrated in t (see the likelihood
-    ## below), where the integrand is smooth and the error is Halton discrepancy
-    ## rather than systematic bias: measured against a two-way-verified reference,
-    ## the TOTAL log-likelihood error at the truth is 0.16, 0.14 and 0.14 at
-    ## n = 1000, 3000 and 5000 with Nsim = 200, showing no trend in n -- against
-    ## -74.8, -226.8 and comparable under the old form at a LARGER draw count.
-    ## So NLN gets both a cheaper rule and a far more accurate integral.
+    ## How many simulation draws: the count must grow with n, or the
+    ## simulation bias does not vanish.
     .auto_nsim <- function(n) {
       if (model_name == "NLN") {
         max(200L, as.integer(ceiling(3 * sqrt(n))))
@@ -338,20 +262,7 @@ sfm <- function(formula,
       )
     }
     ## Draw construction moved to .sml_draws() (matrix_utils.R), which is
-    ## shared with the other entry points. It keeps the two properties this
-    ## site established and adds the options Train (2002, ch. 9) recommends:
-    ##   - each observation gets its OWN contiguous block of the sequence
-    ##     (byrow), because a column-major fill hands observation i a stride-n
-    ##     subsequence of a van der Corput sequence, which is not
-    ##     equidistributed -- for n = 500, Nsim = 100 the first row spanned
-    ##     only [0.50, 0.75], integrating over a quarter of the inefficiency
-    ##     distribution. That scored the TRUE parameters ~570 log-likelihood
-    ##     units worse than a degenerate sigma_u = 0 solution, so the optimizer
-    ##     correctly maximised a broken objective;
-    ##   - clamped at 1e-6 rather than 1e-10, because with n*Nsim draws the
-    ##     sequence reaches far enough into the tail that
-    ##     exp(mu + sigma_u * qnorm(h)) overflows to Inf. 1e-6 caps |qnorm|
-    ##     near 4.75 and costs nothing in the integral.
+    ## shared with the other entry points.
     FiMat <- .sml_draws(n_units = n_obs, n_draws = Nsim, dim = 1L,
                         sim_type = sim_type, antithetics = antithetics,
                         burn = sim_burn, scrambling = sim_scrambling,
@@ -359,32 +270,14 @@ sfm <- function(formula,
                         clamp = 1e-6)[[1L]]
     HDraw <- if (model_name == "NLN") qnorm(FiMat) else -log1p(-FiMat)
 
-    ## NLN integrates in t (see the likelihood), where the integrand is smooth.
-    ## DETERMINISTIC QUADRATURE WAS TRIED HERE AND REJECTED. Gauss-Hermite is the
-    ## obvious rule for a standard-normal expectation, needs no qnorm(), and ran
-    ## about 3x faster. But its error oscillates with the node count rather than
-    ## decreasing (at n = 5000: -1.37 at K = 60, -0.04 at K = 80, -0.55 at K = 120),
-    ## because the integrand, while smooth, turns over sharply near u = 0. Those
-    ## wiggles move as the parameters move, and they create spurious optima: on
-    ## one of four test seeds the K = 100 fit landed at a point scoring 6.8
-    ## log-likelihood units BELOW the true parameter vector under an independent
-    ## high-accuracy reference, where the Halton fit scored 1.2 units above it.
-    ## Randomized draws cost more per evaluation but do not manufacture optima.
+    ## NLN integrates in t (see the likelihood), where the integrand is
+    ## smooth.
   }
 
   if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN", "TSL")) {
     like.fn <- function(x) {
-      ## The offset is the number of non-beta parameters that precede the frontier
-      ## coefficients, and it is 2 for the two-scale models and 3 for the rest.
-      ## NG and NNAK were in the wrong group: both carry THREE leading parameters
-      ## (sigv, sigu, mu), so x[3:(n_x_vars+2)] took the right NUMBER of elements
-      ## starting one slot too early. The consequences were severe and silent --
-      ## `mu` was used simultaneously as the gamma/Nakagami shape AND as the
-      ## intercept coefficient, every remaining slope was shifted one place, and the
-      ## LAST coefficient never entered the likelihood at all, so it simply kept its
-      ## starting value. The efficiency block below always used opt$par[-c(1:3)],
-      ## i.e. the correct offset, so the two halves of the model disagreed about
-      ## which number meant what.
+      ## The offset is the number of non-beta parameters that precede the
+      ## frontier coefficients.
       if (model_name %in% c("NHN", "NE", "NR", "NU", "NGE")) {
         x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
       }
@@ -434,9 +327,6 @@ sfm <- function(formula,
 
       if (model_name == "NU") {
         ## Normal-uniform (Li 1996, Nguyen 2010): u ~ U(0, theta).
-        ##   f(e) = (1/theta) [ Phi((e+theta)/sigma_v) - Phi(e/sigma_v) ]
-        ## obtained by integrating (1/theta) * phi((e+u)/sigma_v)/sigma_v over
-        ## u in [0, theta] and substituting w = (e+u)/sigma_v.
         sigv <- x[1]
         theta <- x[2]
         if (!is.finite(sigv) || !is.finite(theta) || sigv <= 0 || theta <= 0) {
@@ -449,18 +339,6 @@ sfm <- function(formula,
 
       if (model_name == "NGE") {
         ## Normal-generalized exponential: u ~ GE(2, lambda), i.e.
-        ## F(u) = (1 - exp(-lambda u))^2, so f(u) = 2 lambda e^{-lambda u}
-        ## (1 - e^{-lambda u}). Using the standard result
-        ##   int_0^inf e^{-a u} phi((e+u)/s)/s du = e^{a e + a^2 s^2/2} Phi(-e/s - a s)
-        ## twice (a = lambda and a = 2 lambda) gives the closed form
-        ##   f(e) = 2 lambda [ T1 - T2 ],
-        ##   log T1 = lambda e + lambda^2 s^2/2   + log Phi(-e/s - lambda s)
-        ##   log T2 = 2 lambda e + 2 lambda^2 s^2 + log Phi(-e/s - 2 lambda s)
-        ## The two terms are close in the tails, so the difference is taken as
-        ## a log-difference-of-exponentials rather than by subtracting raw
-        ## densities, which would cancel to zero and produce -Inf.
-        ## lambda is parameterized as 1/sigma_u to keep the reported scale
-        ## comparable with NE (where sigma_u is the exponential mean).
         sigv <- x[1]
         sigu <- x[2]
         if (!is.finite(sigv) || !is.finite(sigu) || sigv <= 0 || sigu <= 0) {
@@ -474,52 +352,18 @@ sfm <- function(formula,
       }
 
       if (model_name %in% c("NLN", "NW")) {
-        ## Simulated ML. Neither the lognormal nor the Weibull convolves with
-        ## a normal in closed form, so f(e) = E_u[phi((e+u)/sigma_v)/sigma_v]
-        ## is evaluated by averaging over the fixed Halton draws built above,
-        ## mapped through the inverse CDF of u.
-        ##   NLN: u ~ LogNormal(meanlog = mu, sdlog = sigma_u)
-        ##   NW : u ~ Weibull(shape = k, scale = sigma_u)
+        ## Simulated ML.
         sigv <- x[1]
         sigu <- x[2]
         shp <- x[3] ## meanlog (NLN) or shape k (NW)
         ## A large FINITE penalty, not .Machine$double.xmax: optim()'s
-        ## finite-difference gradient differences the objective, and
-        ## differencing 1.8e308 overflows to a non-finite value, which aborts
-        ## the fit with "non-finite finite-difference value" instead of just
-        ## steering the search away from the bad region.
+        ## finite-difference gradient differences the objective.
         if (!is.finite(sigv) || !is.finite(sigu) || !is.finite(shp) ||
           sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
           return(1e12)
         }
         if (model_name == "NLN") {
-          ## CHANGE OF VARIABLE, u = sigma_v*t - e. Averaging the normal kernel
-          ## over lognormal draws (what NW still does below, and what this did)
-          ## integrates a SPIKE: the kernel has width sigma_v in u, so at
-          ## sigma_v = 0.3 against a lognormal spread over decades, almost every
-          ## draw lands where the kernel is numerically zero and the handful
-          ## that land under it carry the entire integral. Substituting
-          ## u = sigma_v*t - e turns it into a standard-normal expectation of
-          ## the SMOOTH lognormal density, truncated to u > 0:
-          ##   f(e) = P(t > e/sigma_v) * E[ f_LN(sigma_v*t - e) | t > e/sigma_v ]
-          ##
-          ## Measured against a reference verified two ways (adaptive quadrature
-          ## in t and a 200k-point Simpson rule in u, agreeing to 5e-9), at the
-          ## truth with n = 3000: the old form was 226.8 log-likelihood units
-          ## off at the default Nsim = 439 -- which is precisely the
-          ## "228 worse than the default start" gap recorded against NLN in the
-          ## convergence registry, i.e. that gap was simulation error, not a
-          ## defect in the likelihood. This form is off by 0.12 at the same
-          ## Nsim, and by 0.86 at Nsim = 50.
-          ##
-          ## Raising Nsim cannot substitute for this. The old form's error per
-          ## observation is ~-0.076 at BOTH n = 1000 and n = 3000 under the
-          ## 8*sqrt(n) rule, so the total bias grows linearly in n at exactly
-          ## the rate the log-likelihood itself does; closing it needs Nsim
-          ## proportional to n, i.e. O(n^2) work per evaluation.
-          ##
-          ## Upper tail throughout: p_hi = P(t > e/sigma_v) underflows to 0 in
-          ## the lower-tail form for e/sigma_v beyond ~8, taking qnorm() to Inf.
+          ## CHANGE OF VARIABLE, u = sigma_v*t - e.
           e_v <- as.numeric(eps)
           p_hi <- pnorm(e_v / sigv, lower.tail = FALSE)
           Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
@@ -556,39 +400,14 @@ sfm <- function(formula,
         lamb <- sig_u / sig_v
         sig <- sqrt(sig_v^2 + sig_u^2)
         ## Tancredi (2002) eq (4): the composed error is skew-t with SCALE
-        ## omega = sqrt(sig_v^2 + sig_u^2), slant -sig_u/sig_v and a degrees of
-        ## freedom. The t density is therefore evaluated at the omega-scaled
-        ## residual and carries the 1/omega Jacobian.
-        ##
-        ## This used to read dt(eps, df = a) -- the raw, unscaled residual with
-        ## no Jacobian -- which pins the scale at 1. That still integrates to 1
-        ## (Azzalini's lemma: 2*f(e)*G(w(e)) is a density for any symmetric f
-        ## and odd w), so it produced plausible fits rather than an obvious
-        ## failure, but sig_u and sig_v were then identified only through the
-        ## skewing term and `a` had to absorb the whole scale mismatch. That is
-        ## exactly what the convergence sweep saw: `a` and sigv were the two
-        ## parameters that would not converge.
+        ## omega = sqrt(sig_v^2 + sig_u^2).
         z_s <- eps / sig
         like <- log(2) - log(pmax(sig, .Machine$double.xmin)) +
           dt(z_s, df = a, log = TRUE) +
           pt(-z_s * lamb * sqrt((a + 1) / (z_s^2 + a)), df = a + 1, log.p = TRUE)
       }
 
-      ## tHN -- Student-t noise with a HALF-NORMAL inefficiency term. This is
-      ## NOT THT. In THT both components come from one shared scale mixture, so
-      ## both are t with the same degrees of freedom and the composed error is
-      ## a closed-form skew-t. Here v ~ sigma_v*t_nu and u ~ |N(0, sigma_u^2)|
-      ## are INDEPENDENT and have different tails, so there is no closed form
-      ## and the density is the convolution
-      ##      f(e) = int_0^Inf f_v(e + u) f_u(u) du,
-      ## computed by adaptive Gauss-Legendre quadrature in .log_d_thn().
-      ##
-      ## This is the heavy-tailed-NOISE model, which is what makes it the
-      ## parametric competitor to the density-power robust estimators; THT
-      ## cannot play that role because its inefficiency term is heavy-tailed
-      ## too. Parameter order is (sigma_v, sigma_u, nu) -- the same
-      ## (sigv, sigu) order as NE/NR/NG/NNAK, deliberately NOT THT's inverted
-      ## (sigma_u, sigma_v). Asserted in tests/testthat/test-thn.R.
+      ## tHN -- Student-t noise with a HALF-NORMAL inefficiency term.
       if (model_name == "tHN") {
         sig_v <- x[1]
         sig_u <- x[2]
@@ -616,24 +435,6 @@ sfm <- function(formula,
 
       if (model_name == "TSL") {
         ## Normal / truncated skew-Laplace (Wang 2012). u has density
-        ##
-        ##   f(u) = ((1+lam)/(sig_u (2 lam + 1)))
-        ##            [2 exp(-u/sig_u) - exp(-(1+lam) u/sig_u)],  u >= 0,
-        ##
-        ## a SIGNED mixture of two exponentials, so the composed density is the
-        ## corresponding signed combination of two normal-exponential terms.
-        ##
-        ## Evaluated as a difference in LOG space rather than as
-        ## log(2*exp(A)*pnorm(a) - exp(B)*pnorm(b)) directly. Both exponentials
-        ## carry sig_v^2/(2 sig_u^2), which overflows once sig_u gets small
-        ## relative to sig_v -- a region any optimizer visits. The direct form
-        ## returns NaN or Inf at 9 of 30 points on a routine grid spanning
-        ## sig_u in {0.05, 0.1, 0.3} and sig_v in {0.3, 1}, including
-        ## sig_u = 0.05, sig_v = 1, eps = 0, which is not an extreme point at
-        ## all. The log form below is finite across that whole grid.
-        ##
-        ## l1 > l2 always, because the density is positive; the pmin() only
-        ## guards the boundary where they coincide to machine precision.
         sig_v <- x[1]
         sig_u <- x[2]
         lam <- x[3]
@@ -648,10 +449,7 @@ sfm <- function(formula,
       }
 
       if (model_name %in% c("NG", "NNAK")) {
-        ## Stable log parabolic cylinder function. The series form this replaces
-        ## computed an O(exp(-z^2/4)) value as a difference of two O(exp(z^2/2))
-        ## terms, returning NaN or garbage for z beyond about 8 -- see .log_pcf()
-        ## in matrix_utils.R for the verification against numerical integration.
+        ## Stable log parabolic cylinder function.
         lnDv <- function(nu, z) .log_pcf(nu, z)
         sig_v <- x[1]
         sig_u <- x[2]
@@ -674,12 +472,7 @@ sfm <- function(formula,
       like[is.nan(like)] <- -sqrt(.Machine$double.xmax / length(like))
 
       ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
-      ## objective for the robust one, at these SAME current parameter
-      ## values, instead of the generic -sum(like) tail below. See
-      ## R/robust_divergence.R's header for the full derivation/scope note
-      ## (NHN only for now) and why st_err/t_val are reported as NA for
-      ## these methods rather than the (invalid, for this class of
-      ## M-estimator) naive Hessian-inverse SE.
+      ## objective for the robust one, at these SAME current parameter values.
       if (model_name == "NHN" && robust != "mle") {
         lambda_x <- x[1]
         sigma_x <- x[2]
@@ -701,28 +494,7 @@ sfm <- function(formula,
 
     Start.Time <- start.time()
 
-    ## Stage 1: nlminb. Reaches an equal-or-better optimum ~10-20x faster than
-    ## the derivative-free stage it now precedes (see opt.nlminb()'s header for
-    ## the benchmark), so bobyqa is no longer run by default -- it remains fully
-    ## available via use.bobyqa = TRUE, and the ordering means enabling it simply
-    ## adds a second, independent search on top rather than replacing anything.
-    ## An analytic gradient is supplied where one exists (NHN under ordinary MLE;
-    ## the robust divergence objectives have a different score, so they fall back
-    ## to nlminb's internal numeric differencing, which is still fast and, per the
-    ## same benchmark, more accurate than the old stack).
-    ## Which stage runs is decided PER MODEL under the "auto" default, because
-    ## nlminb is not uniformly safe. Benchmarked over 4 seeds at N=400, replacing
-    ## bobyqa with nlminb changes the achieved log-likelihood by:
-    ##
-    ##   NHN  -2e-11   NE  -4e-11   NTN -6e-11   NU  -3e-08     (identical, 3-6x faster)
-    ##   NGE  -7.7                  NR  -217                    (materially WORSE)
-    ##
-    ## and for NR/NGE running nlminb BEFORE bobyqa is worse still (-489 for NR):
-    ## nlminb walks those two likelihoods into a poor basin that bobyqa then
-    ## cannot escape. Accuracy is the binding constraint here, so "auto" runs
-    ## nlminb alone only for the models where it is verified lossless, and
-    ## reproduces the previous bobyqa path exactly for every other model. Either
-    ## flag can be set to TRUE/FALSE explicitly to override.
+    ## Stage 1: nlminb.
     .nlminb_safe <- c("NHN", "NE", "NTN", "NU")
     if (identical(use.nlminb, "auto")) use.nlminb <- model_name %in% .nlminb_safe
     if (identical(use.bobyqa, "auto")) use.bobyqa <- !(model_name %in% .nlminb_safe)
@@ -733,13 +505,7 @@ sfm <- function(formula,
       NULL
     }
 
-    ## tHN: multi-start is mandatory, not a refinement. The likelihood is bimodal
-    ## in nu on real data -- nu <~ 20 gives a solution with sigma_u collapsed onto
-    ## zero, nu >~ 30 jumps to a normal-like solution with lambda in the 60s, with
-    ## no intermediate regime -- so a single start reports whichever basin it began
-    ## in and gives no sign that the other exists. Fit from widely separated starts
-    ## spanning both regimes, keep the best objective, and record how many distinct
-    ## optima were reached so the caller can see the multiplicity.
+    ## tHN: multi-start is mandatory, not a refinement.
     thn_starts <- NULL
     if (model_name == "tHN") {
       .thn_try <- function(sv) {
@@ -783,13 +549,7 @@ sfm <- function(formula,
       }
     }
 
-    ## Normal-gamma multi-start. The likelihood is exact and unimodal in the shape,
-    ## but the default start (sigma_u = sigma_v = 0.1 from start_cs(), shape pinned
-    ## at 1, raw OLS intercept) sits in the "no inefficiency" corner and the
-    ## optimizer stays there: on the package's own test DGP at n = 4000 it returned
-    ## sigma_u = 0 and stopped 710 log-likelihood units BELOW the true parameter
-    ## vector. See .ng_start_candidates() for why the candidates sweep the shape
-    ## along the E[u] = mu*sigma_u ridge rather than searching across it.
+    ## Normal-gamma multi-start.
     ng_starts <- NULL
     if (model_name == "NG" && isFALSE(is.numeric(start_val))) {
       .cand <- .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
@@ -876,11 +636,7 @@ sfm <- function(formula,
       st_err <- rep(NA, length(opt$par))
     }
 
-    ## A Hessian that cannot be inverted (flat or near-flat likelihood in some
-    ## direction -- common for the simulated-ML models and for weakly identified
-    ## specifications) must cost only the standard errors, not the whole fit.
-    ## Previously solve() threw "system is computationally singular" and aborted,
-    ## discarding perfectly good point estimates; now it degrades to NA SEs.
+    ## A Hessian that cannot be inverted.
     if (optHessian == TRUE) {
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
@@ -891,15 +647,7 @@ sfm <- function(formula,
     }
 
     ## Robust divergence estimation (MLqE/Psi/MDPD): the naive Hessian-inverse
-    ## SE above assumes the information-matrix equality, which does not hold
-    ## for these M-estimators in general -- replaced with the correct sandwich
-    ## form (A^-1 B A^-1; see R/robust_divergence.R's .sandwich_se_nhn() header
-    ## comment for the full derivation). "A" reuses opt$hessian (already
-    ## computed above, same objective); "B" needs the per-observation gradient
-    ## of the SAME per-observation objective like.fn() used internally, rebuilt
-    ## here as a standalone function of the raw parameter vector (matching
-    ## like.fn()'s own NHN eps/x_x_vec construction exactly) so numDeriv::jacobian()
-    ## can differentiate it observation-by-observation.
+    ## SE above assumes the information-matrix equality.
     if (model_name == "NHN" && robust != "mle") {
       c_x <- switch(robust,
         mlqe = c_mlqe,
@@ -927,21 +675,15 @@ sfm <- function(formula,
       }
     }
 
-    ## `T`/`F` are ordinary variables and can be reassigned by user code, so the
-    ## literals TRUE/FALSE are used throughout. These three assignments legitimately
-    ## may fail -- st_err is NA-filled when the Hessian is singular, and its length
-    ## can differ from nrow(out) -- so the failure is tolerated, but tryCatch makes
-    ## the intent explicit and leaves the row as NA rather than half-written.
+    ## `T`/`F` are ordinary variables and can be reassigned by user code, so
+    ## the literals TRUE/FALSE are used throughout.
     t_val <- tryCatch(opt$par / st_err, error = function(e) rep(NA_real_, ncol(out)))
     out[1, ] <- opt$par
     out[2, ] <- tryCatch(st_err, error = function(e) rep(NA_real_, ncol(out)))
     out[3, ] <- tryCatch(t_val, error = function(e) rep(NA_real_, ncol(out)))
 
     ## The posterior of u given the composed residual, for the models where it
-    ## is a truncated normal. Recorded here rather than recomputed later so
-    ## efficiency_ci() works off exactly the quantities the point predictors
-    ## used; left NULL for the models whose posterior is some other shape, and
-    ## efficiency_ci() reports that rather than guessing.
+    ## is a truncated normal.
     u_post <- NULL
 
     ## JLMS TE Measurements
@@ -973,12 +715,7 @@ sfm <- function(formula,
     }
 
     if (model_name == "NE") {
-      ## Normal-exponential. u | e ~ N+(mu_star, sigma_v^2) with
-      ## mu_star = -e - sigma_v^2/sigma_u: completing the square in u inside
-      ## exp(-u/sigma_u) * exp(-(e+u)^2/(2 sigma_v^2)) gives
-      ## -(1/(2 sigma_v^2))[(u + e + sigma_v^2/sigma_u)^2 - const].
-      ## Parameter order here is (sigv, sigu) -- see this model's branch of
-      ## like.fn() above, which uses x[1] as sigma_v and x[2] as sigma_u.
+      ## Normal-exponential.
       beta <- opt$par[-c(1:2)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
@@ -990,10 +727,7 @@ sfm <- function(formula,
     }
 
     if (model_name == "NTN") {
-      ## Normal-truncated normal, u ~ N+(mu, sigma_u^2). Same posterior form as
-      ## NHN but with the mu term retained; setting mu = 0 reproduces NHN's
-      ## mu_star exactly (cf. the median-TE block above, which already uses this
-      ## expression with mu hard-coded to 0).
+      ## Normal-truncated normal, u ~ N+(mu, sigma_u^2).
       lamb <- opt$par[1]
       sig <- opt$par[2]
       mu <- opt$par[3]
@@ -1009,10 +743,8 @@ sfm <- function(formula,
     }
 
     if (model_name == "NU") {
-      ## u | e is normal with mean -e and sd sigma_v, DOUBLY truncated to [0, theta]
-      ## (the uniform prior contributes only the support restriction). Battese-
-      ## Coelli then integrates exp(-u) over that doubly-truncated normal, which is
-      ## the singly-truncated result with the upper tail subtracted at both places.
+      ## u | e is normal with mean -e and sd sigma_v, DOUBLY truncated to [0,
+      ## theta] (the uniform prior contributes only the support restriction).
       beta <- opt$par[-c(1:2)]
       sig_v <- opt$par[1]
       theta <- opt$par[2]
@@ -1020,12 +752,8 @@ sfm <- function(formula,
       mu_star <- -eps_hat
       a_lo <- (0 - mu_star) / sig_v
       a_hi <- (theta - mu_star) / sig_v
-      ## Both CDF differences are taken in log space: for a very efficient unit
-      ## a_lo and a_hi are both far into the same tail, where pnorm(a_hi)-pnorm(a_lo)
-      ## underflows to 0 and the ratio explodes. See .log_pnorm_diff().
-      ## Completing the square in exp(-u) * phi((u-mu_star)/sigma_v) shifts the
-      ## integration limits by +sigma_v (the same shift that turns the open-ended
-      ## case into Phi(z - sigma), since there the limit enters as -z + sigma).
+      ## Both CDF differences are taken in log space: for a very efficient
+      ## unit a_lo and a_hi are both far into the same tail.
       log_den <- .log_pnorm_diff(a_lo, a_hi)
       log_num <- .log_pnorm_diff(a_lo + sig_v, a_hi + sig_v)
       exp_u_hat <- pmin(pmax(exp(-mu_star + 0.5 * sig_v^2 + log_num - log_den), 0), 1)
@@ -1033,12 +761,7 @@ sfm <- function(formula,
     }
 
     if (model_name == "NGE") {
-      ## The GE(2, lambda) density is a difference of two exponential terms, so the
-      ## posterior of u given e is a two-component mixture of normals truncated at
-      ## zero -- component k (k = 1, 2) has mean -e - k*lambda*sigma_v^2 and sd
-      ## sigma_v, with mixture weight proportional to that component's own
-      ## contribution to the composed density. Both pieces reuse the shared
-      ## truncated-normal predictors.
+      ## The GE(2, lambda) density is a difference of two exponential terms.
       beta <- opt$par[-c(1:2)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
@@ -1046,11 +769,8 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       lt1 <- lam * eps_hat + (lam^2 * sig_v^2) / 2 + pnorm(-eps_hat / sig_v - lam * sig_v, log.p = TRUE)
       lt2 <- 2 * lam * eps_hat + 2 * (lam^2 * sig_v^2) + pnorm(-eps_hat / sig_v - 2 * lam * sig_v, log.p = TRUE)
-      ## SIGNED mixture, not a convex one: the GE density is a DIFFERENCE of two
-      ## exponential pieces, so the normalizing constant is T1 - T2 and the
-      ## weights are w1 = T1/(T1-T2) > 1 and w2 = T2/(T1-T2) = w1 - 1, satisfying
-      ## w1 - w2 = 1. Using the convex weights T_k/(T1+T2) instead is wrong and
-      ## produces efficiency scores essentially uncorrelated with the truth.
+      ## SIGNED mixture, not a convex one: the GE density is a DIFFERENCE of
+      ## two exponential pieces.
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
       w1 <- -1 / expm1(d) ## = 1/(1 - exp(d)),  d < 0 so w1 > 0
       w2 <- w1 - 1
@@ -1069,12 +789,8 @@ sfm <- function(formula,
       sig_u <- opt$par[2]
       shp <- opt$par[3]
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
-      ## NLN uses the same change of variable as its likelihood (u = sigma_v*t - e),
-      ## so the predictor is consistent with the density that was actually maximised.
-      ## Under that substitution the weight is the lognormal density at the mapped
-      ## draw rather than the normal kernel, and the P(t > e/sigma_v) factor cancels
-      ## between numerator and denominator:
-      ##   E[g(u)|e] = sum_s g(u_s) f_LN(u_s) / sum_s f_LN(u_s),  u_s = sigma_v*t_s - e
+      ## NLN uses the same change of variable as its likelihood (u = sigma_v*t
+      ## - e).
       if (model_name == "NLN") {
         e_v <- as.numeric(eps_hat)
         p_hi <- pnorm(e_v / sig_v, lower.tail = FALSE)
@@ -1104,9 +820,8 @@ sfm <- function(formula,
     }
 
     if (model_name == "tHN") {
-      ## Bayes rule over the same quadrature nodes the likelihood uses, so numerator
-      ## and denominator share the node set:
-      ##   E[g(u)|e] = int g(u) f_v(e+u) f_u(u) du / int f_v(e+u) f_u(u) du
+      ## Bayes rule over the same quadrature nodes the likelihood uses, so
+      ## numerator and denominator share the node set.
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
@@ -1116,23 +831,8 @@ sfm <- function(formula,
       exp_u_hat <- .eff$exp_u_hat
       u_hat <- .eff$u_hat
 
-      ## sigma_u collapsing onto zero is a REAL property of this model on real data,
-      ## not an optimizer failure: the heavy noise tail can absorb the whole left
-      ## tail of the composed error, leaving no inefficiency to explain. It has been
-      ## reached from both a maximum-likelihood start and a deliberately
-      ## inefficiency-heavy start with identical objectives, i.e. it is the global
-      ## optimum rather than a bad start. Surfacing it is the point -- silently
-      ## returning mean efficiency of 0.9996 is the dangerous outcome -- so warn,
-      ## flag it, and still return the fit rather than bounding sigma_u away from 0.
-      ## Above roughly nu = 50 the t is numerically indistinguishable from the
-      ## normal (the tHN density is within ~1e-4 of normal-half-normal there and
-      ## the gap closes as O(1/nu)), so the likelihood is flat in nu and the
-      ## reported value is not an estimate of anything. The convergence sweep makes
-      ## this concrete: a shrinking minority of samples send the argmax to infinity
-      ## -- 30% of fits exceeded nu = 100 at n = 250, falling to 1% at n = 1250,
-      ## with a maximum of 10537 -- while the MEDIAN converges on the truth (7.0,
-      ## 5.9, 5.5, 4.9, 5.3 against a true 5). Flag those fits rather than letting a
-      ## four-digit nu be read as a finding.
+      ## sigma_u collapsing onto zero is a REAL property of this model on real
+      ## data, not an optimizer failure.
       thn_nu_unidentified <- isTRUE(nu > 50)
       if (thn_nu_unidentified) {
         warning("sfm(model_name = \"tHN\"): nu converged to ", signif(nu, 4),
@@ -1160,19 +860,7 @@ sfm <- function(formula,
     }
 
     if (model_name == "THT") {
-      ## Tancredi (2002) section 2.2. The paper gives the conditional density of the
-      ## inefficiency in eq (7); that kernel is exactly a Student-t truncated to
-      ## [0, Inf) with
-      ##      df       = a + 1
-      ##      location = -e * sig_u^2 / omega^2                         (as in JLMS)
-      ##      scale^2  = (a + e^2/omega^2) * sig_v^2 * sig_u^2 / (omega^2 * (a+1))
-      ## which reduces to Jondrow et al.'s N+(mu*, sigma*^2) as a -> Inf, the
-      ## skew-normal/ALS limit. Efficiency is E[exp(-u)|e] (the paper's r_i), got by
-      ## numerical integration as the paper prescribes; sd_exp_u_hat is its standard
-      ## deviation, which is the quantity carrying the paper's main point -- for a
-      ## large POSITIVE residual the skew-t treats the observation as an outlier and
-      ## the conditional spread widens, instead of collapsing efficiency onto 1 the
-      ## way the half-normal model does.
+      ## Tancredi (2002) section 2.2.
       beta <- opt$par[-c(1:3)]
       sig_u <- opt$par[1]
       sig_v <- opt$par[2]
@@ -1181,29 +869,16 @@ sfm <- function(formula,
       om2 <- sig_v^2 + sig_u^2
       mu_star <- -eps_hat * sig_u^2 / om2
       s_star <- sqrt(pmax((a + eps_hat^2 / om2) * sig_v^2 * sig_u^2 / (om2 * (a + 1)), .Machine$double.xmin))
-      ## E[u|e] has an exact closed form -- it is the mean of a t_(a+1) truncated to
-      ## [c, Inf) with c = -mu*/s*, i.e.
-      ##      E[T|T>c] = ((nu + c^2)/(nu - 1)) * f_nu(c) / (1 - F_nu(c)),  nu = a+1,
-      ## finite because the df lower bound of 2.05 keeps nu > 1. Machine-precision
-      ## agreement with integrate(); no quadrature needed.
+      ## E[u|e] has an exact closed form -- it is the mean of a t_(a+1)
+      ## truncated to [c, Inf) with c = -mu*/s*, i.e.
       nu_t <- a + 1
       c_trunc <- -mu_star / s_star
       u_hat <- pmax(mu_star + s_star * ((nu_t + c_trunc^2) / (nu_t - 1)) *
         dt(c_trunc, df = nu_t) /
         pmax(pt(c_trunc, df = nu_t, lower.tail = FALSE), .Machine$double.xmin), 0)
 
-      ## The exp(-u) moments have no such form, so integrate them on the probability
-      ## scale instead of calling integrate() once per observation: for any g,
-      ## E[g(u_i)] = int_0^1 g(Q_i(p)) dp with Q_i(p) = mu_i + s_i*qt(F0_i + p*(1-F0_i))
-      ## the truncated-t quantile function. A fixed Gauss-Legendre rule on (0,1) then
-      ## reduces the whole thing to one matrix operation over all observations, which
-      ## matters because the Monte Carlo sweeps run this block once per replication.
-      ##
-      ## 256 nodes, not fewer: the substitution sends Q(p) to infinity as p -> 1, so
-      ## convergence is governed by the t tail rather than by smoothness. For the
-      ## exp(-u) moments the exponential damps that tail and 256 nodes agree with
-      ## integrate() to ~7e-8; at 64 nodes it is only ~2e-5. (The untransformed mean
-      ## converges far more slowly still, which is why it uses the closed form above.)
+      ## The exp(-u) moments have no closed form, so integrate them on the
+      ## probability scale over shared quadrature nodes.
       gl <- .gauss_legendre_01(256L)
       F0 <- pt(c_trunc, df = nu_t)
       P <- outer(F0, gl$nodes, function(f, p) f + p * (1 - f))
@@ -1236,16 +911,7 @@ sfm <- function(formula,
     }
 
     if (model_name == "TSL") {
-      ## Truncated skew-Laplace. Same shape of argument as NGE above: the u
-      ## density is a SIGNED mixture of two exponentials with rates
-      ## r1 = 1/sigma_u and r2 = (1+lam)/sigma_u, so the posterior of u given e
-      ## is a signed mixture of two normals truncated at zero, component k
-      ## having mean -e - r_k sigma_v^2 and sd sigma_v.
-      ##
-      ## The weights are again NOT convex. The composed density is
-      ## proportional to 2*T1 - T2, so w1 = 2*T1/(2*T1 - T2) and
-      ## w2 = T2/(2*T1 - T2), which satisfy w1 - w2 = 1. Taking T_k/(T1+T2)
-      ## instead would be wrong in the same way it is wrong for NGE.
+      ## Truncated skew-Laplace.
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
@@ -1268,9 +934,8 @@ sfm <- function(formula,
     }
 
     if (model_name %in% c("NG", "NNAK")) {
-      ## Same stable helper the likelihood uses; the series form here also carried a
-      ## stray trailing comma inside log(), which R tolerates but which signals the
-      ## expression had not been exercised.
+      ## Same stable helper the likelihood uses; the series form here also
+      ## carried a stray trailing comma inside log().
       lnDv <- function(nu, z) .log_pcf(nu, z)
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
@@ -1381,10 +1046,7 @@ sfm <- function(formula,
     }
 
     ## Fallback for models with no efficiency predictor yet (currently the _Z
-    ## variants other than NHN_Z). NE/NTN/THT are excluded because they are
-    ## packaged with exp_u_hat/u_hat just above -- without that exclusion this
-    ## catch-all would silently overwrite their results object and drop the
-    ## efficiency scores again.
+    ## variants other than NHN_Z).
     if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL"))) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula,
@@ -1398,24 +1060,19 @@ sfm <- function(formula,
     }
 
     ## Optionally retain the objective, so sfa_diagnostics() can profile the
-    ## likelihood and difference it for a gradient after the fact. OFF by
-    ## default: a closure carries its enclosing environment with it, so a fit
-    ## saved with one serializes the estimation data alongside the results.
+    ## likelihood and difference it for a gradient after the fact.
     if (isTRUE(keep_objective) && exists("like.fn", inherits = FALSE)) {
       results$objective <- like.fn
     }
 
-    ## Appended after the per-model lists above rather than threaded through
-    ## each of them: those are built positionally and renamed in a second step,
-    ## so adding two elements to every branch is a much larger edit than adding
-    ## them once here, and a much easier one to get wrong.
+    ## Appended here rather than threaded through each per-model list,
+    ## which are built positionally and renamed separately.
     if (!is.null(u_post)) {
       results$u_posterior <- u_post
     }
 
-    ## The variance-determinant block, kept so marginal_effects() can report
-    ## d E[u]/d z and d Var[u]/d z without re-deriving the design matrix from
-    ## the call. Only the _Z models have one.
+    ## The variance-determinant block, kept so marginal_effects() can report d
+    ## E[u]/d z and d Var[u]/d z without re-deriving the design matrix from.
     if (model_name %in% c("NHN_Z", "NE_Z") && isTRUE(n_z_vars > 0)) {
       Zm <- tryCatch(as.matrix(data.frame(subset(data, select = z_vars))),
                      error = function(e) NULL)
@@ -1425,9 +1082,7 @@ sfm <- function(formula,
         results$z_spec <- list(
           Z = Zm, delta = dl,
           ## sfm()'s _Z models put the linear predictor on the STANDARD
-          ## DEVIATION, sigma_u = exp(z'delta). psfm()'s put it on the
-          ## VARIANCE. That difference is real and changes the marginal
-          ## effects by a factor of two -- see marginal_effects().
+          ## DEVIATION, sigma_u = exp(z'delta).
           link = "sd",
           family = if (model_name == "NHN_Z") "halfnormal" else "exponential"
         )

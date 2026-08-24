@@ -7,12 +7,8 @@
   HALTON_DISCARD =  1000,
   MIN_POSITIVE   = .Machine$double.eps,
   MAX_VALUE      = .Machine$double.xmax,
-  # Safe upper bound for arguments passed to exp() -- exp(700) ~= 1.01e304,
-  # comfortably under .Machine$double.xmax (~1.80e308), so clipping an
-  # exponent argument here prevents exp() from overflowing to Inf while
-  # still preserving its relative ordering for any argument that wouldn't
-  # have overflowed anyway. Added to fix a real "non-finite value supplied
-  # by optim" error reported from ttsfm(model_name="TTNE") -- see ttsfm.R.
+  ## Safe upper bound for arguments passed to exp() -- exp(700) ~= 1.01e304,
+  ## comfortably under .Machine$double.xmax (~1.80e308).
   EXP_CLIP_UPPER =  700
   # HALTON_PRIMES = c(2, 3)
 )
@@ -104,16 +100,7 @@ data_proc <- function(formula, data, model_name, individual = NULL, inefdec) {
   data_orig <- data
 
   ## Formula parsing via .parse_pipe_formula() (matrix_utils.R), which uses
-  ## Formula::Formula() -- see that function's header comment for why this
-  ## replaced a manual strsplit(as.character(formula),"|") + paste()
-  ## reconstruction that used to live here (it silently misparsed long
-  ## formulas). `form_parts` is kept as a synthetic placeholder purely so
-  ## the `length(unlist(form_parts)) > 3` / `> 4` part-count checks used by
-  ## this function's callers (sfm.R, zsfm.R, ttsfm.R, psfm.R) and further
-  ## down in this function keep working unchanged -- nothing anywhere reads
-  ## its actual content, only its unlisted length (1 RHS part -> length 3,
-  ## 2 parts -> length 4, 3 parts -> length 5, matching the old object's
-  ## shape).
+  ## Formula::Formula().
   parsed_f <- .parse_pipe_formula(formula)
   formula_x <- parsed_f$formula_x
   y_var <- parsed_f$y_var
@@ -350,8 +337,7 @@ print.sfareg <- function(x, ...) {
 }
 
 ## One line on how the optimizer finished, shown by both print() and
-## summary(). Previously neither said anything at all: a fit that stopped on
-## the iteration cap looked exactly like a converged one.
+## summary().
 .sfa_report_convergence <- function(x) {
   cc <- x$opt$convergence
   if (is.null(cc) || !length(cc) || is.na(cc)) {
@@ -372,8 +358,7 @@ print.sfareg <- function(x, ...) {
     )
     if (!is.null(x$opt$message)) cat("  optimizer message: ", x$opt$message, "\n", sep = "")
     ## A non-zero code frequently means only that the final polish stage could
-    ## not improve on an already-converged point; the gradient and Hessian are
-    ## what settle it, and sfa_diagnostics() combines all three.
+    ## not improve on an already-converged point.
     cat("  a non-zero code does not by itself mean the fit failed --\n")
     cat("  run sfa_diagnostics() on this fit to see the gradient and Hessian.\n")
   }

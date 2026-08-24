@@ -24,13 +24,7 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   } else {
     unname(c(lambda, sigma, mu, beta_0, beta_hat))
   }
-  ## THT's third parameter is the degrees of freedom of the skew-t. Starting it
-  ## at 1 (Cauchy -- no mean, no variance) puts the optimizer in a region where
-  ## the model's moments do not exist and a long way from any plausible fit. Take
-  ## a moment start instead: the excess kurtosis of a t_nu is 6/(nu-4), so
-  ## nu ~ 4 + 6/kurtosis of the OLS residuals. Clipped to [3, 30] -- above ~30 the
-  ## skew-t is numerically indistinguishable from the skew-normal, so there is no
-  ## information left to move on, and the likelihood is flat.
+  ## THT's third parameter is the degrees of freedom of the skew-t.
   .exkurt <- mean((epsilon_hat - mean(epsilon_hat))^4) / stats::var(epsilon_hat)^2 - 3
   a_start <- if (is.finite(.exkurt) && .exkurt > 0.2) min(max(4 + 6 / .exkurt, 3), 30) else 10
   start_v_t <- if (is.na(beta_0_st)) {
@@ -51,28 +45,6 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     unname(c(sigma_v, sigma_u, 1, beta_0, beta_hat))
   }
   ## NNAK starts from the method of moments, not from the constants above.
-  ##
-  ## sigma_u = sigma_v = 0.1 is a fine generic start for models whose
-  ## likelihood is well behaved near the origin. NNAK's is not: sigma_u -> 0 is
-  ## a genuine attractor for it, and starting a tenth of the way up puts the
-  ## optimizer on the wrong side of the ridge. Measured over 12 samples at
-  ## n = 3000 with a true sigma_u of 1, the constant start collapsed sigma_u to
-  ## 0.0013 and 0.0000 on two of them -- inefficiency vanishing altogether --
-  ## for a log-likelihood 44 and 45 points WORSE than the moment start reaches.
-  ## Over the same 12 samples the moment start was never worse and was strictly
-  ## better on 7.
-  ##
-  ## The construction is the one FronPy (Stead 2024, J Prod Anal, the paper
-  ## these closed forms come from) uses: invert the half-normal moment
-  ## equations for the two scales and shift the intercept up by the implied
-  ## E[u], i.e. exactly .cols_fit(model_name = "NHN"). The half-normal is the
-  ## right auxiliary here because it is the m = 1/2 member of the Nakagami
-  ## family, so the moment fit lands inside the family being estimated. The
-  ## shape itself still starts at 0.5, as it did before and as FronPy does.
-  ##
-  ## Falls back to the old constants when the moment inversion has no solution
-  ## -- wrong-skewed residuals, the Olson-Schmidt-Waldman "Type I failure" --
-  ## since a start is still needed there.
   .moment_start <- local({
     mm <- tryCatch(stats::model.matrix(plm_lm), error = function(e) NULL)
     yy <- tryCatch(stats::model.response(stats::model.frame(plm_lm)),
@@ -93,19 +65,6 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
 
   ## TSL carries (sigma_v, sigma_u, lambda), and takes its scales from the
   ## EXPONENTIAL moment inversion rather than the half-normal one used above.
-  ##
-  ## The auxiliary has to belong to the family being started. The truncated
-  ## skew-Laplace is a signed mixture of two exponentials, so the exponential
-  ## is its natural neighbour, exactly as the half-normal is the m = 1/2
-  ## member of the Nakagami family. Using the half-normal inversion here is
-  ## not merely less accurate, it is unusable: on skew-Laplace data the
-  ## half-normal over-attributes the residual variance to u, m2 - su^2(1-2/pi)
-  ## turns NEGATIVE, and sigma_v starts pinned at its floor of zero. That was
-  ## observed to cost 215 log-likelihood points on one sample in four.
-  ##
-  ## The residual variance left for v is taken in absolute value rather than
-  ## floored, so a slightly over-large sigma_u start cannot collapse sigma_v
-  ## onto the boundary; lambda starts at 1, the conventional value.
   .tsl_start <- local({
     mm <- tryCatch(stats::model.matrix(plm_lm), error = function(e) NULL)
     yy <- tryCatch(stats::model.response(stats::model.frame(plm_lm)),
@@ -138,9 +97,7 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   }
 
   start_v_nnak <- if (!is.null(.moment_start)) {
-    ## Only the intercept moves; the OLS slopes are already consistent, and
-    ## reusing beta_hat keeps the coefficient ORDER identical to every other
-    ## branch here rather than depending on model.matrix's column order.
+    ## Only the intercept moves; the OLS slopes are already consistent.
     if (is.na(beta_0_st)) {
       unname(c(.moment_start$sigma_v, .moment_start$sigma_u, 0.5, beta_hat))
     } else {
@@ -162,11 +119,7 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   } else {
     unname(c(lambda, sigma, beta_0, beta_hat))
   }
-  ## NR is started from the Rayleigh moment equations, not the flat 0.1: from the
-  ## flat start it reached a WORSE point than the true parameters in 9 of 14
-  ## replications at n = 4000. .nr_start() returns NULL on wrongly skewed
-  ## residuals, where the moment equations have no admissible solution, and the
-  ## flat start is then used as before. See .nr_start() in matrix_utils.R.
+  ## NR is started from the Rayleigh moment equations, not the flat 0.1.
   .nr_mom <- .nr_start(epsilon_hat, beta_0_st, beta_hat)
   start_v_nr <- if (!is.null(.nr_mom)) {
     .nr_mom
@@ -227,15 +180,8 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     colnames(out) <- c("sigv", "sigu", c(names(plm_lm$coefficients)))
     lower_bob <- c(rep(.Machine$double.eps, 2), rep(-Inf, n_x_vars))
   }
-  ## NU / NGE use residual-scaled starting values rather than the flat 0.1
-  ## the older models use. Both have a one-sided parameter measured on the
-  ## scale of the data (theta is the SUPPORT WIDTH of u for the uniform, and
-  ## sigma_u the exponential mean for the generalized exponential), so a fixed
-  ## 0.1 is a poor start whenever y is not O(1) -- residual dispersion gives
-  ## the optimizer a start of roughly the right magnitude on any scale.
-  ## Simulated-ML models. Third parameter is the lognormal meanlog (may be
-  ## negative, hence the -Inf lower bound) or the Weibull shape (strictly
-  ## positive, started at 1 = the exponential special case).
+  ## NU / NGE use residual-scaled starting values rather than the flat 0.1 the
+  ## older models use.
   if (model_name %in% c("NLN", "NW")) {
     s_eps <- stats::sd(epsilon_hat)
     sv_st <- max(0.5 * s_eps, 1e-3)
@@ -277,20 +223,15 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     start_v <- start_v_t
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     ## Order is (sigma_u, sigma_v), NOT (sigma_v, sigma_u): start_v_t above is
-    ## built as c(sigma_u, sigma_v, ...) and THT's likelihood in sfm.R reads
-    ## sig_u <- x[1]; sig_v <- x[2]. These labels used to be the other way round,
-    ## so every THT fit reported each scale parameter under the other's name.
-    ## Caught by the convergence sweep: the column labelled "sigv" converged to
-    ## the true sigma_u and vice versa.
+    ## built as c.
     colnames(out) <- c("sigu", "sigv", "a", c(names(plm_lm$coefficients)))
     ## 2.05 on the df for the same reason as in lower.start(): below 2 the
     ## skew-t has no variance, and below 1 no mean at all.
     lower_bob <- c(rep(.Machine$double.eps, 2), 2.05, rep(-Inf, n_x_vars))
   }
   if (model_name == "tHN") {
-    ## Residual-scaled starts, not the flat 0.1 the older models use: both scales
-    ## are measured in the units of y, so 0.1 is a poor start whenever y is not
-    ## O(1). Same reasoning as NU/NGE/NLN/NW above.
+    ## Residual-scaled starts, not the flat 0.1 the older models use: both
+    ## scales are measured in the units of y.
     s_eps <- stats::sd(epsilon_hat)
     sv_st <- max(0.5 * s_eps, 1e-3)
     su_st <- max(s_eps, 1e-3)
@@ -302,11 +243,7 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     start_v <- start_v_thn
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     ## Order is (sigma_v, sigma_u, nu) and MUST match sfm.R's tHN likelihood,
-    ## which reads sig_v <- x[1]; sig_u <- x[2]; nu <- x[3]. THT's labels were
-    ## once transposed relative to its likelihood, so every THT fit reported each
-    ## scale under the other name until a convergence sweep caught it; the
-    ## ordering here is asserted in tests/testthat/test-thn.R so that cannot
-    ## recur silently.
+    ## which reads sig_v <- x[1]; sig_u <- x[2]; nu <- x[3].
     colnames(out) <- c("sigv", "sigu", "nu", c(names(plm_lm$coefficients)))
     ## nu floor of 2.05: the t has no variance at nu <= 2, and the quadrature in
     ## .log_d_thn() is only validated down to 2.05.
@@ -373,17 +310,8 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
       plm_tfe <- plm(formula_x, data, effect = "individual", model = "within")
       plm_fd <- plm(formula_x, data, effect = "individual", model = "pooling")
     } else {
-      ## Guard the random-effects starting-value regression against a rank-deficient
-      ## BETWEEN-individual design (see .check_collinearity() in matrix_utils.R for
-      ## why the pooled design can be full rank while this one is not). Without
-      ## this, plm fails inside its error-components step with an uninterpretable
-      ## solve(crossprod(ZBeta)) LAPACK error, or -- worse -- silently returns a
-      ## garbage inverse and therefore meaningless starting values.
-      ## `collinear_chk` is supplied by psfm() when the between-individual design
-      ## is rank deficient AND the user chose "start_only" (the default): the
-      ## requested formula is still what gets estimated, but the offending columns
-      ## are removed from THIS starting-value regression only. psfm() has already
-      ## dealt with the "error" and "warn_drop" cases before calling us.
+      ## Guard the random-effects starting-value regression against a
+      ## rank-deficient BETWEEN-individual design.
       formula_start <- formula_x
       if (!is.null(collinear_chk) && length(collinear_chk$between_drop)) {
         warning(.collinearity_message(collinear_chk, "start_only"), call. = FALSE)
@@ -402,13 +330,7 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
       } else {
         plm_gtre$coefficients[-c(1)]
       }
-      ## Re-expand to the FULL requested coefficient vector, filling any column the
-      ## starting-value regression could not identify with its pooled OLS estimate
-      ## (a strictly better start than zero, and available at no extra cost).
-      ## NOTE the target name set must match what the ORIGINAL code produced:
-      ## x_vars_vec carries "(Intercept)" as its first entry, but the non-zero
-      ## -intercept branch drops it via [-1]. Expanding to the wrong set makes
-      ## start_v one element too long and blows up on colnames(out) downstream.
+      ## Re-expand to the FULL requested coefficient vector.
       beta_target <- if (isTRUE(intercept == 0)) x_vars_vec else x_vars_vec[x_vars_vec != "(Intercept)"]
       beta_hat <- .expand_start_beta(beta_hat_raw, beta_target, formula_x, data)
       alpha_hat <- ranef(plm_gtre)
@@ -427,24 +349,8 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
   }
 
   if (isFALSE(is.numeric(start_val)) & model_name %in% c("TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "GTRE_SEQ1", "GTRE_SEQ2")) {
-    ## Variance components for the starting values come from the SAME sequential
-    ## decomposition that psfm(model_name = "GTRE_SEQ1") reports: fit an
-    ## intercept-only normal/half-normal to the composite residuals (giving
-    ## sigma_v, sigma_u) and another to the individual effects (giving sigma_r,
-    ## sigma_h).
-    ##
-    ## This replaces pcs_c(), which did the same decomposition but seeded its own
-    ## optimizer with runif() draws. That made every GTRE-family starting value
-    ## partly RANDOM: two identical calls on identical data began from different
-    ## points, so run time and occasionally the optimum itself varied for no
-    ## modelled reason. .fit_nhn_intercept() is deterministic, starts from
-    ## sd(y)/sqrt(2) rather than a random draw, and runs the same staged
-    ## optimizer the rest of the package uses.
-    ##
-    ## It also returns (sigma_v, sigma_u) DIRECTLY rather than as a
-    ## lambda/sigma pair needing inversion, so the algebra that used to convert
-    ## back -- sigma_v = sqrt(sigma^2/(1+lambda^2)), sigma_u = lambda*sigma_v --
-    ## is gone along with its opportunity for error.
+    ## Variance components for the starting values come from the SAME
+    ## sequential decomposition that psfm(model_name = "GTRE_SEQ1") reports.
     fit_eps_st <- .fit_nhn_intercept(as.numeric(epsilon_hat))
     fit_alp_st <- .fit_nhn_intercept(as.numeric(alpha_hat))
     sigma_v <- fit_eps_st$par[1]
@@ -503,16 +409,7 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
 }
 
 start.tfe <- function(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars) {
-  ## `index = individual` is REQUIRED here and must not be dropped. By this
-  ## point `data` has been through data_proc2(), which returns a plain
-  ## data.frame -- the pdata.frame class (and with it the panel index) is gone,
-  ## even though the individual columns are still pseries. Called without an
-  ## explicit index, plm() falls back to treating the FIRST TWO COLUMNS as the
-  ## individual and time index. That silently consumed the response and the
-  ## first regressor, producing "empty model" (with a cryptic "'-' not
-  ## meaningful for factors" warning) for any data whose first two columns are
-  ## not the panel index. The bug was invisible for years because
-  ## data_gen_p() happens to put `name` and `year` first.
+  ## `index = individual` is REQUIRED here and must not be dropped.
   plm_tfe <- plm(formula_x, data, effect = "individual", model = "within", index = individual)
   if (isTRUE(is.numeric(start_val))) {
     start_v <- start_val
@@ -553,10 +450,7 @@ start.tfe <- function(formula_x, data, model_name, start_val, intercept, x_vars_
     Y[[ii]] <- .demean(as.numeric(data_i[[ii]][, y_var]))
     data_i_vars[[ii]] <- data.frame(data_i[[ii]][, c(x_vars_vec)])
     ## Precomputed once here (same treatment Y already got above) rather than
-    ## inside psfm.R's TFE like.tfe()/fn1(), which used to call demean() on
-    ## this same per-individual regressor data on EVERY likelihood evaluation
-    ## even though it doesn't depend on the parameter vector being optimized --
-    ## a pure waste recomputed thousands of times across bobyqa/psoptim/optim.
+    ## inside psfm.R's TFE like.tfe()/fn1().
     data_i_vars_dm[[ii]] <- as.matrix(.demean(data_i_vars[[ii]]))
     one_t[[ii]] <- rep(1, t[[ii]])
     I_t[[ii]] <- diag(t[[ii]])
@@ -591,10 +485,7 @@ lower.start <- function(start_v, model_name, differ) {
   if (model_name %in% c("NHN", "NE", "NR", "NTN", "NU", "NGE")) {
     lower1 <- c(rep(.0000001, 2), start_v[-c(1:2)] - differ)
   }
-  ## THT: the third parameter is degrees of freedom, not a scale. A lower bound
-  ## of 1e-7 lets the optimizer walk into df < 1, where the skew-t has no mean and
-  ## the efficiency predictor E[u|e] does not exist. Bound it at 2.05 so both the
-  ## mean and the variance of the composed error exist throughout the search.
+  ## THT: the third parameter is degrees of freedom, not a scale.
   if (model_name == "THT") {
     lower1 <- c(rep(.0000001, 2), 2.05, start_v[-c(1:3)] - differ)
   }
@@ -617,30 +508,8 @@ lower.start <- function(start_v, model_name, differ) {
   if (model_name %in% c("NHN_Z", "NE_Z")) {
     lower1 <- c(rep(.0000001, 1), start_v[-c(1)] - differ)
   }
-  ## Two upper-bound vectors, because the optimizer stages need different things.
-  ##
-  ## `upper1` keeps the original trust region of +/- differ around the CURRENT
-  ## point for every parameter. psoptim REQUIRES finite bounds -- it errors with
-  ## "fixed bounds must be provided" otherwise -- so the particle swarm must use
-  ## this one.
-  ##
-  ## `upper1_open` relaxes the bound to Inf on the strictly-positive scale
-  ## parameters, and is for the final optim() stage, which handles Inf fine.
-  ## Applying a trust region to a variance parameter there is an outright trap:
-  ## the box is anchored to wherever the PREVIOUS stage happened to stop, so a
-  ## stage that drove sigma_v toward zero leaves the next one an upper bound of
-  ## 0 + differ, which it pins against and cannot escape.
-  ##
-  ## That is what broke NR. On identical data it reached log-likelihoods up to
-  ## 107 points BELOW NHN -- the same model by a different closed form -- and
-  ## returned sigma_v = 0.500 exactly (= 0 + differ) on 2 of 5 test seeds, with
-  ## its variance-parameter MSE flat in n. Opening the bound recovered 69 and 58
-  ## log-likelihood points on those seeds.
-  ##
-  ## The positions needing this are exactly those given a MIN_POSITIVE lower
-  ## bound above, so they are detected from lower1 rather than re-listed per
-  ## model, which keeps the two in step as models are added. Parameters with a
-  ## genuine two-sided range (NLN's meanlog, ZISF's gamma) keep the finite box.
+  ## Two upper-bound vectors, because the optimizer stages need different
+  ## things.
   is_pos <- abs(lower1 - .0000001) < 1e-12
   upper1 <- c(start_v + differ)
   upper1_open <- ifelse(is_pos, Inf, start_v + differ)
