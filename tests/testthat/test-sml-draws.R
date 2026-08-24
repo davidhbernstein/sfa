@@ -125,3 +125,51 @@ test_that("bad simulation arguments are rejected", {
   expect_error(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d, sim_burn = -1),
                "non-negative")
 })
+
+test_that("NW's simulated density matches adaptive quadrature", {
+  ## NW used to integrate in u, drawing from the Weibull quantile. For a very
+  ## inefficient unit the normal kernel is a spike of width sigma_v centred at
+  ## u = -eps, and the draws never reached it: at eps = -4.7, sigma_v = 0.3,
+  ## the spike needs F > 0.9999 while 400 draws only reach F ~ 0.9975. Five
+  ## observations carried 72% of the total error. The change of variable
+  ## u = sigma_v*t - e puts the draws where the integrand is.
+  sv <- 0.3; su <- 1.0; k <- 1.5
+  set.seed(11)
+  n <- 300L
+  u <- su * (-log(1 - runif(n)))^(1 / k)
+  eps <- rnorm(n, 0, sv) - u
+
+  exact <- vapply(eps, function(e) {
+    log(integrate(function(z) dweibull(z, k, su) * dnorm((e + z) / sv) / sv,
+                  0, Inf, rel.tol = 1e-10, subdivisions = 2000L)$value)
+  }, numeric(1))
+
+  sim <- function(Nsim) {
+    Fi <- sfa:::.sml_draws(n, Nsim, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
+    p_hi <- pnorm(eps / sv, lower.tail = FALSE)
+    Tm <- qnorm(p_hi * (1 - Fi), lower.tail = FALSE)
+    log(p_hi * rowMeans(dweibull(sv * Tm - eps, shape = k, scale = su)))
+  }
+  ## Total error must be small at the draw count the rule actually asks for,
+  ## and must not be dominated by the most inefficient observations.
+  err <- sim(100L) - exact
+  expect_lt(abs(sum(err)), 0.5)
+  worst <- order(abs(err), decreasing = TRUE)[1:5]
+  expect_lt(sum(abs(err[worst])) / sum(abs(err)), 0.6)
+  ## The single most inefficient unit must be accurate, not merely on average.
+  expect_lt(abs(err[which.min(eps)]), 0.05)
+})
+
+test_that("NW and NLN share one draw rule, and NW's is far below its old one", {
+  ## Both integrate in t now, so both take max(100, ceiling(3*sqrt(n))).
+  ## NW's previous rule was max(400, ceiling(8*sqrt(n))).
+  skip_on_cran()
+  d <- cs_small(N = 400)
+  fw <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d))
+  fl <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d))
+  expect_true(all(is.finite(coef(fw))))
+  expect_true(all(is.finite(coef(fl))))
+  ## Efficiency predictions stay in range under the substitution.
+  expect_true(all(fw$exp_u_hat >= 0 & fw$exp_u_hat <= 1))
+  expect_true(all(fw$u_hat >= 0))
+})

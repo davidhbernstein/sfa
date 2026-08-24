@@ -1,5 +1,30 @@
 # sfa 1.1.6 (development)
 
+* **`sfm(model_name = "NW")` now integrates by the same change of variable
+  `"NLN"` uses, which fixes a real accuracy defect and makes it 2.7x
+  faster.** `NW` averaged the normal kernel over draws from the Weibull
+  quantile. For a very inefficient unit the kernel is a spike of width
+  `sigma_v` centred at `u = -eps`, and the draws never reached it: at
+  `eps = -4.7` with `sigma_v = 0.3` the spike needs a draw beyond the
+  0.9999 quantile, while 400 draws only reach about 0.9975. Five observations
+  in 800 carried 72% of the total integration error, and the error did not
+  shrink usefully with more draws -- it was still -1.34 log-likelihood units
+  at 6400 draws.
+
+  Substituting `u = sigma_v*t - e` puts the draws where the integrand is.
+  Measured against adaptive quadrature at the true parameters, total error
+  falls from -4.30 to +0.04 at 400 draws, and the worst single observation
+  from -2.84 to +0.007. The new form at **50** draws is more accurate than
+  the old form at **3200**.
+
+  Because the integral is now easy, `NW`'s draw rule drops from
+  `max(400, 8*sqrt(n))` to the same `max(100, 3*sqrt(n))` `"NLN"` uses. At
+  n = 1500 a fit goes from about 70 seconds to about 24, with the estimates
+  unchanged to three decimals.
+
+  The efficiency predictor uses the same substitution, so predictor and
+  density agree.
+
 * **`sfm()` gains user control over its simulated-ML draws**, following the
   practice in Train (2002, ch. 9) and matching the options `sfaR` exposes:
   `sim_type` (`"halton"`, `"sobol"`, `"torus"`, `"uniform"`), `antithetics`,

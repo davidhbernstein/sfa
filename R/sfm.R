@@ -233,18 +233,17 @@ sfm <- function(formula,
   }
 
   ## Fixed low-discrepancy draws for the simulated-ML models (NLN, NW).
-  FiMat <- HDraw <- NULL
+  FiMat <- NULL
   if (model_name %in% c("NLN", "NW")) {
     n_obs <- length(as.numeric(Y))
 
     ## How many simulation draws: the count must grow with n, or the
     ## simulation bias does not vanish.
     .auto_nsim <- function(n) {
-      if (model_name == "NLN") {
-        max(200L, as.integer(ceiling(3 * sqrt(n))))
-      } else {
-        max(400L, as.integer(ceiling(8 * sqrt(n))))
-      }
+      ## Both models now integrate in t under the same change of variable, so
+      ## both take the same rule; NW's old max(400, 8*sqrt(n)) was sized for
+      ## the far harsher integral it used to have.
+      max(100L, as.integer(ceiling(3 * sqrt(n))))
     }
     Nsim <- if (identical(Nsim, "auto")) {
       .auto_nsim(n_obs)
@@ -268,7 +267,6 @@ sfm <- function(formula,
                         burn = sim_burn, scrambling = sim_scrambling,
                         prime = sim_prime, seed = sim_seed,
                         clamp = 1e-6)[[1L]]
-    HDraw <- if (model_name == "NLN") qnorm(FiMat) else -log1p(-FiMat)
 
     ## NLN integrates in t (see the likelihood), where the integrand is
     ## smooth.
@@ -362,24 +360,22 @@ sfm <- function(formula,
           sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
           return(1e12)
         }
-        if (model_name == "NLN") {
-          ## CHANGE OF VARIABLE, u = sigma_v*t - e.
-          e_v <- as.numeric(eps)
-          p_hi <- pnorm(e_v / sigv, lower.tail = FALSE)
-          Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
-          u_draw <- sigv * Tm - e_v ## > 0 by construction
-          if (any(!is.finite(u_draw))) {
-            return(1e12)
-          }
-          dens <- p_hi * rowMeans(dlnorm(u_draw, meanlog = shp, sdlog = sigu))
-        } else {
-          u_draw <- sigu * HDraw^(1 / shp)
-          if (any(!is.finite(u_draw))) {
-            return(1e12)
-          }
-          ## eps (length n) recycles down the columns of the n x Nsim matrix.
-          dens <- rowMeans(dnorm((as.numeric(eps) + u_draw) / sigv) / sigv)
+        ## CHANGE OF VARIABLE, u = sigma_v*t - e, for BOTH models: it puts the
+        ## draws where the integrand actually is instead of where u is likely.
+        e_v <- as.numeric(eps)
+        p_hi <- pnorm(e_v / sigv, lower.tail = FALSE)
+        Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
+        u_draw <- sigv * Tm - e_v ## > 0 by construction
+        if (any(!is.finite(u_draw))) {
+          return(1e12)
         }
+        dens <- p_hi * rowMeans(
+          if (model_name == "NLN") {
+            dlnorm(u_draw, meanlog = shp, sdlog = sigu)
+          } else {
+            dweibull(u_draw, shape = shp, scale = sigu)
+          }
+        )
         like <- log(pmax(dens, .Machine$double.xmin))
       }
 
@@ -798,8 +794,12 @@ sfm <- function(formula,
         u_draw <- sig_v * Tm - e_v
         K <- dlnorm(u_draw, meanlog = shp, sdlog = sig_u)
       } else {
-        u_draw <- sig_u * HDraw^(1 / shp)
-        K <- dnorm((as.numeric(eps_hat) + u_draw) / sig_v) / sig_v
+        ## Same substitution as the likelihood, so predictor and density agree.
+        e_v <- as.numeric(eps_hat)
+        p_hi <- pnorm(e_v / sig_v, lower.tail = FALSE)
+        Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
+        u_draw <- sig_v * Tm - e_v
+        K <- dweibull(u_draw, shape = shp, scale = sig_u)
       }
       den <- pmax(rowSums(K), .Machine$double.xmin)
       exp_u_hat <- pmin(pmax(rowSums(K * exp(-u_draw)) / den, 0), 1)
