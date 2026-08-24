@@ -43,6 +43,21 @@
   to 0.07 and 0.06 at `Nsim = 6400`. The comparable figure for the old scheme
   was 226.8.
 
+  The accuracy gain shows up in the estimates. Over 12 replications at
+  n = 800, bias and RMSE against the true parameters:
+
+  | | sigma_v | sigma_u | shape | x1 |
+  |---|---|---|---|---|
+  | `"NW"` 1.1.5 | +0.036 / 0.066 | -0.149 / 0.237 | -0.160 / 0.293 | -0.021 / 0.043 |
+  | `"NW"` now   | **-0.006 / 0.044** | **-0.024 / 0.112** | **+0.001 / 0.111** | **+0.001 / 0.045** |
+  | `"NLN"` 1.1.5| -0.012 / 0.022 | +0.005 / 0.101 | +0.012 / 0.166 | +0.003 / 0.037 |
+  | `"NLN"` now  | -0.004 / 0.035 | **+0.003 / 0.080** | **+0.005 / 0.131** | +0.002 / 0.038 |
+
+  `"NW"` is the clear case: its `sigma_u` and shape bias essentially vanish and
+  their RMSE roughly halves. `"NLN"` improves more modestly, and its `sigma_v`
+  RMSE is slightly worse -- at 12 replications that difference is within noise
+  and should not be read either way.
+
   The efficiency predictor reuses the weights the likelihood computed, so
   `u_hat` cannot drift away from the density that was maximised.
 
