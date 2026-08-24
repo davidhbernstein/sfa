@@ -17,10 +17,12 @@
   from -2.84 to +0.007. The new form at **50** draws is more accurate than
   the old form at **3200**.
 
-  Because the integral is now easy, `NW`'s draw rule drops from
-  `max(400, 8*sqrt(n))` to the same `max(100, 3*sqrt(n))` `"NLN"` uses. At
-  n = 1500 a fit goes from about 70 seconds to about 24, with the estimates
-  unchanged to three decimals.
+  `NW`'s draw rule drops from `max(400, 8*sqrt(n))` to the same
+  `max(200, 3*sqrt(n))` `"NLN"` uses. At n = 1500 a fit goes from about 70
+  seconds to about 32, with the estimates unchanged to three decimals. The
+  floor is 200 rather than 100 because 100 suffices at the true parameters but
+  not where the inefficiency density is narrow relative to `sigma_v`, which is
+  a region an optimizer can pass through.
 
   The efficiency predictor uses the same substitution, so predictor and
   density agree.

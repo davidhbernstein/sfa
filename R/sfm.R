@@ -240,10 +240,11 @@ sfm <- function(formula,
     ## How many simulation draws: the count must grow with n, or the
     ## simulation bias does not vanish.
     .auto_nsim <- function(n) {
-      ## Both models now integrate in t under the same change of variable, so
-      ## both take the same rule; NW's old max(400, 8*sqrt(n)) was sized for
-      ## the far harsher integral it used to have.
-      max(100L, as.integer(ceiling(3 * sqrt(n))))
+      ## Both models integrate in t under the same change of variable, so both
+      ## take the same rule. The floor is 200, not 100: at the true parameters
+      ## 100 suffices, but where the inefficiency density is narrow relative to
+      ## sigma_v the integrand is a spike again and the error is material.
+      max(200L, as.integer(ceiling(3 * sqrt(n))))
     }
     Nsim <- if (identical(Nsim, "auto")) {
       .auto_nsim(n_obs)
@@ -360,8 +361,8 @@ sfm <- function(formula,
           sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
           return(1e12)
         }
-        ## CHANGE OF VARIABLE, u = sigma_v*t - e, for BOTH models: it puts the
-        ## draws where the integrand actually is instead of where u is likely.
+        ## Change of variable u = sigma_v*t - e: puts the draws where the
+        ## integrand is rather than where u is likely.
         e_v <- as.numeric(eps)
         p_hi <- pnorm(e_v / sigv, lower.tail = FALSE)
         Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
