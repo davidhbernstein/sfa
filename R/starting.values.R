@@ -50,7 +50,58 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   } else {
     unname(c(sigma_v, sigma_u, 1, beta_0, beta_hat))
   }
-  start_v_nnak <- if (is.na(beta_0_st)) {
+  ## NNAK starts from the method of moments, not from the constants above.
+  ##
+  ## sigma_u = sigma_v = 0.1 is a fine generic start for models whose
+  ## likelihood is well behaved near the origin. NNAK's is not: sigma_u -> 0 is
+  ## a genuine attractor for it, and starting a tenth of the way up puts the
+  ## optimizer on the wrong side of the ridge. Measured over 12 samples at
+  ## n = 3000 with a true sigma_u of 1, the constant start collapsed sigma_u to
+  ## 0.0013 and 0.0000 on two of them -- inefficiency vanishing altogether --
+  ## for a log-likelihood 44 and 45 points WORSE than the moment start reaches.
+  ## Over the same 12 samples the moment start was never worse and was strictly
+  ## better on 7.
+  ##
+  ## The construction is the one FronPy (Stead 2024, J Prod Anal, the paper
+  ## these closed forms come from) uses: invert the half-normal moment
+  ## equations for the two scales and shift the intercept up by the implied
+  ## E[u], i.e. exactly .cols_fit(model_name = "NHN"). The half-normal is the
+  ## right auxiliary here because it is the m = 1/2 member of the Nakagami
+  ## family, so the moment fit lands inside the family being estimated. The
+  ## shape itself still starts at 0.5, as it did before and as FronPy does.
+  ##
+  ## Falls back to the old constants when the moment inversion has no solution
+  ## -- wrong-skewed residuals, the Olson-Schmidt-Waldman "Type I failure" --
+  ## since a start is still needed there.
+  .moment_start <- local({
+    mm <- tryCatch(stats::model.matrix(plm_lm), error = function(e) NULL)
+    yy <- tryCatch(stats::model.response(stats::model.frame(plm_lm)),
+                   error = function(e) NULL)
+    if (is.null(mm) || is.null(yy)) {
+      NULL
+    } else {
+      cf <- tryCatch(.cols_fit(yy, mm, "NHN", intercept_col = NA), error = function(e) NULL)
+      if (is.null(cf) || isTRUE(cf$wrong_skew) ||
+        !is.finite(cf$sigma_u) || !is.finite(cf$sigma_v) ||
+        cf$sigma_u <= 0 || cf$sigma_v <= 0) {
+        NULL
+      } else {
+        cf
+      }
+    }
+  })
+
+  start_v_nnak <- if (!is.null(.moment_start)) {
+    ## Only the intercept moves; the OLS slopes are already consistent, and
+    ## reusing beta_hat keeps the coefficient ORDER identical to every other
+    ## branch here rather than depending on model.matrix's column order.
+    if (is.na(beta_0_st)) {
+      unname(c(.moment_start$sigma_v, .moment_start$sigma_u, 0.5, beta_hat))
+    } else {
+      unname(c(.moment_start$sigma_v, .moment_start$sigma_u, 0.5,
+               beta_0_st + .moment_start$eu, beta_hat))
+    }
+  } else if (is.na(beta_0_st)) {
     unname(c(sigma_v, sigma_u, 0.5, beta_hat))
   } else {
     unname(c(sigma_v, sigma_u, 0.5, beta_0, beta_hat))

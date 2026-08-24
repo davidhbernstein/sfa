@@ -23,6 +23,24 @@
   spans about 0.49 in efficiency, against a total spread of 0.85 across all
   the point predictions.
 
+* **`sfm(model_name = "NNAK")` now starts from the method of moments.** The
+  normal-Nakagami likelihood has `sigma_u -> 0` as a genuine attractor, and
+  the previous hard-coded start of `sigma_u = sigma_v = 0.1` sat next to it.
+  Over twelve samples at n = 3000 with a true `sigma_u` of 1, the old start
+  drove `sigma_u` to 0.0013 and to 0.0000 on two of them -- inefficiency
+  vanishing altogether, with the frontier intercept pushed negative -- for a
+  log-likelihood 44 and 45 points worse than the new start reaches. The new
+  start was never worse on any of the twelve and was strictly better on seven,
+  for a mean gain of 7.9 log-likelihood points.
+
+  The construction follows FronPy (Stead 2024, *Journal of Productivity
+  Analysis*, the paper these closed forms come from): invert the half-normal
+  moment equations for the two scales and shift the frontier intercept up by
+  the implied `E[u]`. The half-normal is the right auxiliary because it is the
+  `m = 1/2` member of the Nakagami family. The shape still starts at 0.5, as
+  before. When the residuals are skewed the wrong way and the moment equations
+  have no admissible solution, the old constants are used as before.
+
 * **`sfm(estimator = "mols")` is accepted as a synonym for
   `estimator = "cols"`.** What the package computes under that name is the
   *modified* OLS moment estimator of Olson, Schmidt and Waldman (1980) -- it
