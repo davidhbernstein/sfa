@@ -1,31 +1,50 @@
 # sfa 1.1.6 (development)
 
-* **`sfm(model_name = "NW")` now integrates by the same change of variable
-  `"NLN"` uses, which fixes a real accuracy defect and makes it 2.7x
-  faster.** `NW` averaged the normal kernel over draws from the Weibull
-  quantile. For a very inefficient unit the kernel is a spike of width
-  `sigma_v` centred at `u = -eps`, and the draws never reached it: at
-  `eps = -4.7` with `sigma_v = 0.3` the spike needs a draw beyond the
-  0.9999 quantile, while 400 draws only reach about 0.9975. Five observations
-  in 800 carried 72% of the total integration error, and the error did not
-  shrink usefully with more draws -- it was still -1.34 log-likelihood units
-  at 6400 draws.
+* **`sfm()`'s simulated-ML models `"NLN"` and `"NW"` now estimate the composed
+  density from two proposals at once, which fixes an accuracy defect that no
+  single-proposal scheme can.** The integrand is a product of a normal kernel of
+  width `sigma_v` centred at `u = -eps` and the inefficiency density. Drawing
+  from the inefficiency quantile -- what both models did through 1.1.5 -- misses
+  the kernel whenever it is the narrow factor: at `eps = -4.7` with
+  `sigma_v = 0.3` the spike needs a draw beyond the 0.9999 quantile, while 400
+  draws reach only about 0.9975, and five observations in 800 carried 72% of
+  `"NW"`'s total error. Drawing from the noise instead cures that case and
+  breaks the mirror one, wherever the inefficiency density is the narrow factor.
 
-  Substituting `u = sigma_v*t - e` puts the draws where the integrand is.
-  Measured against adaptive quadrature at the true parameters, total error
-  falls from -4.30 to +0.04 at 400 draws, and the worst single observation
-  from -2.84 to +0.007. The new form at **50** draws is more accurate than
-  the old form at **3200**.
+  Both draws are now taken -- half the count each -- and combined by the balance
+  heuristic of Veach and Guibas (1995), each draw weighted by which proposal was
+  likelier to have produced it. There is no selection rule to get wrong. Total
+  error against adaptive quadrature, over an 80-cell parameter grid on a
+  300-observation sample, restricted to the cells an optimizer can reach:
 
-  `NW`'s draw rule drops from `max(400, 8*sqrt(n))` to the same
-  `max(200, 3*sqrt(n))` `"NLN"` uses. At n = 1500 a fit goes from about 70
-  seconds to about 32, with the estimates unchanged to three decimals. The
-  floor is 200 rather than 100 because 100 suffices at the true parameters but
-  not where the inefficiency density is narrow relative to `sigma_v`, which is
-  a region an optimizer can pass through.
+  | cells within ... of the optimum | 1.1.5 scheme | now |
+  |---|---|---|
+  | `"NW"`, 200   | 220, worst cell 172    | **16**, worst cell **5.7** |
+  | `"NW"`, 500   | 3633, worst cell 1910  | **40**, worst cell **11** |
+  | `"NW"`, 1000  | 17900, worst cell 8553 | **128**, worst cell **64** |
+  | `"NLN"`, 200  | 233, worst cell 120    | **11**, worst cell **1.0** |
+  | `"NLN"`, 500  | 3564, worst cell 1553  | **49**, worst cell **8.8** |
+  | `"NLN"`, 1000 | 15962, worst cell 6639 | **205**, worst cell **63** |
 
-  The efficiency predictor uses the same substitution, so predictor and
-  density agree.
+  (Each scheme is measured at its own draw rule, so `"NW"`'s 1.1.5 column uses
+  the 400 draws that version would have taken and the new column 200.)
+
+  `"NW"`'s draw rule drops from `max(400, 8*sqrt(n))` to the `max(200,
+  3*sqrt(n))` `"NLN"` already used, so at n = 1500 an `"NW"` fit costs about
+  what it did in 1.1.5 (roughly 50 seconds) while being far more accurate;
+  `"NLN"` costs about 1.5x more, since its draw count did not fall. `Nsim`
+  still means the total number of draws.
+
+  The two models now also converge at the same rate, so the old advice that
+  `"NLN"` needs far more draws than `"NW"` no longer applies -- that was a
+  property of the integration scheme, not the model. At n = 3000, measured
+  against quadrature at the true parameters, total simulation error is 3.4
+  log-likelihood units for `"NLN"` and 3.0 for `"NW"` at the default, falling
+  to 0.07 and 0.06 at `Nsim = 6400`. The comparable figure for the old scheme
+  was 226.8.
+
+  The efficiency predictor reuses the weights the likelihood computed, so
+  `u_hat` cannot drift away from the density that was maximised.
 
 * **`sfm()` gains user control over its simulated-ML draws**, following the
   practice in Train (2002, ch. 9) and matching the options `sfaR` exposes:

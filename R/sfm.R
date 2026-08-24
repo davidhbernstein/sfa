@@ -240,10 +240,8 @@ sfm <- function(formula,
     ## How many simulation draws: the count must grow with n, or the
     ## simulation bias does not vanish.
     .auto_nsim <- function(n) {
-      ## Both models integrate in t under the same change of variable, so both
-      ## take the same rule. The floor is 200, not 100: at the true parameters
-      ## 100 suffices, but where the inefficiency density is narrow relative to
-      ## sigma_v the integrand is a spike again and the error is material.
+      ## Both models use the same two-proposal estimator, so both take the same
+      ## rule. Half the count goes to each proposal, so 200 buys 100 apiece.
       max(200L, as.integer(ceiling(3 * sqrt(n))))
     }
     Nsim <- if (identical(Nsim, "auto")) {
@@ -361,23 +359,17 @@ sfm <- function(formula,
           sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
           return(1e12)
         }
-        ## Change of variable u = sigma_v*t - e: puts the draws where the
-        ## integrand is rather than where u is likely.
-        e_v <- as.numeric(eps)
-        p_hi <- pnorm(e_v / sigv, lower.tail = FALSE)
-        Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
-        u_draw <- sigv * Tm - e_v ## > 0 by construction
-        if (any(!is.finite(u_draw))) {
+        ## Multiple importance sampling over both proposals: drawing only the
+        ## noise fails where the inefficiency density is the narrow one, and
+        ## drawing only the inefficiency fails where the noise is.
+        mis <- .sml_mis(eps, sigv, FiMat,
+          ldens = .nsml_ldens(model_name, sigu, shp),
+          qdens = .nsml_qdens(model_name, sigu, shp)
+        )
+        if (!mis$ok) {
           return(1e12)
         }
-        dens <- p_hi * rowMeans(
-          if (model_name == "NLN") {
-            dlnorm(u_draw, meanlog = shp, sdlog = sigu)
-          } else {
-            dweibull(u_draw, shape = shp, scale = sigu)
-          }
-        )
-        like <- log(pmax(dens, .Machine$double.xmin))
+        like <- pmax(mis$ldens, log(.Machine$double.xmin))
       }
 
       if (model_name == "NR") {
@@ -779,32 +771,19 @@ sfm <- function(formula,
     }
 
     if (model_name %in% c("NLN", "NW")) {
-      ## Simulated Bayes rule over the same fixed draws used in the likelihood:
-      ##   E[g(u)|e] = sum_s g(u_s) phi((e+u_s)/sigma_v) / sum_s phi((e+u_s)/sigma_v)
+      ## Simulated Bayes rule over the same fixed draws used in the likelihood.
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
       shp <- opt$par[3]
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
-      ## NLN uses the same change of variable as its likelihood (u = sigma_v*t
-      ## - e).
-      if (model_name == "NLN") {
-        e_v <- as.numeric(eps_hat)
-        p_hi <- pnorm(e_v / sig_v, lower.tail = FALSE)
-        Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
-        u_draw <- sig_v * Tm - e_v
-        K <- dlnorm(u_draw, meanlog = shp, sdlog = sig_u)
-      } else {
-        ## Same substitution as the likelihood, so predictor and density agree.
-        e_v <- as.numeric(eps_hat)
-        p_hi <- pnorm(e_v / sig_v, lower.tail = FALSE)
-        Tm <- qnorm(p_hi * (1 - FiMat), lower.tail = FALSE)
-        u_draw <- sig_v * Tm - e_v
-        K <- dweibull(u_draw, shape = shp, scale = sig_u)
-      }
-      den <- pmax(rowSums(K), .Machine$double.xmin)
-      exp_u_hat <- pmin(pmax(rowSums(K * exp(-u_draw)) / den, 0), 1)
-      u_hat <- pmax(rowSums(K * u_draw) / den, 0)
+      ## Same weights the likelihood used, so predictor and density agree.
+      mis <- .sml_mis(eps_hat, sig_v, FiMat,
+        ldens = .nsml_ldens(model_name, sig_u, shp),
+        qdens = .nsml_qdens(model_name, sig_u, shp)
+      )
+      exp_u_hat <- pmin(pmax(.sml_mis_mean(mis, exp(-mis$u)), 0), 1)
+      u_hat <- pmax(.sml_mis_mean(mis, mis$u), 0)
     }
 
     if (model_name == "NR") {

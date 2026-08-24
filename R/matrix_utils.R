@@ -597,6 +597,53 @@
 }
 
 
+## Helper: the composed density of normal noise and a one-sided inefficiency,
+## by multiple importance sampling. Half the draws come from the noise and half
+## from the inefficiency, each weighted by the balance heuristic, so the
+## estimate stays accurate whichever of the two densities is the narrower.
+.sml_mis <- function(eps, sigma_v, FiMat, ldens, qdens) {
+  m <- ncol(FiMat) %/% 2L
+  e_v <- as.numeric(eps)
+  n <- length(e_v)
+  ## Kept in logs: p_hi underflows for a very efficient unit.
+  lp_hi <- pnorm(e_v / sigma_v, lower.tail = FALSE, log.p = TRUE)
+  Tm <- qnorm(lp_hi + log1p(-FiMat[, seq_len(m), drop = FALSE]),
+    lower.tail = FALSE, log.p = TRUE
+  )
+  u <- cbind(sigma_v * Tm - e_v, qdens(FiMat[, m + seq_len(m), drop = FALSE]))
+  ## A non-finite draw is given zero weight rather than aborting, so the
+  ## efficiency predictor can always be formed; `ok` lets the likelihood steer
+  ## the optimizer away from the region instead.
+  ok_u <- all(is.finite(u))
+
+  ## Balance-heuristic weight for equal counts from the two proposals. With
+  ## a = log of the noise kernel and b = log p_hi + log f_u, the algebra
+  ## collapses to a + b - logsumexp(a, b) -- one exp and one log1p per draw.
+  zz <- (e_v + u) / sigma_v
+  a <- -0.5 * zz * zz - .SFA_CONSTANTS$LOG_SQRT_2PI - log(sigma_v)
+  b <- lp_hi + ldens(u)
+  w_log <- pmin(a, b) - log1p(exp(-abs(a - b)))
+  w_log[!is.finite(w_log)] <- -Inf
+
+  ## Row log-sum-exp gives the density; the same weights give any posterior
+  ## mean, so likelihood and efficiency predictor cannot drift apart.
+  mx <- w_log[cbind(seq_len(n), max.col(w_log, ties.method = "first"))]
+  ok <- is.finite(mx)
+  w <- exp(w_log - ifelse(ok, mx, 0))
+  w[!is.finite(w)] <- 0
+  ldens_hat <- rep(-Inf, n)
+  if (any(ok)) {
+    ldens_hat[ok] <- mx[ok] + log(rowSums(w[ok, , drop = FALSE])) - log(m)
+  }
+  list(u = u, w = w, ldens = ldens_hat, ok = ok_u)
+}
+
+## Helper: a posterior mean over the draws .sml_mis() already weighted
+.sml_mis_mean <- function(mis, gu) {
+  den <- pmax(rowSums(mis$w), .Machine$double.xmin)
+  rowSums(mis$w * gu) / den
+}
+
 ## Helper: Horrace and Schmidt (1996) intervals for u_i
 .horrace_schmidt_ci <- function(mu_star, sigma_star, level = 0.95) {
   if (!is.numeric(level) || length(level) != 1L || !is.finite(level) ||
@@ -1438,4 +1485,30 @@
     "\n  Valid choices (case does not matter): ", paste(choices, collapse = ", "),
     call. = FALSE
   )
+}
+
+## Helpers: the inefficiency density and quantile for the simulated-ML models.
+## Written out rather than called from stats:: -- these run on every draw of
+## every likelihood evaluation, and the closed forms are about twice as fast.
+## test-sml-draws.R pins them against dweibull()/dlnorm()/qweibull()/qlnorm().
+.nsml_ldens <- function(model_name, sigma_u, shape) {
+  if (model_name == "NLN") {
+    function(u) {
+      lu <- log(u)
+      zz <- (lu - shape) / sigma_u
+      -0.5 * zz * zz - .SFA_CONSTANTS$LOG_SQRT_2PI - log(sigma_u) - lu
+    }
+  } else {
+    function(u) {
+      log(shape) - shape * log(sigma_u) + (shape - 1) * log(u) - (u / sigma_u)^shape
+    }
+  }
+}
+
+.nsml_qdens <- function(model_name, sigma_u, shape) {
+  if (model_name == "NLN") {
+    function(p) exp(shape + sigma_u * qnorm(p))
+  } else {
+    function(p) sigma_u * (-log1p(-p))^(1 / shape)
+  }
 }

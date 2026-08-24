@@ -6,6 +6,7 @@
   CLIP_Z2_LOWER  = -37,
   HALTON_DISCARD =  1000,
   MIN_POSITIVE   = .Machine$double.eps,
+  LOG_SQRT_2PI   = 0.918938533204672741780329736406,
   MAX_VALUE      = .Machine$double.xmax,
   ## Safe upper bound for arguments passed to exp() -- exp(700) ~= 1.01e304,
   ## comfortably under .Machine$double.xmax (~1.80e308).

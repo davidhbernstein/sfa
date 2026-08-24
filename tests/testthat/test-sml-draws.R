@@ -126,43 +126,218 @@ test_that("bad simulation arguments are rejected", {
                "non-negative")
 })
 
-test_that("NW's simulated density matches adaptive quadrature", {
-  ## NW used to integrate in u, drawing from the Weibull quantile. For a very
-  ## inefficient unit the normal kernel is a spike of width sigma_v centred at
-  ## u = -eps, and the draws never reached it: at eps = -4.7, sigma_v = 0.3,
-  ## the spike needs F > 0.9999 while 400 draws only reach F ~ 0.9975. Five
-  ## observations carried 72% of the total error. The change of variable
-  ## u = sigma_v*t - e puts the draws where the integrand is.
-  sv <- 0.3; su <- 1.0; k <- 1.5
-  set.seed(11)
-  n <- 300L
-  u <- su * (-log(1 - runif(n)))^(1 / k)
-  eps <- rnorm(n, 0, sv) - u
-
-  exact <- vapply(eps, function(e) {
-    log(integrate(function(z) dweibull(z, k, su) * dnorm((e + z) / sv) / sv,
-                  0, Inf, rel.tol = 1e-10, subdivisions = 2000L)$value)
-  }, numeric(1))
-
-  sim <- function(Nsim) {
-    Fi <- sfa:::.sml_draws(n, Nsim, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
-    p_hi <- pnorm(eps / sv, lower.tail = FALSE)
-    Tm <- qnorm(p_hi * (1 - Fi), lower.tail = FALSE)
-    log(p_hi * rowMeans(dweibull(sv * Tm - eps, shape = k, scale = su)))
+## A trustworthy reference for the composed density. integrate(f, 0, Inf) is
+## NOT one: the normal kernel is a spike of width sigma_v at u = -eps, and the
+## default quadrature misses it entirely for small sigma_v -- during
+## development it was wrong at 5 of 21 grid points, by up to 46 log units, and
+## briefly made a correct simulator look catastrophically broken. Splitting the
+## range at the spike and factoring out the peak of the log-integrand fixes it.
+ref_composed <- function(e, sv, ldens, half = 18) {
+  u0 <- -e
+  lo <- max(0, u0 - half * sv)
+  hi <- max(u0, 0) + half * sv
+  lg <- function(u) ldens(u) + dnorm((e + u) / sv, log = TRUE) - log(sv)
+  lv <- lg(seq(lo, hi, length.out = 20001))
+  lv <- lv[is.finite(lv)]
+  if (!length(lv)) {
+    return(-Inf)
   }
-  ## Total error must be small at the draw count the rule actually asks for,
-  ## and must not be dominated by the most inefficient observations.
-  err <- sim(100L) - exact
-  expect_lt(abs(sum(err)), 0.5)
-  worst <- order(abs(err), decreasing = TRUE)[1:5]
-  expect_lt(sum(abs(err[worst])) / sum(abs(err)), 0.6)
-  ## The single most inefficient unit must be accurate, not merely on average.
-  expect_lt(abs(err[which.min(eps)]), 0.05)
+  M <- max(lv)
+  M + log(integrate(function(u) exp(lg(u) - M), lo, hi,
+    rel.tol = 1e-12, subdivisions = 4000L, stop.on.error = FALSE
+  )$value)
+}
+
+test_that("the reference itself is sound where naive quadrature is not", {
+  ## Guards the guard. At sigma_v = 0.05 the two disagree by tens of log units
+  ## and the reference is the one that matches a dense trapezoid sum.
+  ld <- function(u) dweibull(u, 1.5, 1, log = TRUE)
+  trap <- function(e, sv) {
+    u <- seq(max(0, -e - 18 * sv), max(-e, 0) + 18 * sv, length.out = 2e5)
+    lg <- ld(u) + dnorm((e + u) / sv, log = TRUE) - log(sv)
+    M <- max(lg[is.finite(lg)])
+    w <- exp(lg - M)
+    w[!is.finite(w)] <- 0
+    M + log(diff(range(u)) / (length(u) - 1) * (sum(w) - 0.5 * (w[1] + w[length(u)])))
+  }
+  naive <- function(e, sv) {
+    log(integrate(function(u) dweibull(u, 1.5, 1) * dnorm((e + u) / sv) / sv,
+      0, Inf, rel.tol = 1e-10, subdivisions = 2000L
+    )$value)
+  }
+  for (e in c(-4.7, -3.5)) {
+    expect_equal(ref_composed(e, 0.05, ld), trap(e, 0.05), tolerance = 1e-5)
+    expect_gt(abs(ref_composed(e, 0.05, ld) - naive(e, 0.05)), 40)
+  }
+  ## Where naive quadrature is trustworthy the two must of course agree.
+  for (e in c(-2, -0.4, 0.5)) {
+    expect_equal(ref_composed(e, 0.3, ld), naive(e, 0.3), tolerance = 1e-6)
+  }
+})
+
+test_that("the closed-form densities match the stats:: ones they replace", {
+  ## .nsml_ldens()/.nsml_qdens() are written out for speed, so the identity has
+  ## to be pinned rather than assumed.
+  u <- c(1e-8, 1e-3, 0.1, 0.5, 1, 3, 10, 200)
+  p <- c(1e-6, 0.01, 0.25, 0.5, 0.75, 0.99, 1 - 1e-6)
+  for (su in c(0.2, 0.8, 2)) {
+    for (sh in c(0.5, 1, 1.5, 4)) {
+      expect_equal(sfa:::.nsml_ldens("NW", su, sh)(u), dweibull(u, sh, su, log = TRUE),
+        tolerance = 1e-12, info = paste("NW", su, sh)
+      )
+      expect_equal(sfa:::.nsml_qdens("NW", su, sh)(p), qweibull(p, sh, su),
+        tolerance = 1e-12, info = paste("NW", su, sh)
+      )
+    }
+    for (ml in c(-1.5, 0, 0.5)) {
+      expect_equal(sfa:::.nsml_ldens("NLN", su, ml)(u), dlnorm(u, ml, su, log = TRUE),
+        tolerance = 1e-11, info = paste("NLN", su, ml)
+      )
+      expect_equal(sfa:::.nsml_qdens("NLN", su, ml)(p), qlnorm(p, ml, su),
+        tolerance = 1e-11, info = paste("NLN", su, ml)
+      )
+    }
+  }
+})
+
+test_that(".sml_mis stays accurate whichever density is the narrow one", {
+  ## Drawing only the noise fails where the inefficiency density is the narrow
+  ## one; drawing only the inefficiency fails where the noise is. The cells
+  ## below straddle both regimes.
+  set.seed(11)
+  n <- 200L
+  eps <- rnorm(n, 0, 0.3) - (-log(1 - runif(n)))^(1 / 1.5)
+  Fi <- sfa:::.sml_draws(n, 200L, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
+
+  cells <- list(
+    truth    = c(sv = 0.3, su = 1.0, k = 1.5),
+    narrow_u = c(sv = 0.3, su = 0.3, k = 1.5), ## inefficiency is the spike
+    peaked   = c(sv = 0.3, su = 1.0, k = 4.0), ## and again, via the shape
+    tiny_v   = c(sv = 0.05, su = 1.0, k = 1.5), ## noise is the spike
+    wide_v   = c(sv = 1.0, su = 1.0, k = 1.5)
+  )
+  for (nm in names(cells)) {
+    p <- cells[[nm]]
+    ld <- sfa:::.nsml_ldens("NW", p[["su"]], p[["k"]])
+    exact <- vapply(eps, ref_composed, numeric(1), sv = p[["sv"]], ldens = ld)
+    got <- sfa:::.sml_mis(eps, p[["sv"]], Fi, ld,
+      sfa:::.nsml_qdens("NW", p[["su"]], p[["k"]])
+    )
+    expect_true(got$ok, info = nm)
+    ## Total error over the sample, which is what the optimizer actually sees.
+    ## Measured range at this configuration is 0.12 to 7.05.
+    expect_lt(abs(sum(got$ldens - exact)), 10, label = paste("total error,", nm))
+    ## And no single observation may dominate. Measured range 0.008 to 2.37.
+    expect_lt(max(abs(got$ldens - exact)), 4, label = paste("worst obs,", nm))
+  }
+})
+
+test_that("the two-proposal estimator is never badly wrong, unlike either alone", {
+  ## The property is robustness, NOT universal dominance: in a cell that suits
+  ## one proposal, that proposal alone is a little better than the hedge. What
+  ## must never happen is the large error a single proposal shows off its own
+  ## ground -- 38 to 46 log-likelihood units in the cells below.
+  set.seed(11)
+  n <- 200L
+  eps <- rnorm(n, 0, 0.3) - (-log(1 - runif(n)))^(1 / 1.5)
+  Fi <- sfa:::.sml_draws(n, 200L, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
+  lmean <- function(lw) {
+    m <- max(lw)
+    if (!is.finite(m)) return(-Inf)
+    m + log(mean(exp(lw - m)))
+  }
+  only_noise <- function(e, sv, ld, Fi) {
+    ph <- pnorm(e / sv, lower.tail = FALSE)
+    log(ph) + lmean(ld(sv * qnorm(ph * (1 - Fi), lower.tail = FALSE) - e))
+  }
+  only_ineff <- function(e, sv, qd, Fi) {
+    lmean(dnorm((e + qd(Fi)) / sv, log = TRUE) - log(sv))
+  }
+  cells <- list(
+    narrow_u = c(sv = 0.3, su = 0.3, k = 1.5),
+    peaked   = c(sv = 0.3, su = 1.0, k = 4.0),
+    tiny_v   = c(sv = 0.05, su = 1.0, k = 1.5),
+    truth    = c(sv = 0.3, su = 1.0, k = 1.5)
+  )
+  for (nm in names(cells)) {
+    p <- cells[[nm]]
+    ld <- sfa:::.nsml_ldens("NW", p[["su"]], p[["k"]])
+    qd <- sfa:::.nsml_qdens("NW", p[["su"]], p[["k"]])
+    exact <- vapply(eps, ref_composed, numeric(1), sv = p[["sv"]], ldens = ld)
+    e_mis <- abs(sum(sfa:::.sml_mis(eps, p[["sv"]], Fi, ld, qd)$ldens - exact))
+    e_n <- abs(sum(vapply(seq_len(n), function(j) only_noise(eps[j], p[["sv"]], ld, Fi[j, ]), numeric(1)) - exact))
+    e_i <- abs(sum(vapply(seq_len(n), function(j) only_ineff(eps[j], p[["sv"]], qd, Fi[j, ]), numeric(1)) - exact))
+    ## Never more than a fraction of a log-likelihood unit behind whichever
+    ## proposal suits the cell. Measured worst gap 0.204, at the truth.
+    expect_lt(e_mis, min(e_n, e_i) + 0.5, label = paste("hedging cost,", nm))
+    ## And where a single proposal is badly wrong, well clear of it.
+    worse <- max(e_n, e_i)
+    if (worse > 5) {
+      expect_lt(e_mis, worse / 3, label = paste("vs the failing proposal,", nm))
+    }
+  }
+  ## The cells must actually contain a failure, or this tests nothing: each of
+  ## the two proposals has to be the badly wrong one somewhere. Note it is
+  ## "peaked" and not "narrow_u" that breaks the noise draw worst -- at
+  ## sigma_u = 0.3 BOTH proposals struggle and the inefficiency draw is the
+  ## worse of the two, which is exactly why a selector between them fails.
+  fails <- vapply(c("peaked", "tiny_v"), function(nm) {
+    p <- cells[[nm]]
+    ld <- sfa:::.nsml_ldens("NW", p[["su"]], p[["k"]])
+    qd <- sfa:::.nsml_qdens("NW", p[["su"]], p[["k"]])
+    exact <- vapply(eps, ref_composed, numeric(1), sv = p[["sv"]], ldens = ld)
+    e_n <- abs(sum(vapply(seq_len(n), function(j) only_noise(eps[j], p[["sv"]], ld, Fi[j, ]), numeric(1)) - exact))
+    e_i <- abs(sum(vapply(seq_len(n), function(j) only_ineff(eps[j], p[["sv"]], qd, Fi[j, ]), numeric(1)) - exact))
+    which.max(c(e_n, e_i))
+  }, numeric(1))
+  expect_equal(unname(fails), c(1, 2))
+})
+
+test_that("a non-finite draw is survivable, not fatal", {
+  ## The likelihood steers the optimizer away from such a region, but the
+  ## predictor still has to be formable, so weights must always come back.
+  set.seed(5)
+  n <- 40L
+  eps <- rnorm(n, 0, 0.3) - rweibull(n, 1.5, 1)
+  Fi <- sfa:::.sml_draws(n, 40L, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
+  bad <- sfa:::.sml_mis(eps, 0.3, Fi,
+    sfa:::.nsml_ldens("NW", 1, 1.5),
+    function(p) { q <- qweibull(p, 1.5, 1); q[1] <- Inf; q }
+  )
+  expect_false(bad$ok)
+  expect_false(is.null(bad$w))
+  expect_true(all(is.finite(sfa:::.sml_mis_mean(bad, bad$u)[-1])))
+  ## A clean call reports ok.
+  good <- sfa:::.sml_mis(eps, 0.3, Fi, sfa:::.nsml_ldens("NW", 1, 1.5),
+    sfa:::.nsml_qdens("NW", 1, 1.5)
+  )
+  expect_true(good$ok)
+})
+
+test_that("the posterior mean uses the same weights as the density", {
+  ## If predictor and likelihood ever drift apart, u_hat stops being the Bayes
+  ## rule under the fitted model. E[1|eps] = 1 is the cheap invariant.
+  set.seed(3)
+  n <- 120L
+  eps <- rnorm(n, 0, 0.3) - rweibull(n, 1.5, 1)
+  Fi <- sfa:::.sml_draws(n, 200L, 1L, sim_type = "halton", burn = 1000, clamp = 1e-6)[[1]]
+  mis <- sfa:::.sml_mis(eps, 0.3, Fi, sfa:::.nsml_ldens("NW", 1, 1.5),
+    sfa:::.nsml_qdens("NW", 1, 1.5)
+  )
+  expect_equal(sfa:::.sml_mis_mean(mis, matrix(1, n, ncol(mis$u))), rep(1, n), tolerance = 1e-12)
+  ## E[u|eps] must be positive and E[exp(-u)|eps] must be a valid efficiency.
+  eu <- sfa:::.sml_mis_mean(mis, mis$u)
+  ee <- sfa:::.sml_mis_mean(mis, exp(-mis$u))
+  expect_true(all(eu > 0))
+  expect_true(all(ee > 0 & ee < 1))
+  ## Jensen: E[exp(-u)] >= exp(-E[u]).
+  expect_true(all(ee >= exp(-eu) - 1e-10))
 })
 
 test_that("NW and NLN share one draw rule, and NW's is far below its old one", {
-  ## Both integrate in t now, so both take max(100, ceiling(3*sqrt(n))).
-  ## NW's previous rule was max(400, ceiling(8*sqrt(n))).
+  ## Both use the same two-proposal estimator, so both take
+  ## max(200, ceiling(3*sqrt(n))), half the count to each proposal.
+  ## NW's rule before the change of variable was max(400, ceiling(8*sqrt(n))).
   skip_on_cran()
   d <- cs_small(N = 400)
   fw <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d))
