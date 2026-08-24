@@ -91,6 +91,52 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     }
   })
 
+  ## TSL carries (sigma_v, sigma_u, lambda), and takes its scales from the
+  ## EXPONENTIAL moment inversion rather than the half-normal one used above.
+  ##
+  ## The auxiliary has to belong to the family being started. The truncated
+  ## skew-Laplace is a signed mixture of two exponentials, so the exponential
+  ## is its natural neighbour, exactly as the half-normal is the m = 1/2
+  ## member of the Nakagami family. Using the half-normal inversion here is
+  ## not merely less accurate, it is unusable: on skew-Laplace data the
+  ## half-normal over-attributes the residual variance to u, m2 - su^2(1-2/pi)
+  ## turns NEGATIVE, and sigma_v starts pinned at its floor of zero. That was
+  ## observed to cost 215 log-likelihood points on one sample in four.
+  ##
+  ## The residual variance left for v is taken in absolute value rather than
+  ## floored, so a slightly over-large sigma_u start cannot collapse sigma_v
+  ## onto the boundary; lambda starts at 1, the conventional value.
+  .tsl_start <- local({
+    mm <- tryCatch(stats::model.matrix(plm_lm), error = function(e) NULL)
+    yy <- tryCatch(stats::model.response(stats::model.frame(plm_lm)),
+                   error = function(e) NULL)
+    if (is.null(mm) || is.null(yy)) {
+      NULL
+    } else {
+      cf <- tryCatch(.cols_fit(yy, mm, "NE", intercept_col = NA), error = function(e) NULL)
+      if (is.null(cf) || isTRUE(cf$wrong_skew) || !is.finite(cf$sigma_u) || cf$sigma_u <= 0) {
+        NULL
+      } else {
+        sv_tsl <- sqrt(max(abs(unname(cf$moments[["m2"]]) - cf$sigma_u^2),
+                           .SFA_CONSTANTS$MIN_POSITIVE))
+        list(sigma_u = cf$sigma_u, sigma_v = sv_tsl, eu = cf$eu)
+      }
+    }
+  })
+
+  start_v_tsl <- if (!is.null(.tsl_start)) {
+    if (is.na(beta_0_st)) {
+      unname(c(.tsl_start$sigma_v, .tsl_start$sigma_u, 1, beta_hat))
+    } else {
+      unname(c(.tsl_start$sigma_v, .tsl_start$sigma_u, 1,
+               beta_0_st + .tsl_start$eu, beta_hat))
+    }
+  } else if (is.na(beta_0_st)) {
+    unname(c(sigma_v, sigma_u, 1, beta_hat))
+  } else {
+    unname(c(sigma_v, sigma_u, 1, beta_0, beta_hat))
+  }
+
   start_v_nnak <- if (!is.null(.moment_start)) {
     ## Only the intercept moves; the OLS slopes are already consistent, and
     ## reusing beta_hat keeps the coefficient ORDER identical to every other
@@ -272,6 +318,12 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     colnames(out) <- c("sigv", "sigu", "mu", c(names(plm_lm$coefficients)))
     lower_bob <- c(rep(.Machine$double.eps, 3), rep(-Inf, n_x_vars))
   }
+  if (model_name == "TSL") {
+    start_v <- start_v_tsl
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    colnames(out) <- c("sigv", "sigu", "lambda", c(names(plm_lm$coefficients)))
+    lower_bob <- c(rep(.Machine$double.eps, 3), rep(-Inf, n_x_vars))
+  }
   if (model_name == "NNAK") {
     start_v <- start_v_nnak
     out <- matrix(0, nrow = 3, ncol = length(start_v))
@@ -294,14 +346,14 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   results <- list(
     plm_lm, beta_hat, epsilon_hat, beta_0_st, sigma_u, sigma_v, mu,
     beta_0, lambda, sigma, start_v_ntn, start_v_ng, start_v_nnak,
-    start_v_t, start_v_ne, start_v_nr, start_v_nhn, start_v, out,
+    start_v_t, start_v_ne, start_v_nr, start_v_nhn, start_v_tsl, start_v, out,
     lower_bob
   )
 
   names(results) <- c(
     "plm_lm", "beta_hat", "epsilon_hat", "beta_0_st", "sigma_u", "sigma_v", "mu",
     "beta_0", "lambda", "sigma", "start_v_ntn", "start_v_ng", "start_v_nnak",
-    "start_v_t", "start_v_ne", "start_v_nr", "start_v_nhn", "start_v", "out",
+    "start_v_t", "start_v_ne", "start_v_nr", "start_v_nhn", "start_v_tsl", "start_v", "out",
     "lower_bob"
   )
 
@@ -549,7 +601,7 @@ lower.start <- function(start_v, model_name, differ) {
   if (model_name == "tHN") {
     lower1 <- c(rep(.0000001, 2), 2.05, start_v[-c(1:3)] - differ)
   }
-  if (model_name %in% c("NG", "NNAK", "NW")) {
+  if (model_name %in% c("NG", "NNAK", "NW", "TSL")) {
     lower1 <- c(rep(.0000001, 3), start_v[-c(1:3)] - differ)
   }
   ## NLN's third parameter is a meanlog and is genuinely unbounded below.

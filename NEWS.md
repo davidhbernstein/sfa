@@ -1,5 +1,34 @@
 # sfa 1.1.6 (development)
 
+* **New model `sfm(model_name = "TSL")`: the normal / truncated skew-Laplace
+  frontier (Wang 2012).** Inefficiency has the signed-mixture density
+  `f(u) = ((1+lambda)/(sigma_u(2*lambda+1))) [2 exp(-u/sigma_u) -
+  exp(-(1+lambda) u/sigma_u)]` on `u >= 0` -- the second exponential enters
+  *negatively* -- so it nests the exponential model as `lambda -> 0` while
+  allowing a non-monotonic inefficiency density. Reports
+  `(sigv, sigu, lambda)` plus the frontier, with both `u_hat` and
+  `exp_u_hat`.
+
+  The composed density is evaluated as a difference in log space rather than
+  by subtracting the raw terms. Both carry `sigma_v^2/(2 sigma_u^2)`, which
+  overflows once `sigma_u` is small relative to `sigma_v` -- on a routine grid
+  spanning `sigma_u` in {0.05, 0.1, 0.3} and `sigma_v` in {0.3, 1} the direct
+  form returns `NaN` or `Inf` at 9 of 30 points, including `sigma_u = 0.05`,
+  `sigma_v = 1`, `eps = 0`, which is not an extreme point. The log form is
+  finite throughout.
+
+  Verified two ways: against numerical convolution of the implied `u` density
+  with the normal noise (agreeing to 8 decimals across `lambda` in
+  {0.5, 1.5, 4}), and against an independent implementation, which it matches
+  to an identical log-likelihood and identical coefficients on 8 of 8 samples.
+  `lambda` is a shape parameter and is the least sharply identified of the
+  three -- read its `t`-value before interpreting it.
+
+* `data_gen_cs()` gains `lam_tsl` and the matching `u_tsl` / `y_pcs_tsl`
+  columns. The signed mixture cannot be drawn by picking a component, so it
+  is drawn by rejection off its first exponential; the acceptance probability
+  never falls below 1/2.
+
 * **New function `efficiency_ci()`: Horrace and Schmidt (1996) confidence
   intervals for individual inefficiency.** `sfa` has always reported point
   predictions of `u_i` -- `u_hat` (Jondrow et al. 1982) and `exp_u_hat`

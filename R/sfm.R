@@ -1,7 +1,7 @@
 sfm <- function(formula,
                 model_name = c(
                   "NHN", "NHN_Z", "NE", "NE_Z", "NR", "THT", "NTN", "NG", "NNAK",
-                  "NU", "NGE", "NLN", "NW", "tHN"
+                  "NU", "NGE", "NLN", "NW", "tHN", "TSL"
                 ),
                 data,
                 maxit.bobyqa = 10000,
@@ -356,7 +356,7 @@ sfm <- function(formula,
     ## Randomized draws cost more per evaluation but do not manufacture optima.
   }
 
-  if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN")) {
+  if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN", "TSL")) {
     like.fn <- function(x) {
       ## The offset is the number of non-beta parameters that precede the frontier
       ## coefficients, and it is 2 for the two-scale models and 3 for the rest.
@@ -372,7 +372,7 @@ sfm <- function(formula,
       if (model_name %in% c("NHN", "NE", "NR", "NU", "NGE")) {
         x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
       }
-      if (model_name %in% c("THT", "NTN", "NLN", "NW", "tHN", "NG", "NNAK")) {
+      if (model_name %in% c("THT", "NTN", "NLN", "NW", "tHN", "NG", "NNAK", "TSL")) {
         x_x_vec <- x[4:as.numeric(n_x_vars + 3)]
       }
 
@@ -596,6 +596,39 @@ sfm <- function(formula,
         l4 <- pnorm(((mu / lam) - eps * lam) / sig, log.p = TRUE)
         l5 <- -pnorm((mu / sig) * sqrt(1 + lam^(-2)), log.p = TRUE)
         like <- l1 + l2 + l3 + l4 + l5
+      }
+
+      if (model_name == "TSL") {
+        ## Normal / truncated skew-Laplace (Wang 2012). u has density
+        ##
+        ##   f(u) = ((1+lam)/(sig_u (2 lam + 1)))
+        ##            [2 exp(-u/sig_u) - exp(-(1+lam) u/sig_u)],  u >= 0,
+        ##
+        ## a SIGNED mixture of two exponentials, so the composed density is the
+        ## corresponding signed combination of two normal-exponential terms.
+        ##
+        ## Evaluated as a difference in LOG space rather than as
+        ## log(2*exp(A)*pnorm(a) - exp(B)*pnorm(b)) directly. Both exponentials
+        ## carry sig_v^2/(2 sig_u^2), which overflows once sig_u gets small
+        ## relative to sig_v -- a region any optimizer visits. The direct form
+        ## returns NaN or Inf at 9 of 30 points on a routine grid spanning
+        ## sig_u in {0.05, 0.1, 0.3} and sig_v in {0.3, 1}, including
+        ## sig_u = 0.05, sig_v = 1, eps = 0, which is not an extreme point at
+        ## all. The log form below is finite across that whole grid.
+        ##
+        ## l1 > l2 always, because the density is positive; the pmin() only
+        ## guards the boundary where they coincide to machine precision.
+        sig_v <- x[1]
+        sig_u <- x[2]
+        lam <- x[3]
+        A <- sig_v^2 / (2 * sig_u^2) + eps / sig_u
+        B <- (1 + lam)^2 * sig_v^2 / (2 * sig_u^2) + eps * (1 + lam) / sig_u
+        aa <- -sig_v / sig_u - eps / sig_v
+        bb <- -sig_v * (1 + lam) / sig_u - eps / sig_v
+        l1 <- log(2) + A + pnorm(aa, log.p = TRUE)
+        l2 <- B + pnorm(bb, log.p = TRUE)
+        like <- log1p(lam) - log(2 * lam + 1) - log(sig_u) +
+          l1 + log(-expm1(pmin(l2 - l1, -.Machine$double.eps)))
       }
 
       if (model_name %in% c("NG", "NNAK")) {
@@ -1186,6 +1219,38 @@ sfm <- function(formula,
       )
     }
 
+    if (model_name == "TSL") {
+      ## Truncated skew-Laplace. Same shape of argument as NGE above: the u
+      ## density is a SIGNED mixture of two exponentials with rates
+      ## r1 = 1/sigma_u and r2 = (1+lam)/sigma_u, so the posterior of u given e
+      ## is a signed mixture of two normals truncated at zero, component k
+      ## having mean -e - r_k sigma_v^2 and sd sigma_v.
+      ##
+      ## The weights are again NOT convex. The composed density is
+      ## proportional to 2*T1 - T2, so w1 = 2*T1/(2*T1 - T2) and
+      ## w2 = T2/(2*T1 - T2), which satisfy w1 - w2 = 1. Taking T_k/(T1+T2)
+      ## instead would be wrong in the same way it is wrong for NGE.
+      beta <- opt$par[-c(1:3)]
+      sig_v <- opt$par[1]
+      sig_u <- opt$par[2]
+      lam <- opt$par[3]
+      eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
+      r1 <- 1 / sig_u
+      r2 <- (1 + lam) / sig_u
+      lt1 <- log(2) + r1 * eps_hat + (r1^2 * sig_v^2) / 2 +
+        pnorm(-eps_hat / sig_v - r1 * sig_v, log.p = TRUE)
+      lt2 <- r2 * eps_hat + (r2^2 * sig_v^2) / 2 +
+        pnorm(-eps_hat / sig_v - r2 * sig_v, log.p = TRUE)
+      d <- pmin(lt2 - lt1, -.Machine$double.eps)
+      w1 <- -1 / expm1(d)
+      w2 <- w1 - 1
+      mu1 <- -eps_hat - r1 * sig_v^2
+      mu2 <- -eps_hat - r2 * sig_v^2
+      exp_u_hat <- pmin(pmax(w1 * .te_battese_coelli(mu1, sig_v) -
+        w2 * .te_battese_coelli(mu2, sig_v), 0), 1)
+      u_hat <- pmax(w1 * .jlms_u(mu1, sig_v) - w2 * .jlms_u(mu2, sig_v), 0)
+    }
+
     if (model_name %in% c("NG", "NNAK")) {
       ## Same stable helper the likelihood uses; the series form here also carried a
       ## stray trailing comma inside log(), which R tolerates but which signals the
@@ -1258,7 +1323,7 @@ sfm <- function(formula,
 
     ## NE/NTN additionally return u_hat (the JLMS E[u|e] point predictor)
     ## alongside exp_u_hat.
-    if (model_name %in% c("NE", "NTN", "NU", "NGE", "NLN", "NW")) {
+    if (model_name %in% c("NE", "NTN", "NU", "NGE", "NLN", "NW", "TSL")) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula, exp_u_hat, u_hat,
         out["par", ], out["st_err", ], out["t-val", ], call
@@ -1304,7 +1369,7 @@ sfm <- function(formula,
     ## packaged with exp_u_hat/u_hat just above -- without that exclusion this
     ## catch-all would silently overwrite their results object and drop the
     ## efficiency scores again.
-    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN"))) {
+    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL"))) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula,
         out["par", ], out["st_err", ], out["t-val", ], call
@@ -1356,7 +1421,7 @@ sfm <- function(formula,
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for sfm() but has no implementation branch. ",
-      "Valid choices are: \"NHN\", \"NHN_Z\", \"NE\", \"NE_Z\", \"NR\", \"THT\", \"NTN\", \"NG\", \"NNAK\"."
+      "Valid choices are: \"NHN\", \"NHN_Z\", \"NE\", \"NE_Z\", \"NR\", \"THT\", \"NTN\", \"NG\", \"NNAK\", \"NU\", \"NGE\", \"NLN\", \"NW\", \"tHN\", \"TSL\"."
     ), call. = FALSE)
   }
 }

@@ -12,7 +12,8 @@
 ## two-tier (TTNE/TTHN/TTNLS) columns below. Defaults to sig_u.
 ## ------------------------------------------------------------------
 data_gen_cs <- function(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w = sig_u,
-                        shape_g = 2, m_nak = 1, mu_ln = -0.5, k_w = 1.5) {
+                        shape_g = 2, m_nak = 1, mu_ln = -0.5, k_w = 1.5,
+                        lam_tsl = 1.5) {
   if (!is.null(rand)) {
     .rng_state <- .rng_snapshot()
     on.exit(.rng_restore(.rng_state), add = TRUE)
@@ -180,6 +181,29 @@ data_gen_cs <- function(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w 
   ## would not test anything NHN does not already cover.
   u_nak <- sqrt(rgamma(n, shape = m_nak, scale = sig_u^2 / m_nak))
 
+  ## Normal truncated skew-Laplace -- targets sfm(model_name="TSL").
+  ##
+  ##   f(u) = ((1+lam)/(sig_u (2 lam + 1))) [2 exp(-u/sig_u) - exp(-(1+lam) u/sig_u)]
+  ##
+  ## for u >= 0, which is a SIGNED mixture of two exponentials -- the second
+  ## enters with a negative weight -- so it cannot be drawn by picking a
+  ## component. Rejection sampling off the first component is exact and cheap:
+  ## with the envelope 2(1+lam)/(2 lam + 1) times Exp(mean sig_u), the
+  ## acceptance probability simplifies to
+  ##
+  ##   f(u) / envelope = 1 - exp(-lam u / sig_u)/2
+  ##
+  ## which is never below 1/2, so the loop terminates quickly whatever lam is.
+  u_tsl <- {
+    out <- numeric(0)
+    while (length(out) < n) {
+      cand <- rexp(2 * n, rate = 1 / sig_u)
+      keep <- runif(length(cand)) < (1 - exp(-lam_tsl * cand / sig_u) / 2)
+      out <- c(out, cand[keep])
+    }
+    out[seq_len(n)]
+  }
+
   ## Normal generalized-exponential -- targets sfm(model_name="NGE").
   ## sfm.R's NGE likelihood is log(2*lam) + log(T1 - T2) with lam = 1/sig_u,
   ## i.e. the generalized exponential with its SHAPE FIXED AT 2:
@@ -202,6 +226,7 @@ data_gen_cs <- function(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w 
   ## model_name -- see DATA_GENERATION_REFERENCE.md for the true-value triples.
   y_pcs_g <- cons + beta1 * x1 + beta2 * x2 + v - u_g ## NG
   y_pcs_nak <- cons + beta1 * x1 + beta2 * x2 + v - u_nak ## NNAK
+  y_pcs_tsl <- cons + beta1 * x1 + beta2 * x2 + v - u_tsl ## TSL
   y_pcs_ge <- cons + beta1 * x1 + beta2 * x2 + v - u_ge ## NGE
   y_pcs_ln <- cons + beta1 * x1 + beta2 * x2 + v - u_ln ## NLN
   y_pcs_wb <- cons + beta1 * x1 + beta2 * x2 + v - u_w ## NW
@@ -259,7 +284,7 @@ data_gen_cs <- function(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w 
     uz_e, y_pcs_ez,
     w_tt, y_ttne, w_tt_hn, y_tthn, zp, wz_hn, y_tthn_z,
     eff_ind, y_zisf, prob_z_true, eff_ind_z, y_zisf_z,
-    u_g, y_pcs_g, u_nak, y_pcs_nak, u_ge, y_pcs_ge, u_ln, y_pcs_ln, u_w, y_pcs_wb,
+    u_g, y_pcs_g, u_nak, y_pcs_nak, u_tsl, y_pcs_tsl, u_ge, y_pcs_ge, u_ln, y_pcs_ln, u_w, y_pcs_wb,
     lam_st, u_st, v_st, y_pcs_st, v_thn, u_thn, y_pcs_thn, u_r, y_pcs_r
   ))
   colnames(data_trial) <- c(
@@ -268,7 +293,7 @@ data_gen_cs <- function(N, rand, sig_u, sig_v, cons, beta1, beta2, a, mu, sig_w 
     "uz_e", "y_pcs_ez",
     "w_tt", "y_ttne", "w_tt_hn", "y_tthn", "zp", "wz_hn", "y_tthn_z",
     "eff_ind", "y_zisf", "prob_z_true", "eff_ind_z", "y_zisf_z",
-    "u_g", "y_pcs_g", "u_nak", "y_pcs_nak", "u_ge", "y_pcs_ge",
+    "u_g", "y_pcs_g", "u_nak", "y_pcs_nak", "u_tsl", "y_pcs_tsl", "u_ge", "y_pcs_ge",
     "u_ln", "y_pcs_ln", "u_w", "y_pcs_wb",
     "lam_st", "u_st", "v_st", "y_pcs_st", "v_thn", "u_thn", "y_pcs_thn",
     "u_r", "y_pcs_r"

@@ -1287,7 +1287,7 @@
     "NG"         = 1,     "ZISF"       = 1,   "NNAK"          = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,
     "NGE"        = 1,     "NLN"        = 1,   "NW"            = 1,
-    "tHN"        = 1,
+    "tHN"        = 1,     "TSL"        = 1,
     "TRE"        = 1,     "GTRE"       = 1,   "GTRE_FML"      = 1,
 
     # --- 1 Pipe Allowed (2 Parts) ---
