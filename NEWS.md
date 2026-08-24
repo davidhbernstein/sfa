@@ -23,6 +23,30 @@
   spans about 0.49 in efficiency, against a total spread of 0.85 across all
   the point predictions.
 
+* **New function `marginal_effects()`: what the `_Z` models' `delta`
+  coefficients actually mean for inefficiency.** For a fit whose inefficiency
+  scale depends on covariates, it returns the per-observation
+  `d E[u]/d z_k` and `d Var[u]/d z_k`, with the average marginal effects
+  attached. These are what applied papers report; a `delta` on its own is a
+  coefficient in a log link for a scale parameter and is not interpretable in
+  the units of either `u` or `z`.
+
+  This also defuses a long-standing trap. `sfm()`'s `"NHN_Z"`/`"NE_Z"` put the
+  linear predictor on the standard deviation and `psfm()`'s `"TRE_Z"`/
+  `"GTRE_Z"` put it on the variance, so the same `delta` means different
+  things in the two families -- the marginal effects differ by a factor of
+  two. The effect is on the scale of `u` either way, so reporting it rather
+  than the coefficient removes the ambiguity. The returned object records
+  which convention was used.
+
+  Currently covers `sfm()`'s `"NHN_Z"` and `"NE_Z"`; `psfm()`'s panel `_Z`
+  models are not wired up yet. Standard errors are deliberately not reported --
+  see `?marginal_effects` for why.
+
+* `"NHN_Z"` and `"NE_Z"` fits now carry a `$z_spec` component (the
+  variance-determinant design, its coefficients, and the link convention),
+  which is what `marginal_effects()` reads.
+
 * **`sfm(model_name = "NNAK")` now starts from the method of moments.** The
   normal-Nakagami likelihood has `sigma_u -> 0` as a genuine attractor, and
   the previous hard-coded start of `sigma_u = sigma_v = 0.1` sat next to it.

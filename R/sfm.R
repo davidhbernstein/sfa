@@ -1331,6 +1331,27 @@ sfm <- function(formula,
     if (!is.null(u_post)) {
       results$u_posterior <- u_post
     }
+
+    ## The variance-determinant block, kept so marginal_effects() can report
+    ## d E[u]/d z and d Var[u]/d z without re-deriving the design matrix from
+    ## the call. Only the _Z models have one.
+    if (model_name %in% c("NHN_Z", "NE_Z") && isTRUE(n_z_vars > 0)) {
+      Zm <- tryCatch(as.matrix(data.frame(subset(data, select = z_vars))),
+                     error = function(e) NULL)
+      dl <- tryCatch(opt$par[(n_x_vars + 2):length(opt$par)], error = function(e) NULL)
+      if (!is.null(Zm) && !is.null(dl) && ncol(Zm) == length(dl)) {
+        names(dl) <- colnames(Zm)
+        results$z_spec <- list(
+          Z = Zm, delta = dl,
+          ## sfm()'s _Z models put the linear predictor on the STANDARD
+          ## DEVIATION, sigma_u = exp(z'delta). psfm()'s put it on the
+          ## VARIANCE. That difference is real and changes the marginal
+          ## effects by a factor of two -- see marginal_effects().
+          link = "sd",
+          family = if (model_name == "NHN_Z") "halfnormal" else "exponential"
+        )
+      }
+    }
     return(results)
   } else {
     stop(paste0(
