@@ -25,6 +25,12 @@ sfm <- function(formula,
                 alpha = 0.2,
                 verbose = FALSE,
                 Nsim = "auto",
+                sim_type = c("halton", "sobol", "torus", "uniform"),
+                antithetics = FALSE,
+                sim_burn = NULL,
+                sim_scrambling = 0L,
+                sim_prime = NULL,
+                sim_seed = NULL,
                 rand.psoptim = NULL,
                 keep_objective = FALSE,
                 estimator = c("mle", "cols", "mols"),
@@ -45,6 +51,16 @@ sfm <- function(formula,
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   robust <- match.arg(robust)
   estimator <- match.arg(estimator)
+  ## Defaults reproduce the previous behaviour exactly -- Halton, no
+  ## antithetics, 1000 discarded -- so no existing result moves.
+  sim_type <- match.arg(sim_type)
+  if (is.null(sim_burn)) sim_burn <- .SFA_CONSTANTS$HALTON_DISCARD
+  if (!is.numeric(sim_burn) || length(sim_burn) != 1L || sim_burn < 0) {
+    stop("`sim_burn` must be a single non-negative number.", call. = FALSE)
+  }
+  if (!is.logical(antithetics) || length(antithetics) != 1L || is.na(antithetics)) {
+    stop("`antithetics` must be TRUE or FALSE.", call. = FALSE)
+  }
 
   ## "mols" and "cols" select the same estimator, and the literature's name for
   ## it is MOLS. What .cols_fit() implements is the MODIFIED OLS of Olson,
@@ -321,26 +337,26 @@ sfm <- function(formula,
         call. = FALSE
       )
     }
-    hseq <- randtoolbox::halton(n_obs * Nsim + 1000, 1, start = 1, normal = FALSE)[-c(1:1000)]
-    ## Clamped at 1e-6 rather than 1e-10: with n*Nsim draws the sequence reaches
-    ## far enough into the tail that exp(mu + sigma_u * qnorm(h)) overflows to
-    ## Inf for plausible parameter values, which kills the optimizer. 1e-6 caps
-    ## |qnorm| near 4.75 and costs nothing in the integral.
-    ##
-    ## byrow = TRUE is ESSENTIAL and not cosmetic. Filling column-major gives
-    ## observation i the stride-n subsequence h_i, h_{i+n}, h_{i+2n}, ... of a
-    ## base-2 van der Corput sequence, which is NOT equidistributed: for n=500,
-    ## Nsim=100 the first row spans only [0.50, 0.75] instead of (0,1). That
-    ## silently integrates over a quarter of the inefficiency distribution and
-    ## makes the simulated likelihood badly wrong -- it scored the TRUE
-    ## parameters ~570 log-likelihood units worse than a degenerate sigma_u = 0
-    ## solution, so the optimizer correctly maximised a broken objective.
-    ## Filling by row gives each observation its own contiguous, properly
-    ## equidistributed block.
-    FiMat <- matrix(pmin(pmax(hseq, 1e-6), 1 - 1e-6),
-      nrow = n_obs, ncol = Nsim,
-      byrow = TRUE
-    )
+    ## Draw construction moved to .sml_draws() (matrix_utils.R), which is
+    ## shared with the other entry points. It keeps the two properties this
+    ## site established and adds the options Train (2002, ch. 9) recommends:
+    ##   - each observation gets its OWN contiguous block of the sequence
+    ##     (byrow), because a column-major fill hands observation i a stride-n
+    ##     subsequence of a van der Corput sequence, which is not
+    ##     equidistributed -- for n = 500, Nsim = 100 the first row spanned
+    ##     only [0.50, 0.75], integrating over a quarter of the inefficiency
+    ##     distribution. That scored the TRUE parameters ~570 log-likelihood
+    ##     units worse than a degenerate sigma_u = 0 solution, so the optimizer
+    ##     correctly maximised a broken objective;
+    ##   - clamped at 1e-6 rather than 1e-10, because with n*Nsim draws the
+    ##     sequence reaches far enough into the tail that
+    ##     exp(mu + sigma_u * qnorm(h)) overflows to Inf. 1e-6 caps |qnorm|
+    ##     near 4.75 and costs nothing in the integral.
+    FiMat <- .sml_draws(n_units = n_obs, n_draws = Nsim, dim = 1L,
+                        sim_type = sim_type, antithetics = antithetics,
+                        burn = sim_burn, scrambling = sim_scrambling,
+                        prime = sim_prime, seed = sim_seed,
+                        clamp = 1e-6)[[1L]]
     HDraw <- if (model_name == "NLN") qnorm(FiMat) else -log1p(-FiMat)
 
     ## NLN integrates in t (see the likelihood), where the integrand is smooth.

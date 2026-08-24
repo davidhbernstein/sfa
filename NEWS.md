@@ -1,5 +1,35 @@
 # sfa 1.1.6 (development)
 
+* **`sfm()` gains user control over its simulated-ML draws**, following the
+  practice in Train (2002, ch. 9) and matching the options `sfaR` exposes:
+  `sim_type` (`"halton"`, `"sobol"`, `"torus"`, `"uniform"`), `antithetics`,
+  `sim_burn`, `sim_scrambling`, `sim_prime` and `sim_seed`. These affect the
+  models fitted by simulation, `"NLN"` and `"NW"`.
+
+  `"sobol"` with `sim_scrambling` 1-3 is the scrambled sequence of Bhat
+  (2003), which removes cross-dimension correlation while keeping the
+  coverage. `"uniform"` exists as a baseline to measure against, not as a
+  recommendation -- Bhat (2001), quoted by Train, found 100 Halton draws more
+  precise than 1000 pseudorandom ones. `antithetics = TRUE` takes half the
+  draws from the sequence and creates the rest as mirror images (Hammersley
+  and Morton 1956), which costs nothing.
+
+  **Defaults reproduce the previous behaviour exactly** -- Halton, no
+  antithetics, 1000 leading elements discarded -- and this is asserted by a
+  test that rebuilds the old construction and compares byte for byte, so no
+  existing result moves.
+
+* **The draw construction is now one shared internal function**,
+  `.sml_draws()`, rather than being written inline at each site. That matters
+  beyond tidiness: the sites had drifted apart, with `sfm()` giving each
+  observation its own contiguous block of the sequence while `psfm()` hands
+  every firm the same one. Train (ch. 9) attributes the value of a
+  low-discrepancy sequence to its coverage *and* to the negative correlation
+  it induces across observations, and the second only exists when units get
+  different blocks. The shared constructor always blocks by unit and takes a
+  `dim` argument for the multi-dimensional panel case, so the other entry
+  points can adopt it directly.
+
 * **New model `sfm(model_name = "TSL")`: the normal / truncated skew-Laplace
   frontier (Wang 2012).** Inefficiency has the signed-mixture density
   `f(u) = ((1+lambda)/(sigma_u(2*lambda+1))) [2 exp(-u/sigma_u) -

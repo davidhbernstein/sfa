@@ -805,6 +805,115 @@
   lb + log(-expm1(pmin(la - lb, -.Machine$double.eps)))
 }
 
+## ---------------------------------------------------------------------------
+## Draws for simulated maximum likelihood.
+##
+## ONE constructor for every entry point. sfm(), psfm() and ttsfm() each built
+## their own draws inline, which is how they came to disagree: sfm() gives each
+## observation its own contiguous block of the sequence, while psfm() hands
+## every firm the SAME block. Train (2002, ch. 9, p. 228) is explicit that the
+## benefit of a Halton sequence is "the superior coverage AND the negative
+## correlation over observations" -- and the second half only exists when units
+## get DIFFERENT blocks. This function always blocks by unit, so adopting it
+## fixes that wherever it is adopted.
+##
+## Returns a list of `dim` matrices, each n_units x n_draws, of uniforms on
+## (clamp, 1 - clamp). Row i is unit i's own block. Callers transform to their
+## own margin -- qnorm() for a normal, -log1p(-u) for an exponential, and so on
+## -- which is deliberate: the antithetic of a draw is taken HERE, on the
+## uniform scale as 1 - u, where Train's general rule F^-1(1 - F(e)) reduces to
+## it for any margin the caller later applies.
+##
+## sim_type, following sfaR's `simType` so the two are comparable:
+##   "halton"  the default and the previous behaviour. Primes 2, 3, 5, ... one
+##             per dimension, which is what randtoolbox::halton does and what
+##             Train (p. 228) requires -- non-primes make the cycles of one
+##             sequence overlap another's and correlate the dimensions.
+##   "sobol"   with `scrambling` 1-3 this is Bhat's (2003) scrambled sequence,
+##             the recommended fix when large primes in high dimensions make
+##             plain Halton dimensions correlate. Scrambling permutes digits,
+##             so it removes that correlation while KEEPING the coverage.
+##   "torus"   the Korobov sequence; takes an explicit `prime`.
+##   "uniform" pseudorandom. Present as the baseline to measure against, not
+##             as a recommendation: Bhat (2001), quoted by Train at p. 228,
+##             found 100 Halton draws beat 1000 random draws, and 125 Halton
+##             draws had HALF the simulation error of 1000 random ones.
+##
+## `burn` discards leading elements, whose low-index correlation across
+## dimensions Train notes and which discarding removes.
+##
+## NOT offered: a generalized-Halton ("ghalton") option, which would need the
+## qrng package. Scrambled Sobol addresses the same problem from the same
+## paper, so it is not worth a new dependency.
+.sml_draws <- function(n_units, n_draws, dim = 1L,
+                       sim_type = c("halton", "sobol", "torus", "uniform"),
+                       antithetics = FALSE,
+                       burn = .SFA_CONSTANTS$HALTON_DISCARD,
+                       scrambling = 0L, prime = NULL, seed = NULL,
+                       clamp = 1e-6) {
+  sim_type <- match.arg(sim_type)
+  ## Checked before coercion: as.integer(NULL) is integer(0) and
+  ## as.integer(NA) is NA, and either one turns the comparison below into
+  ## "missing value where TRUE/FALSE needed", which tells the caller nothing
+  ## about which argument was wrong.
+  for (nm in c("n_units", "n_draws", "dim")) {
+    v <- get(nm)
+    if (is.null(v) || length(v) != 1L || !is.numeric(v) || !is.finite(v)) {
+      stop("`", nm, "` must be a single positive number.", call. = FALSE)
+    }
+  }
+  n_units <- as.integer(n_units)
+  n_draws <- as.integer(n_draws)
+  dim <- as.integer(dim)
+  if (n_units < 1L || n_draws < 1L || dim < 1L) {
+    stop("`n_units`, `n_draws` and `dim` must all be at least 1.", call. = FALSE)
+  }
+
+  ## Antithetics halve the number of INDEPENDENT draws needed: take n_base and
+  ## mirror them. An odd n_draws keeps the extra draw as an original rather
+  ## than silently rounding the caller's request down.
+  n_base <- if (antithetics) as.integer(ceiling(n_draws / 2)) else n_draws
+  n_need <- n_units * n_base
+
+  if (!is.null(seed)) {
+    .st <- .rng_snapshot()
+    on.exit(.rng_restore(.st), add = TRUE)
+    set.seed(seed)
+  }
+
+  raw <- switch(sim_type,
+    "halton"  = randtoolbox::halton(n_need + burn, dim = dim, start = 1, normal = FALSE),
+    "sobol"   = randtoolbox::sobol(n_need + burn, dim = dim, scrambling = scrambling,
+                                   seed = if (is.null(seed)) 4711L else as.integer(seed),
+                                   normal = FALSE, init = TRUE),
+    "torus"   = if (is.null(prime)) {
+                  randtoolbox::torus(n_need + burn, dim = dim, normal = FALSE)
+                } else {
+                  randtoolbox::torus(n_need + burn, dim = dim, prime = prime, normal = FALSE)
+                },
+    "uniform" = matrix(stats::runif((n_need + burn) * dim), ncol = dim)
+  )
+  raw <- matrix(as.numeric(raw), ncol = dim)
+  if (burn > 0L && nrow(raw) > burn) raw <- raw[-seq_len(burn), , drop = FALSE]
+  raw <- raw[seq_len(n_need), , drop = FALSE]
+
+  lapply(seq_len(dim), function(d) {
+    ## byrow = TRUE is essential, not cosmetic: filling column-major hands unit
+    ## i the stride-n subsequence of a van der Corput sequence, which is not
+    ## equidistributed -- for n = 500, n_draws = 100 the first row spans only
+    ## [0.50, 0.75]. Filling by row gives each unit a contiguous, properly
+    ## equidistributed block. See the note this replaces in sfm.R.
+    M <- matrix(raw[, d], nrow = n_units, ncol = n_base, byrow = TRUE)
+    if (antithetics) {
+      M <- cbind(M, 1 - M)[, seq_len(n_draws), drop = FALSE]
+    }
+    ## Clamped away from 0 and 1: the callers apply qnorm() or -log1p(-u), and
+    ## an exact endpoint sends those to +/-Inf and kills the optimizer.
+    pmin(pmax(M, clamp), 1 - clamp)
+  })
+}
+
+
 .te_battese_coelli <- function(mu_star, sigma_star) {
   sigma_star <- pmax(sigma_star, .SFA_CONSTANTS$MIN_POSITIVE)
   z <- mu_star / sigma_star
