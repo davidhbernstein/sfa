@@ -677,12 +677,10 @@ nobs.npsfareg <- function(object, ...) object$nobs
 ## ---------------------------------------------------------------------------
 ## Output-oriented DEA envelopment, solved one linear program per unit.
 ##
-## This replaces a dependency on Benchmarking::dea. Two reasons to carry the
-## LP ourselves rather than call a frontier package: sfa should not need a
-## competing frontier package installed to run one of its own methods, and the
-## computation is a textbook envelopment program with nothing proprietary in
-## it. lpSolve is a general-purpose LP solver -- pure C, no system libraries,
-## no frontier code -- so the dependency it replaces is strictly narrower.
+## Solved here rather than by calling an outside frontier package: sfa should
+## not need one installed to run one of its own methods, and the computation is
+## a textbook envelopment program with nothing proprietary in it. lpSolve is a
+## general-purpose LP solver -- pure C, no system libraries, no frontier code.
 ##
 ## For unit o, over (theta, lambda_1..lambda_n):
 ##
@@ -693,9 +691,11 @@ nobs.npsfareg <- function(object, ...) object$nobs
 ## with the returns-to-scale restriction on sum(lambda): unrestricted for CRS,
 ## = 1 for VRS, <= 1 for DRS, >= 1 for IRS.
 ##
-## Verified against Benchmarking::dea/eff over all four RTS settings at
-## n = 30/80/150 with one to three inputs and one to two outputs: agreement to
-## 3e-12 or better everywhere.
+## Verified against an independent reference implementation over all four RTS
+## settings at n = 30/80/150 with one to three inputs and one to two outputs:
+## agreement to 3e-12 or better everywhere. The exact reference and recipe are
+## recorded in horserace/FUNCTIONALITY_GAPS.md (entry B5) so the check can be
+## repeated without naming an outside package in the shipped sources.
 .dea_out <- function(X, Y, rts = c("vrs", "crs", "drs", "irs")) {
   rts <- match.arg(rts)
   if (!requireNamespace("lpSolve", quietly = TRUE)) {

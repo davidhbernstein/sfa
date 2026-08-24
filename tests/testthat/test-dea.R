@@ -1,14 +1,15 @@
 ## Output-oriented DEA envelopment, .dea_out().
 ##
-## This replaced a call to Benchmarking::dea() so that npsfm(method = "SZ")
-## does not need a competing frontier package installed. During development
-## the replacement was checked directly against Benchmarking::dea()/eff() over
-## all four RTS settings at n = 30/80/150 with one to three inputs and one to
-## two outputs, agreeing to 3e-12 or better. That comparison is deliberately
-## NOT kept as a test -- it would reintroduce the dependency it exists to
-## remove -- so what is pinned here is the analytic structure instead: a
-## hand-solvable case, the returns-to-scale ordering, and the invariants any
-## correct output-oriented envelopment must satisfy.
+## Solved in the package so that npsfm(method = "SZ") does not need an outside
+## frontier package installed. During development the implementation was
+## checked against an independent reference over all four RTS settings at
+## n = 30/80/150 with one to three inputs and one to two outputs, agreeing to
+## 3e-12 or better; see horserace/FUNCTIONALITY_GAPS.md entry B5 for the
+## recipe. That comparison is deliberately NOT kept as a test -- it would
+## reintroduce the dependency it exists to remove -- so what is pinned here is
+## the analytic structure instead: a hand-solvable case, the returns-to-scale
+## ordering, and the invariants any correct output-oriented envelopment must
+## satisfy.
 
 test_that(".dea_out solves a case that can be worked out by hand", {
   skip_if_not_installed("lpSolve")
