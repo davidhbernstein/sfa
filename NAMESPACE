@@ -22,6 +22,7 @@ importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "l
                     "as.formula",   "complete.cases", "formula", "sd",        "runif",
                     "ave",          "cor",            "terms",   "lm.fit",
                     "plogis",       "rbinom",         "rgamma",  "rlnorm",    "rweibull",
+                    "dlnorm",        "dweibull",      "qlnorm",    "qweibull",
                     "fitted",        "residuals",     "optimize")
 S3method(summary, sfareg)
 S3method(print, sfareg)

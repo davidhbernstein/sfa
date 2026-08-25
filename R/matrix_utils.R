@@ -1487,28 +1487,19 @@
   )
 }
 
-## Helpers: the inefficiency density and quantile for the simulated-ML models.
-## Written out rather than called from stats:: -- these run on every draw of
-## every likelihood evaluation, and the closed forms are about twice as fast.
-## test-sml-draws.R pins them against dweibull()/dlnorm()/qweibull()/qlnorm().
+## Helpers: the inefficiency density and quantile for the simulated-ML models
 .nsml_ldens <- function(model_name, sigma_u, shape) {
   if (model_name == "NLN") {
-    function(u) {
-      lu <- log(u)
-      zz <- (lu - shape) / sigma_u
-      -0.5 * zz * zz - .SFA_CONSTANTS$LOG_SQRT_2PI - log(sigma_u) - lu
-    }
+    function(u) dlnorm(u, meanlog = shape, sdlog = sigma_u, log = TRUE)
   } else {
-    function(u) {
-      log(shape) - shape * log(sigma_u) + (shape - 1) * log(u) - (u / sigma_u)^shape
-    }
+    function(u) dweibull(u, shape = shape, scale = sigma_u, log = TRUE)
   }
 }
 
 .nsml_qdens <- function(model_name, sigma_u, shape) {
   if (model_name == "NLN") {
-    function(p) exp(shape + sigma_u * qnorm(p))
+    function(p) qlnorm(p, meanlog = shape, sdlog = sigma_u)
   } else {
-    function(p) sigma_u * (-log1p(-p))^(1 / shape)
+    function(p) qweibull(p, shape = shape, scale = sigma_u)
   }
 }

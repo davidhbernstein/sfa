@@ -11,10 +11,11 @@
     use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper = NA,
     Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi", "mdpd"),
     c_mlqe = 0.20, eta = 0.01, alpha = 0.2, verbose = FALSE,
-    Nsim = "auto", rand.psoptim = NULL, keep_objective = FALSE,
-    estimator = c("mle", "cols", "mols"), cols_boot = 0, rand.cols = NULL,
+    Nsim = "auto",
     sim_type = c("halton", "sobol", "torus", "uniform"), antithetics = FALSE,
-    sim_burn = NULL, sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL)}
+    sim_burn = NULL, sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
+    rand.psoptim = NULL, keep_objective = FALSE,
+    estimator = c("mle", "cols", "mols"), cols_boot = 0, rand.cols = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
 \item{model_name}{Which distributional pair to fit. The noise term \eqn{v} is

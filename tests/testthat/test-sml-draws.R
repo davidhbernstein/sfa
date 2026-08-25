@@ -175,29 +175,21 @@ test_that("the reference itself is sound where naive quadrature is not", {
   }
 })
 
-test_that("the closed-form densities match the stats:: ones they replace", {
-  ## .nsml_ldens()/.nsml_qdens() are written out for speed, so the identity has
-  ## to be pinned rather than assumed.
-  u <- c(1e-8, 1e-3, 0.1, 0.5, 1, 3, 10, 200)
+test_that("the density/quantile helpers select the right distribution", {
+  ## The failure this guards against is a swap: NLN silently getting the
+  ## Weibull, or the shape and scale arguments transposed. Both would still
+  ## produce a plausible-looking fit.
+  u <- c(1e-8, 0.1, 0.5, 1, 3, 10, 200)
   p <- c(1e-6, 0.01, 0.25, 0.5, 0.75, 0.99, 1 - 1e-6)
-  for (su in c(0.2, 0.8, 2)) {
-    for (sh in c(0.5, 1, 1.5, 4)) {
-      expect_equal(sfa:::.nsml_ldens("NW", su, sh)(u), dweibull(u, sh, su, log = TRUE),
-        tolerance = 1e-12, info = paste("NW", su, sh)
-      )
-      expect_equal(sfa:::.nsml_qdens("NW", su, sh)(p), qweibull(p, sh, su),
-        tolerance = 1e-12, info = paste("NW", su, sh)
-      )
-    }
-    for (ml in c(-1.5, 0, 0.5)) {
-      expect_equal(sfa:::.nsml_ldens("NLN", su, ml)(u), dlnorm(u, ml, su, log = TRUE),
-        tolerance = 1e-11, info = paste("NLN", su, ml)
-      )
-      expect_equal(sfa:::.nsml_qdens("NLN", su, ml)(p), qlnorm(p, ml, su),
-        tolerance = 1e-11, info = paste("NLN", su, ml)
-      )
-    }
-  }
+  expect_equal(sfa:::.nsml_ldens("NW", 0.8, 1.5)(u), dweibull(u, shape = 1.5, scale = 0.8, log = TRUE))
+  expect_equal(sfa:::.nsml_qdens("NW", 0.8, 1.5)(p), qweibull(p, shape = 1.5, scale = 0.8))
+  expect_equal(sfa:::.nsml_ldens("NLN", 0.8, -0.5)(u), dlnorm(u, meanlog = -0.5, sdlog = 0.8, log = TRUE))
+  expect_equal(sfa:::.nsml_qdens("NLN", 0.8, -0.5)(p), qlnorm(p, meanlog = -0.5, sdlog = 0.8))
+  ## Third argument is the Weibull SHAPE and the lognormal MEANLOG, which are
+  ## not interchangeable: transposing them must change the answer.
+  expect_false(isTRUE(all.equal(
+    sfa:::.nsml_ldens("NW", 0.8, 1.5)(u), dweibull(u, shape = 0.8, scale = 1.5, log = TRUE)
+  )))
 })
 
 test_that(".sml_mis stays accurate whichever density is the narrow one", {
