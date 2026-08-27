@@ -1369,6 +1369,9 @@ psfm <- function(formula,
       call          = call,
       verbose       = verbose
     )
+    ## sigma_u block only. GTRE_Z also has a sigma_h block ("(Intercept h)",
+    ## zp...), which marginal_effects() does not yet report.
+    results$z_spec <- .psfm_z_spec(data, z_vars, results$out[, "par"], "halfnormal")
     return(results)
   }
   if (model_name == "TRE_Z") {
@@ -1551,6 +1554,11 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
+    ## The variance-determinant block, so marginal_effects() can report
+    ## dE[u]/dz without re-deriving the design. psfm() puts z'delta on the
+    ## VARIANCE, sigma_u = sqrt(exp(z'delta)) -- the opposite of sfm()'s
+    ## default; see C1 and sfm()'s z_link.
+    results$z_spec <- .psfm_z_spec(data, z_vars, out["par", ], "halfnormal")
     return(results)
   }
   if (model_name == "GTRE_FML") {

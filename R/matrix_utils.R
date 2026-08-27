@@ -1576,3 +1576,45 @@
     call. = FALSE
   )
 }
+
+## Helper: the variance-determinant block of a psfm() _Z fit, in the shape
+## marginal_effects() expects. psfm() places z'delta on the VARIANCE, so the
+## link is "var"; sfm()'s default is "sd". The delta coefficients are the
+## trailing n_z entries of the parameter vector, named "(Intercept u)" and then
+## the z variables.
+.psfm_z_spec <- function(data, z_vars, par, family = "halfnormal",
+                        anchor = "(Intercept u)") {
+  if (!length(z_vars)) {
+    return(NULL)
+  }
+  ## data_proc() returns z_vars WITH "(Intercept)" in it, which is not a column
+  ## of `data`; build the intercept column rather than looking it up.
+  dd <- data.frame(data, check.names = FALSE)
+  has_int <- "(Intercept)" %in% z_vars
+  zc <- setdiff(z_vars, "(Intercept)")
+  if (!all(zc %in% names(dd))) {
+    return(NULL)
+  }
+  Z <- as.matrix(dd[, zc, drop = FALSE])
+  if (has_int) {
+    Z <- cbind(`(Intercept)` = 1, Z)
+  }
+  if (!ncol(Z)) {
+    return(NULL)
+  }
+  k <- ncol(Z)
+  ## Locate the block BY NAME, not by position. TRE_Z ends with the sigma_u
+  ## block, but GTRE_Z carries two -- "(Intercept u)", z..., "(Intercept h)",
+  ## zp... -- so taking the trailing k entries would silently return the
+  ## sigma_h coefficients for GTRE_Z.
+  nm <- names(par)
+  start <- if (!is.null(nm)) match(anchor, nm) else NA_integer_
+  if (is.na(start) || start + k - 1L > length(par)) {
+    return(NULL)
+  }
+  delta <- unname(par[seq.int(start, start + k - 1L)])
+  if (!all(is.finite(delta))) {
+    return(NULL)
+  }
+  list(Z = Z, delta = delta, link = "var", family = family)
+}

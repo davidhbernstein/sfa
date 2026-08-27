@@ -85,6 +85,19 @@
   and `"NU"` estimates are bit-identical across 45 fits, since the penalty only
   ever applies where the parameters are already inadmissible.
 
+* **`marginal_effects()` now works on panel fits**, `psfm(model_name = "TRE_Z")`
+  and `psfm(model_name = "GTRE_Z")`. These place `z'delta` on the variance,
+  and the link is read from the fit rather than assumed, so their effects are
+  directly comparable with an `sfm()` fit -- including one fitted with the new
+  `z_link = "var"`.
+
+  For `"GTRE_Z"` the effects are those on `sigma_u`, the transient component.
+  That model carries a second determinant block for the persistent `sigma_h`,
+  and its coefficients are the *trailing* ones, so the `sigma_u` block is
+  located by name rather than by position -- taking the last coefficients
+  would have silently reported `sigma_h` effects under a `sigma_u` label.
+  Effects on `sigma_h` are not reported yet.
+
 * **`sfm()` gains `z_link`, which fixes a real trap in comparing `_Z` fits
   across the package.** `sfm()`'s `"NHN_Z"`/`"NE_Z"` put the
   variance-determinant linear predictor on the standard deviation,
