@@ -25,6 +25,7 @@ sfm <- function(formula,
                 alpha = 0.2,
                 verbose = FALSE,
                 Nsim = "auto",
+                z_link = c("sd", "var"),
                 sim_type = c("halton", "sobol", "torus", "uniform"),
                 antithetics = FALSE,
                 sim_burn = NULL,
@@ -43,6 +44,12 @@ sfm <- function(formula,
   estimator <- match.arg(estimator)
   ## Defaults reproduce the previous behaviour exactly -- Halton, no
   ## antithetics, 1000 discarded -- so no existing result moves.
+  ## Which scale the variance-determinant linear predictor lives on. "sd" is
+  ## sfm()'s historical convention and stays the default; "var" matches psfm()
+  ## and every competitor, so deltas can be put on one footing across entry
+  ## points. See ?sfm Details.
+  z_link <- match.arg(z_link)
+  .z_sigma <- if (identical(z_link, "sd")) function(eta) exp(eta) else function(eta) sqrt(exp(eta))
   sim_type <- match.arg(sim_type)
   if (is.null(sim_burn)) sim_burn <- .SFA_CONSTANTS$HALTON_DISCARD
   if (!is.numeric(sim_burn) || length(sim_burn) != 1L || sim_burn < 0) {
@@ -291,7 +298,7 @@ sfm <- function(formula,
       eps <- (inefdec_n * (Y - as.matrix(data_i_vars) %*% x_x_vec))
 
       if (model_name == "NHN_Z") {
-        sigma_u_fun <- exp(as.matrix(data_z_vars) %*% z_z_vec)
+        sigma_u_fun <- .z_sigma(as.matrix(data_z_vars) %*% z_z_vec)
         sigma_v_fun <- x[1]
         sigma_fun <- sqrt(sigma_v_fun^2 + sigma_u_fun^2)
         lamb_fun <- sigma_u_fun / sigma_v_fun
@@ -301,7 +308,7 @@ sfm <- function(formula,
       }
 
       if (model_name == "NE_Z") {
-        sigma_u_fun <- exp(data_z_vars %*% z_z_vec)
+        sigma_u_fun <- .z_sigma(data_z_vars %*% z_z_vec)
         sigv <- x[1]
         l1 <- log(1 / sigma_u_fun)
         l2 <- pnorm(-(eps / sigv) - (sigv / sigma_u_fun), log.p = TRUE)
@@ -316,18 +323,38 @@ sfm <- function(formula,
       }
 
       if (model_name == "NE") {
-        l1 <- log(1 / x[2])
-        l2 <- pnorm(-(eps / x[1]) - (x[1] / x[2]), log.p = TRUE)
-        l3 <- (eps / x[2]) + (x[1]^2 / (2 * x[2]^2))
-        like <- l1 + l2 + l3
+        ## log Phi(z) and the tilt eps/sigma_u + sigma_v^2/(2 sigma_u^2) both
+        ## diverge like z^2/2 as sigma_u -> 0 and cancel to catastrophic
+        ## precision loss; .log_phi_tilt() does that cancellation in closed
+        ## form.  See its comment in matrix_utils.R.
+        ##
+        ## Guard the DOMAIN, as NGE/NLN/NW already do. Without it the optimizer
+        ## probing sigma_u <= 0 evaluates log(x[2]) and emits "NaNs produced" --
+        ## 17 times in a single NE fit on a wrongly skewed sample -- burying any
+        ## warning that actually matters. This steers the search exactly as
+        ## before; it does not bound the ESTIMATE, which for these data can
+        ## legitimately sit on the zero boundary (see .wrong_skew_boundary()).
+        ## A large FINITE penalty, not .Machine$double.xmax: optim() differences
+        ## the objective for its gradient and differencing 1.8e308 overflows to
+        ## a non-finite value, aborting the fit with "non-finite
+        ## finite-difference value" instead of steering away. The NLN/NW
+        ## branches already use 1e12 for this reason; NGE still uses xmax and
+        ## should be changed to match.
+        if (!is.finite(x[1]) || !is.finite(x[2]) || x[1] <= 0 || x[2] <= 0) {
+          return(1e12)
+        }
+        z <- -(eps / x[1]) - (x[1] / x[2])
+        like <- -log(x[2]) - (eps^2 / (2 * x[1]^2)) + .log_phi_tilt(z)
       }
 
       if (model_name == "NU") {
         ## Normal-uniform (Li 1996, Nguyen 2010): u ~ U(0, theta).
         sigv <- x[1]
         theta <- x[2]
+        ## Finite penalty for the same reason as NE/NGE/NLN/NW above: optim()
+        ## differences the objective, and differencing xmax overflows.
         if (!is.finite(sigv) || !is.finite(theta) || sigv <= 0 || theta <= 0) {
-          return(.Machine$double.xmax)
+          return(1e12)
         }
         cdf_hi <- pnorm((eps + theta) / sigv)
         cdf_lo <- pnorm(eps / sigv)
@@ -338,12 +365,21 @@ sfm <- function(formula,
         ## Normal-generalized exponential: u ~ GE(2, lambda), i.e.
         sigv <- x[1]
         sigu <- x[2]
+        ## Finite penalty, not .Machine$double.xmax: optim() differences the
+        ## objective for its gradient, and differencing 1.8e308 overflows to a
+        ## non-finite value that aborts the fit outright. Measured before the
+        ## change: 3 of 45 NGE fits at N = 150 died with "non-finite
+        ## finite-difference value", including at sigma_u = 1, sigma_v = 0.3.
         if (!is.finite(sigv) || !is.finite(sigu) || sigv <= 0 || sigu <= 0) {
-          return(.Machine$double.xmax)
+          return(1e12)
         }
         lam <- 1 / sigu
-        lt1 <- lam * eps + (lam^2 * sigv^2) / 2 + pnorm(-eps / sigv - lam * sigv, log.p = TRUE)
-        lt2 <- 2 * lam * eps + 2 * (lam^2 * sigv^2) + pnorm(-eps / sigv - 2 * lam * sigv, log.p = TRUE)
+        ## Both terms are exponentially tilted Gaussians with the same defect
+        ## as NE above, so both go through .log_phi_tilt().  The shared
+        ## -eps^2/(2 sigma_v^2) cancels out of d entirely.
+        q <- eps^2 / (2 * sigv^2)
+        lt1 <- -q + .log_phi_tilt(-eps / sigv - lam * sigv)
+        lt2 <- -q + .log_phi_tilt(-eps / sigv - 2 * lam * sigv)
         d <- pmin(lt2 - lt1, -.Machine$double.eps) ## T2 < T1 by construction
         like <- log(2 * lam) + lt1 + log(-expm1(d))
       }
@@ -756,8 +792,10 @@ sfm <- function(formula,
       sig_u <- opt$par[2]
       lam <- 1 / sig_u
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
-      lt1 <- lam * eps_hat + (lam^2 * sig_v^2) / 2 + pnorm(-eps_hat / sig_v - lam * sig_v, log.p = TRUE)
-      lt2 <- 2 * lam * eps_hat + 2 * (lam^2 * sig_v^2) + pnorm(-eps_hat / sig_v - 2 * lam * sig_v, log.p = TRUE)
+      lt1 <- -(eps_hat^2 / (2 * sig_v^2)) +
+        .log_phi_tilt(-eps_hat / sig_v - lam * sig_v)
+      lt2 <- -(eps_hat^2 / (2 * sig_v^2)) +
+        .log_phi_tilt(-eps_hat / sig_v - 2 * lam * sig_v)
       ## SIGNED mixture, not a convex one: the GE density is a DIFFERENCE of
       ## two exponential pieces.
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
@@ -875,7 +913,9 @@ sfm <- function(formula,
       beta <- opt$par[c(2:NX)]
       delta <- opt$par[c(NZ1:NZ2)]
       sig_v <- opt$par[1]
-      sig_u <- exp((as.matrix(as.matrix(data.frame(subset(data, select = z_vars))))) %*% delta)
+      ## Same link the likelihood used, or the predictor describes a different
+      ## model from the one that was fitted.
+      sig_u <- .z_sigma((as.matrix(as.matrix(data.frame(subset(data, select = z_vars))))) %*% delta)
       lamb <- sig_u / sig_v
       sig <- sqrt(sig_u^2 + sig_v^2)
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
@@ -1051,6 +1091,31 @@ sfm <- function(formula,
       results$u_posterior <- u_post
     }
 
+    ## A one-sided scale on the zero boundary under wrong skew is the CORRECT
+    ## MLE, not a failure, but the MLE path used to report it silently -- the
+    ## user saw only a barrage of "NaNs produced" from the optimizer. The COLS
+    ## path has warned about this since 1.1.x; this is the same message for the
+    ## likelihood path. See .wrong_skew_boundary() in matrix_utils.R.
+    pv <- out["par", ]
+    scale_nm <- intersect(c("sigu", "lambda"), names(pv))
+    ## The skew diagnostic is about the OLS residuals, exactly as the COLS path
+    ## uses -- taking them from lm() avoids depending on how the fitted
+    ## coefficient vector happens to be named for each model.
+    ols_resid <- tryCatch(
+      as.numeric(inefdec_n * stats::lm.fit(as.matrix(data_i_vars), as.numeric(Y))$residuals),
+      error = function(e) NULL
+    )
+    if (length(scale_nm) && !is.null(ols_resid)) {
+      ref <- if (identical(scale_nm[1], "lambda")) 1 else stats::sd(ols_resid)
+      ws <- .wrong_skew_boundary(ols_resid, unname(pv[[scale_nm[1]]]), ref, model_name)
+      results$wrong_skew <- ws$wrong_skew
+      results$sigma_u_at_bound <- ws$at_bound
+      results$residual_m3 <- ws$m3
+      if (isTRUE(ws$wrong_skew) && isTRUE(ws$at_bound)) {
+        .warn_wrong_skew_boundary(ws, model_name, scale_nm[1])
+      }
+    }
+
     ## The variance-determinant block, kept so marginal_effects() can report d
     ## E[u]/d z and d Var[u]/d z without re-deriving the design matrix from.
     if (model_name %in% c("NHN_Z", "NE_Z") && isTRUE(n_z_vars > 0)) {
@@ -1061,9 +1126,9 @@ sfm <- function(formula,
         names(dl) <- colnames(Zm)
         results$z_spec <- list(
           Z = Zm, delta = dl,
-          ## sfm()'s _Z models put the linear predictor on the STANDARD
-          ## DEVIATION, sigma_u = exp(z'delta).
-          link = "sd",
+          ## Whichever scale this fit actually used, so marginal_effects()
+          ## differentiates the right function.
+          link = z_link,
           family = if (model_name == "NHN_Z") "halfnormal" else "exponential"
         )
       }

@@ -109,11 +109,19 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   } else {
     unname(c(sigma_v, sigma_u, 0.5, beta_0, beta_hat))
   }
-  start_v_ne <- if (is.na(beta_0_st)) {
-    unname(c(sigma_v, sigma_u, beta_hat))
-  } else {
-    unname(c(sigma_v, sigma_u, beta_0, beta_hat))
-  }
+  ## NE is started from the bias-corrected moment estimator, not the flat 0.1
+  ## above; see R/ne_start.R.  Falls back to the flat start only if the
+  ## residuals are degenerate.
+  start_v_ne <- tryCatch(
+    .ne_start(epsilon_hat, beta_0_st, beta_hat, rule = "bc"),
+    error = function(e) {
+      if (is.na(beta_0_st)) {
+        unname(c(sigma_v, sigma_u, beta_hat))
+      } else {
+        unname(c(sigma_v, sigma_u, beta_0, beta_hat))
+      }
+    }
+  )
   start_v_nhn <- if (is.na(beta_0_st)) {
     unname(c(lambda, sigma, beta_hat))
   } else {

@@ -35,7 +35,7 @@
 } Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
   \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table) -- the panel index is constructed internally from the \code{individual} and \code{time} arguments -- or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
   \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
-  \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine. Previously hard-coded (200 in the \code{GTRE_FML} branch, 500 elsewhere) and not settable from the call.}
+  \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine.}
   \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
   \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
   \item{REPORT}{reporting parameter}

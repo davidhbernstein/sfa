@@ -1071,6 +1071,37 @@
 }
 
 
+## log Phi(z) + z^2/2, without ever forming either term.
+##
+## Every exponentially tilted Gaussian in this package (NE, NGE, and the
+## two-tier likelihoods) needs log Phi(z) added to a tilt that equals z^2/2 up
+## to terms in eps^2/sigma_v^2.  Computed separately the two diverge with
+## opposite signs as the one-sided scale goes to zero, and their sum is a
+## catastrophic cancellation: at z = -5.9e9 the terms are -/+1.7e19, where
+## consecutive doubles are 2048 apart, so the sum returns rounding noise --
+## positive noise, which an optimiser will happily maximise.
+##
+## For z -> -Inf,
+##   log Phi(z) = -z^2/2 - log(2 pi)/2 - log(-z) + log1p(-1/z^2 + 3/z^4 - ...)
+## so the z^2/2 cancels analytically and nothing large is ever formed.  The
+## direct form is exact for moderate z and is kept there; the switch at -1e3
+## is conservative (the naive sum only starts losing digits near |z| ~ 1e6).
+.log_phi_tilt <- function(z, z_switch = -1e3) {
+  out <- numeric(length(z))
+  ok <- z > z_switch
+  if (any(ok)) {
+    out[ok] <- stats::pnorm(z[ok], log.p = TRUE) + z[ok]^2 / 2
+  }
+  if (any(!ok)) {
+    zz <- z[!ok]
+    z2 <- zz^2
+    out[!ok] <- -0.5 * log(2 * pi) - log(-zz) +
+      log1p(-1 / z2 + 3 / z2^2 - 15 / z2^3)
+  }
+  out
+}
+
+
 ## log(exp(a) + exp(b)), elementwise, without leaving the log scale.
 .log_add2 <- function(a, b) {
   m <- pmax(a, b)
@@ -1502,4 +1533,46 @@
   } else {
     function(p) qweibull(p, shape = shape, scale = sigma_u)
   }
+}
+
+## Helper: is a fitted one-sided scale sitting on the zero boundary because the
+## residuals are skewed the wrong way?
+##
+## sigma_u = 0 under wrong skew is the CORRECT maximum likelihood estimate, not
+## a numerical failure -- Waldman (1982) showed the likelihood has a stationary
+## point there, and Olson, Schmidt and Waldman (1980) call it the Type I
+## failure. It is common in small samples: at lambda = 0.75 with N = 100, 13.2%
+## of samples come out wrongly skewed and 17.7% of THOSE put sigma_u on the
+## boundary, while not one correctly skewed sample does. So the right response
+## is to say so, not to bound sigma_u away from zero -- a bound would corrupt
+## the very samples where the boundary is the answer.
+##
+## `scale_hat` is the fitted one-sided scale (or lambda), `ref` the residual
+## scale it is judged against.
+.wrong_skew_boundary <- function(resid, scale_hat, ref, model_name,
+                                 rel_tol = 1e-3) {
+  e <- as.numeric(resid)
+  e <- e[is.finite(e)]
+  if (length(e) < 4L || !is.finite(scale_hat) || !is.finite(ref) || ref <= 0) {
+    return(list(wrong_skew = NA, at_bound = NA, m3 = NA_real_))
+  }
+  m3 <- mean((e - mean(e))^3)
+  list(wrong_skew = m3 >= 0,
+       at_bound = scale_hat / ref < rel_tol,
+       m3 = m3)
+}
+
+## Helper: the warning text for the case above
+.warn_wrong_skew_boundary <- function(ws, model_name, scale_name = "sigma_u") {
+  warning("sfm(model_name = \"", model_name, "\"): ", scale_name,
+    " has collapsed to the boundary and the OLS residuals are skewed the WRONG ",
+    "way (third central moment ", signif(ws$m3, 3), " >= 0). A production ",
+    "frontier implies negative skew, so there is no interior maximum and the ",
+    "boundary IS the maximum likelihood estimate -- this is the Type I failure ",
+    "of Olson, Schmidt and Waldman (1980), not a numerical problem. Read it as ",
+    "no evidence of inefficiency in these data rather than as an estimate of ",
+    "zero, and treat the efficiency scores as uninformative. Inspect ",
+    "$wrong_skew and $sigma_u_at_bound.",
+    call. = FALSE
+  )
 }

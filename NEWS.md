@@ -1,5 +1,106 @@
 # sfa 1.1.6 (development)
 
+* **`sfm(model_name = "NE")` could return a positive log-likelihood with
+  `sigma_u = 0` and a divergent `sigma_v`.** The log-density was built as
+  `-log(sigma_u) + log Phi(z) + eps/sigma_u + sigma_v^2/(2 sigma_u^2)`. Using
+  `pnorm(log.p = TRUE)` for the middle term is correct as far as it goes, but
+  that term and the tilt both diverge like `z^2/2` with opposite signs as
+  `sigma_u -> 0`, and their sum is a catastrophic cancellation. At
+  `sigma_v = 587`, `sigma_u = 1e-7` the two are `-/+1.7252e19`, where
+  consecutive doubles are 2048 apart, so the sum came back as rounding noise --
+  positive noise, which the optimizer then maximized by running `sigma_u` to
+  its lower bound.
+
+  This was not rare and it was silent: scanning 150 samples at
+  `lambda = 0.75`, `N = 100`, one returned `sigma_v = 587.4`, `sigma_u = 0`,
+  `logLik = +468992`, and another `sigma_v = 3.4e15`, `logLik = +7.9e30`, both
+  as ordinary `sfareg` objects with no error and no warning. Across a
+  12-cell design at 1,500 replications the rate was 0.74%, reaching 4.4% at
+  `lambda = 0.5`, `N = 100`.
+
+  New `.log_phi_tilt()` (`matrix_utils.R`) does the cancellation analytically
+  instead. Because
+  `z^2/2 = eps^2/(2 sigma_v^2) + eps/sigma_u + sigma_v^2/(2 sigma_u^2)`, the
+  tail expansion of `log Phi(z)` cancels the tilt exactly and leaves only
+  `-eps^2/(2 sigma_v^2) - log(2 pi)/2 - log(-z) + log1p(-1/z^2 + 3/z^4 - ...)`,
+  in which no large intermediate is ever formed. It agrees with the previous
+  expression to 8.5e-13 over 75,000 evaluations wherever the previous one was
+  trustworthy, integrates to 1, and takes the failure rate to 0 in 2,200 fits.
+
+* **`"NGE"` carried the identical defect and is fixed the same way.** Its
+  likelihood is a difference of two exponentially tilted Gaussians, both with
+  the same structure as `"NE"`; both now go through `.log_phi_tilt()`, in the
+  likelihood and in the post-estimation efficiency block. Agreement with the
+  previous expression is 7.1e-10. `"TSL"`, `"TTNE"` and `"NE_Z"` share the
+  structure and have **not** been checked.
+
+* **`"NE"` starting values now come from a bias-corrected moment estimator**
+  (new `R/ne_start.R`) rather than the flat `sigma_u = sigma_v = 0.1` that
+  `start_cs()` hands every cross-sectional model. Minus the mean negative OLS
+  residual has an exact asymptotic bias factor `h(lambda)`; `.ne_start()`
+  divides it out, shrunk by the share of MSE the bias accounts for. Over an
+  88-cell design at 2,000 replications, total MSE of the start against the
+  truth: 5.49 for the uncorrected version, 2.86 for the third-moment (COLS)
+  inversion, 1.88 for their minimum, 1.82 for this one. Effect on the fitted
+  MLE is smaller and confined to `lambda >= 1.5`, where it lowers MSE of
+  `sigma_u-hat` by 5-51%; below `lambda = 1` it changes nothing. Derived in
+  Bernstein, Parmeter and Wright, "Starting Values for the Normal-Exponential
+  Stochastic Frontier Model".
+
+  Note this leaves the flat `0.1` start in place for every *other*
+  cross-sectional model, which `PROJECT_STATUS.md` still lists as open.
+
+* **`sfm()` now reports when `sigma_u` sits on the zero boundary under wrong
+  skewness, instead of saying nothing.** A one-sided scale at zero when the OLS
+  residuals are skewed the wrong way is the *correct* maximum likelihood
+  estimate -- the Type I failure of Olson, Schmidt and Waldman (1980) -- not a
+  numerical problem. The `estimator = "cols"` path has warned about this for
+  some time; the likelihood path did not, so a user got a boundary fit with no
+  explanation.
+
+  New `$wrong_skew`, `$sigma_u_at_bound` and `$residual_m3` components, plus a
+  warning that says what the boundary means and that the efficiency scores are
+  uninformative there. Measured at `lambda = 0.75`, `N = 100` over 600 fits:
+  13.2% of samples are wrongly skewed, 17.7% of *those* put `sigma_u` on the
+  boundary, and **not one** correctly skewed sample does. That is why the fix
+  is to report the boundary rather than bound `sigma_u` away from zero -- a
+  bound would corrupt precisely the samples where the boundary is the answer.
+
+* **`"NE"` no longer emits a stream of `NaNs produced` warnings.** Its
+  likelihood had no guard against a non-positive scale, so the optimizer
+  probing `sigma_u <= 0` evaluated `log(sigma_u)` and warned -- 17 times in a
+  single fit on a wrongly skewed sample, burying the warning that mattered. It
+  now returns a large finite penalty for out-of-domain parameters, as `"NLN"`
+  and `"NW"` already do. **No estimate changes**: this bounds the objective's
+  domain, not the estimate.
+
+* **`"NGE"` aborted outright on about 7% of small samples, and `"NU"` could
+  have.** Both guarded their scale parameters with
+  `return(.Machine$double.xmax)`. `optim()` differences the objective to form a
+  gradient, and differencing 1.8e308 overflows to a non-finite value, so the
+  fit died with `non-finite finite-difference value` instead of the optimizer
+  being steered away. Measured before the change: 3 of 45 `"NGE"` fits at
+  `N = 150` failed this way, including at `sigma_u = 1, sigma_v = 0.3`. Both now
+  use the same finite penalty the other branches use -- 0 of 45 failures after,
+  and `"NU"` estimates are bit-identical across 45 fits, since the penalty only
+  ever applies where the parameters are already inadmissible.
+
+* **`sfm()` gains `z_link`, which fixes a real trap in comparing `_Z` fits
+  across the package.** `sfm()`'s `"NHN_Z"`/`"NE_Z"` put the
+  variance-determinant linear predictor on the standard deviation,
+  `sigma_u = exp(z'delta)`, while `psfm()`'s `"TRE_Z"`/`"GTRE_Z"` put it on the
+  variance, `sigma_u = sqrt(exp(z'delta))` -- as do the competing packages.
+  Since `exp(eta) = exp(eta/2)^2` the two fit the same model and return the same
+  `sigma_u`, the same log-likelihood and the same marginal effects, but `delta`
+  under the SD link is exactly **half** `delta` under the variance link. Reading
+  a `delta` from one family as if it came from the other therefore doubles or
+  halves every reported effect.
+
+  `z_link = "var"` puts an `sfm()` fit on the same footing as `psfm()` and
+  `sfaR`. **The default is `"sd"`, so no existing result changes.** The
+  efficiency predictor and the `z_spec` that `marginal_effects()` reads both
+  follow whichever link was used.
+
 * **`sfm()`'s simulated-ML models `"NLN"` and `"NW"` now estimate the composed
   density from two proposals at once, which fixes an accuracy defect that no
   single-proposal scheme can.** The integrand is a product of a normal kernel of
