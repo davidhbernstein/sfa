@@ -1,6 +1,7 @@
 ttsfm <- function(formula,
                   model_name = c("TTNE", "TTHN", "TTNLS"),
                   data,
+                  z_link = c("sd", "var"),
                   maxit.bobyqa = 80000,
                   maxit.psoptim = 1000,
                   maxit.optim = 1000,
@@ -20,6 +21,12 @@ ttsfm <- function(formula,
   ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+  ## Scale the variance-determinant predictor sits on. ttsfm() has always used
+  ## the standard deviation, like sfm(); "var" matches psfm() and the competing
+  ## packages, so a delta can be compared across entry points. The default
+  ## preserves existing behaviour. See gap C1.
+  z_link <- match.arg(z_link)
+  .z_sigma <- if (identical(z_link, "sd")) function(eta) exp(eta) else function(eta) sqrt(exp(eta))
 
   .validate_sfa_call(formula, data, "ttsfm",
     maxit = list(
@@ -120,8 +127,8 @@ ttsfm <- function(formula,
       nzw <- n_zp_vars ## number of determinants for w component
 
       sigv <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-      sigu <- exp((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
-      sigw <- exp((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      sigu <- .z_sigma((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
+      sigw <- .z_sigma((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
 
       # if (sigv<= 1e-6){stop("Variance too small")}
 
@@ -295,8 +302,8 @@ ttsfm <- function(formula,
 
 
         sig.v <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-        sig.u <- exp((zu %*% p[(nr + 2):(nr + nzu + 1)]))
-        sig.w <- exp((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+        sig.u <- .z_sigma((zu %*% p[(nr + 2):(nr + nzu + 1)]))
+        sig.w <- .z_sigma((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
       } else {
         ep.hat <- e
 
@@ -370,8 +377,8 @@ ttsfm <- function(formula,
       nzw <- n_zp_vars ## number of determinants for w component
 
       sigv <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-      sigu <- exp((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
-      sigw <- exp((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      sigu <- .z_sigma((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
+      sigw <- .z_sigma((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
 
       ## Numerical safety, same rationale as the analogous fix in the TTNE
       ## branch above: theta1/theta2/omega1/omega2 below divide by sigv.
@@ -550,8 +557,8 @@ ttsfm <- function(formula,
       }
 
       sig.v <- exp(p[nr + 1])
-      sig.u <- exp((zu %*% p[(nr + 2):(nr + nzu + 1)]))
-      sig.w <- exp((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      sig.u <- .z_sigma((zu %*% p[(nr + 2):(nr + nzu + 1)]))
+      sig.w <- .z_sigma((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
 
       theta1 <- sig.w / sig.v
       theta2 <- sig.u / sig.v
@@ -635,8 +642,8 @@ ttsfm <- function(formula,
       nzu <- n_z_vars
       nzw <- n_zp_vars
 
-      sigu <- exp(data_z_vars %*% p[(nr + 2):(nr + nzu + 1)])
-      sigw <- exp(data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)])
+      sigu <- .z_sigma(data_z_vars %*% p[(nr + 2):(nr + nzu + 1)])
+      sigw <- .z_sigma(data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)])
 
       e <- Y - data_i_vars %*% p[1:nr] + sigu - sigw
       ss <- e^2
@@ -786,8 +793,8 @@ ttsfm <- function(formula,
       nr <- ncol(data_i_vars)
       nzu <- ncol(zu)
       nzw <- ncol(zw)
-      sig.u <- exp(zu %*% p[(nr + 2):(nr + nzu + 1)])
-      sig.w <- exp(zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)])
+      sig.u <- .z_sigma(zu %*% p[(nr + 2):(nr + nzu + 1)])
+      sig.w <- .z_sigma(zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)])
 
       list(
         M1  = 1 - exp(-sig.w),

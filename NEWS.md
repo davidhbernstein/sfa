@@ -85,6 +85,17 @@
   and `"NU"` estimates are bit-identical across 45 fits, since the penalty only
   ever applies where the parameters are already inadmissible.
 
+* **`ttsfm()` gains `z_link` too**, completing the cross-sectional half of the
+  variance-determinant inconsistency. Two-tier models placed `z'delta` on the
+  standard deviation, like `sfm()` and unlike `psfm()` and the competing
+  packages; `z_link = "var"` aligns them. The default is `"sd"`, and fits under
+  it are byte-identical to before -- checked against the previous build with
+  the particle swarm seeded, for both `"TTNE"` and `"TTHN"`.
+
+  Both tiers move together: `delta` on `zu` and on `zw` each halve exactly
+  between the links, while the maximised log-likelihood and the frontier
+  coefficients are unchanged.
+
 * **`marginal_effects()` now works on panel fits**, `psfm(model_name = "TRE_Z")`
   and `psfm(model_name = "GTRE_Z")`. These place `z'delta` on the variance,
   and the link is read from the fit rather than assumed, so their effects are
