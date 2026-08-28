@@ -91,12 +91,15 @@
   directly comparable with an `sfm()` fit -- including one fitted with the new
   `z_link = "var"`.
 
-  For `"GTRE_Z"` the effects are those on `sigma_u`, the transient component.
-  That model carries a second determinant block for the persistent `sigma_h`,
-  and its coefficients are the *trailing* ones, so the `sigma_u` block is
-  located by name rather than by position -- taking the last coefficients
-  would have silently reported `sigma_h` effects under a `sigma_u` label.
-  Effects on `sigma_h` are not reported yet.
+  `"GTRE_Z"` separates persistent inefficiency from transient, and **both**
+  are reported: `component = "u"` for the transient block and
+  `component = "h"` for the persistent one. Each block is located by name
+  rather than by position, because the `sigma_h` coefficients are the
+  *trailing* ones -- a positional rule would have silently reported `sigma_h`
+  effects under a `sigma_u` label. Output columns carry the component
+  (`dE_u.dz` against `dE_h.dzp`), so a table cannot be misread once separated
+  from the call that produced it. The default is `"u"`, so nothing existing
+  changes.
 
 * **`sfm()` gains `z_link`, which fixes a real trap in comparing `_Z` fits
   across the package.** `sfm()`'s `"NHN_Z"`/`"NE_Z"` put the

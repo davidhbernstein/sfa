@@ -1369,9 +1369,13 @@ psfm <- function(formula,
       call          = call,
       verbose       = verbose
     )
-    ## sigma_u block only. GTRE_Z also has a sigma_h block ("(Intercept h)",
-    ## zp...), which marginal_effects() does not yet report.
+    ## Both determinant blocks. GTRE_Z's whole point is separating persistent
+    ## from transient inefficiency, so reporting effects on only one of them
+    ## would be half the model. Located by name: the sigma_h block is the
+    ## TRAILING one, so positional slicing would silently swap them.
     results$z_spec <- .psfm_z_spec(data, z_vars, results$out[, "par"], "halfnormal")
+    results$z_spec_h <- .psfm_z_spec(data, zp_vars, results$out[, "par"],
+                                     "halfnormal", anchor = "(Intercept h)")
     return(results)
   }
   if (model_name == "TRE_Z") {

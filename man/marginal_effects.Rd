@@ -8,13 +8,20 @@ the inefficiency term, \eqn{\partial E[u]/\partial z_k} and
 \eqn{\partial \mathrm{Var}[u]/\partial z_k}.
 }
 \usage{
-marginal_effects(object, average = FALSE)
+marginal_effects(object, average = FALSE, component = c("u", "h"))
 }
 \arguments{
   \item{object}{an object of class \code{"sfareg"} from \code{\link{sfm}}
     (\code{"NHN_Z"}, \code{"NE_Z"}) or \code{\link{psfm}}
     (\code{"TRE_Z"}, \code{"GTRE_Z"}), fitted with a variance-determinant
     formula such as \code{y ~ x1 + x2 | z}.}
+  \item{component}{which inefficiency component to differentiate. \code{"u"}
+    (the default) is the only choice for every model except
+    \code{psfm(model_name = "GTRE_Z")}, where it is the \emph{transient}
+    component; \code{"h"} selects that model's \emph{persistent} component,
+    parameterized by the third formula segment \code{y ~ x | z | zp}. The
+    output columns are named after the component, so a table cannot be misread
+    once separated from the call that produced it.}
   \item{average}{if \code{TRUE}, return only the named vector of average
     marginal effects. Default \code{FALSE}, which returns the full
     per-observation table with that vector attached as the \code{"average"}
@@ -49,13 +56,13 @@ The link is read from the fit rather than assumed, so a \code{\link{sfm}}
 model fitted with \code{z_link = "var"} and a \code{\link{psfm}} model are
 handled the same way and their effects are directly comparable.
 
-For \code{psfm(model_name = "GTRE_Z")} the effects reported are those on
-\eqn{\sigma_u}, the transient inefficiency. That model carries a second
-determinant block for the persistent component \eqn{\sigma_h}
-(\code{"(Intercept h)"} and the third formula segment); effects on
-\eqn{\sigma_h} are not reported yet. The \eqn{\sigma_u} block is located by
-name, not by position, precisely because the \eqn{\sigma_h} coefficients are
-the trailing ones.
+\code{psfm(model_name = "GTRE_Z")} separates \emph{persistent} inefficiency
+\eqn{h_i} from \emph{transient} \eqn{u_{it}} and gives each its own
+determinant block, so both are available: \code{component = "u"} for the
+transient effects and \code{component = "h"} for the persistent ones. Each
+block is located by NAME rather than by position, because the \eqn{\sigma_h}
+coefficients are the trailing ones and a positional rule would report them
+under a \eqn{\sigma_u} label.
 
 Effects are per observation, because \eqn{\sigma_u} varies with \eqn{z}.
 Constant columns of the \eqn{z} design are dropped: the derivative with
