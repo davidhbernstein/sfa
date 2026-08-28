@@ -227,3 +227,81 @@
   u_hat <- pmax(u_hat, 0)
   list(u_hat = u_hat, exp_u_hat = exp(-u_hat), frontier = best)
 }
+
+## Schmidt and Sickles (1984), the random-effects side. `SSFE` uses their
+## within/LSDV estimator; these two complete the family with the GLS estimator
+## and its correlated-random-effects correction. All three read inefficiency
+## off the firm effect as distance from the best firm, and none assumes a
+## distribution for u.
+##
+## The trade is the classic one. RE is more efficient than FE and identifies
+## coefficients on TIME-INVARIANT regressors, which the within estimator sweeps
+## away -- but only if the effects are uncorrelated with the regressors, and in
+## a frontier model that assumption says inefficiency is unrelated to input
+## choice, which is exactly what a manager would not do. CRE is the answer:
+## Mundlak (1978) adds the within-firm means of the time-varying regressors, so
+## the correlation is modelled rather than assumed away, and the remaining
+## slopes equal the within estimates while time-invariant regressors stay
+## identified.
+.fit_ss_re <- function(formula_x, data, individual, model_name, inefdec,
+                       x_vars_vec) {
+  cre <- identical(model_name, "SSCRE")
+  form <- formula_x
+  mund <- character(0)
+
+  if (cre) {
+    ## Group means of the time-varying regressors. A regressor already constant
+    ## within firm has a mean identical to itself, so adding it would be exactly
+    ## collinear -- those are precisely the ones RE exists to identify, and they
+    ## are left alone.
+    X <- stats::model.matrix(formula_x, data = data)
+    icol <- match("(Intercept)", colnames(X))
+    if (!is.na(icol)) X <- X[, -icol, drop = FALSE]
+    id <- as.factor(data[[individual]])
+    varies <- vapply(seq_len(ncol(X)), function(j) {
+      any(tapply(X[, j], id, function(z) stats::var(z) > 1e-12), na.rm = TRUE)
+    }, logical(1))
+    if (!any(varies)) {
+      stop("psfm(model_name = \"SSCRE\"): no regressor varies within firm, so ",
+        "there is nothing for the Mundlak means to correct. Use ",
+        "model_name = \"SSRE\".",
+        call. = FALSE
+      )
+    }
+    Xm <- X[, varies, drop = FALSE]
+    mund <- paste0(".mean_", make.names(colnames(Xm)))
+    gm <- apply(Xm, 2, function(z) as.numeric(stats::ave(z, id, FUN = mean)))
+    gm <- matrix(gm, nrow = nrow(X), dimnames = list(NULL, mund))
+    data <- cbind(data, as.data.frame(gm))
+    form <- stats::update(stats::formula(formula_x),
+      stats::reformulate(c(".", mund))
+    )
+  }
+
+  fit <- plm::plm(form, data,
+    effect = "individual", model = "random", index = individual
+  )
+  cf <- stats::coef(fit)
+  se <- summary(fit)$coefficients[, "Std. Error"]
+
+  ## The BLUPs of the firm effects. Under CRE these are the effects NET of the
+  ## part the Mundlak means explain, which is the point: what is left is the
+  ## component not predictable from input use.
+  alpha_hat <- plm::ranef(fit)
+  alpha_hat <- stats::setNames(as.numeric(alpha_hat), names(alpha_hat))
+
+  u_i <- if (isTRUE(inefdec)) {
+    max(alpha_hat) - alpha_hat
+  } else {
+    alpha_hat - min(alpha_hat)
+  }
+  ## One value per firm, expanded to one per observation so the return shape
+  ## matches CSS/LS and every other panel model here.
+  key <- as.character(data[[individual]])
+  u_hat <- unname(u_i[match(key, names(u_i))])
+
+  list(beta = cf, se = se, alpha_i = alpha_hat,
+       u_hat = u_hat, exp_u_hat = exp(-u_hat),
+       mundlak = mund, theta = plm::ercomp(fit)$theta,
+       ercomp = plm::ercomp(fit), plm_fit = fit)
+}

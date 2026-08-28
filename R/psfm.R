@@ -2,7 +2,8 @@ psfm <- function(formula,
                  model_name = c(
                    "TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "TFE", "TFE_WMLE",
                    "FD", "GTRE_SEQ1", "GTRE_SEQ2", "SSFE", "PL80", "PL80_MVTN",
-                   "BC92", "K1990", "K1990modified", "CSS", "LS"
+                   "BC92", "K1990", "K1990modified", "CSS", "LS",
+                   "SSRE", "SSCRE", "KSS"
                  ),
                  data,
                  maxit.bobyqa = 5000,
@@ -27,7 +28,10 @@ psfm <- function(formula,
                  estimator = c("fiml", "sml", "seq1", "seq2"),
                  collinear_action = c("start_only", "error", "warn_drop"),
                  time = NULL,
-                 tfe_lambda_max = 100) {
+                 tfe_lambda_max = 100,
+                 kss_L = "auto",
+                 kss_smooth = "auto",
+                 kss_L_max = 7L) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -187,6 +191,81 @@ psfm <- function(formula,
         start_val = start_val, verbose = verbose, call = call,
         formula = formula
       ))
+    }
+
+    ## Kneip, Sickles and Song (2012). The temporal basis and its dimension are
+    ## both estimated, where CSS assumes {1, t, t^2} and LS assumes L = 1.
+    if (model_name == "KSS") {
+      Start.Time <- start.time()
+      data <- data[rownames(data_x), , drop = FALSE]
+      su <- .classical_panel_setup(formula_x, data, individual, time, y_var, model_name)
+      KS <- .fit_kss(su$y, su$X, su$id, su$t, kss_L, kss_smooth, kss_L_max)
+      SC <- .classical_panel_scores(KS$alpha_it, su$t, inefdec)
+      End.Time <- end.time(Start.Time)
+
+      out <- matrix(0, nrow = 3, ncol = length(KS$beta))
+      rownames(out) <- c("par", "st_err", "t-val")
+      colnames(out) <- names(KS$beta)
+      out[1, ] <- KS$beta
+      out[2, ] <- KS$se
+      out[3, ] <- out[1, ] / out[2, ]
+
+      results <- list(
+        t(out), End.Time, model_name, formula, data, KS$alpha_it,
+        SC$u_hat, SC$exp_u_hat,
+        out["par", ], out["st_err", ], out["t-val", ], call
+      )
+      class(results) <- "sfareg"
+      names(results) <- c(
+        "out", "total_time", "model_name", "formula", "data", "alpha_hat",
+        "u_hat", "exp_u_hat",
+        "coefficients", "std.errors", "t.values", "call"
+      )
+      results$nobs <- length(su$y)
+      results$sigma_v <- sqrt(KS$sigma2)
+      results$residuals <- KS$residuals
+      results$df.residual <- KS$df
+      results$frontier_alpha <- SC$frontier
+      results$kss <- list(
+        L = KS$L, kappa = KS$kappa, basis = KS$basis, loadings = KS$loadings,
+        eigenvalues = KS$eigenvalues, iterations = KS$iterations,
+        converged = KS$converged
+      )
+      return(results)
+    }
+
+    ## Schmidt and Sickles (1984) random effects and correlated random effects.
+    ## Like SSFE and CSS/LS these are not maximum likelihood and carry no $opt.
+    if (model_name %in% c("SSRE", "SSCRE")) {
+      Start.Time <- start.time()
+      data <- data[rownames(data_x), , drop = FALSE]
+      RE <- .fit_ss_re(formula_x, data, individual, model_name, inefdec, x_vars_vec)
+      End.Time <- end.time(Start.Time)
+
+      out <- matrix(0, nrow = 3, ncol = length(RE$beta))
+      rownames(out) <- c("par", "st_err", "t-val")
+      colnames(out) <- names(RE$beta)
+      out[1, ] <- RE$beta
+      out[2, ] <- RE$se[names(RE$beta)]
+      out[3, ] <- out[1, ] / out[2, ]
+
+      results <- list(
+        t(out), End.Time, model_name, formula, data, RE$alpha_i,
+        RE$u_hat, RE$exp_u_hat,
+        out["par", ], out["st_err", ], out["t-val", ], call
+      )
+      class(results) <- "sfareg"
+      names(results) <- c(
+        "out", "total_time", "model_name", "formula", "data", "alpha_hat",
+        "u_hat", "exp_u_hat",
+        "coefficients", "std.errors", "t.values", "call"
+      )
+      results$nobs <- nrow(data)
+      results$theta <- RE$theta
+      results$ercomp <- RE$ercomp
+      results$plm_fit <- RE$plm_fit
+      if (length(RE$mundlak)) results$mundlak_terms <- RE$mundlak
+      return(results)
     }
 
     ## Cornwell, Schmidt and Sickles (1990) and Lee and Schmidt (1993): classical
@@ -2784,7 +2863,7 @@ psfm <- function(formula,
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for psfm() but has no implementation branch. ",
-      "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"GTRE_FML\", \"TFE\", \"TFE_WMLE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\", \"K1990\", \"K1990modified\", \"CSS\", \"LS\"."
+      "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"GTRE_FML\", \"TFE\", \"TFE_WMLE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\", \"K1990\", \"K1990modified\", \"CSS\", \"LS\", \"SSRE\", \"SSCRE\", \"KSS\"."
     ), call. = FALSE)
   }
 }

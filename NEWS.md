@@ -38,6 +38,51 @@
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **`psfm(model_name = "KSS")` -- Kneip, Sickles and Song (2012).** The firm
+  effect is a smooth function of time lying in an `L`-dimensional space whose
+  basis is estimated from the data:
+  `alpha_it = sum_r theta_ir * g_r(t)`. Nothing on CRAN implements this, so it
+  is a differentiator rather than catch-up.
+
+  It makes explicit what the other time-varying estimators are special cases
+  of: `SSFE` is `L = 1` with a constant basis, `LS` is `L = 1` with the basis
+  free, `CSS` is `L = 3` with the basis fixed to `{1, t, t^2}`, and `KSS`
+  estimates both. Follows the original's three steps -- cross-sectional
+  centering by period, then smoothing of each firm's residual trajectory
+  followed by an eigendecomposition of their empirical covariance, then
+  loadings by least squares -- iterated with `beta`. Balanced panels only,
+  which is what the estimator is defined on; it refuses rather than quietly
+  fitting something else.
+
+  Recovers the true rank exactly at `L = 1, 2, 3` on simulated data
+  (n = 110, T = 10), with the estimated basis spanning the true factor space
+  and `sigma_v` recovered to within 3%.
+
+  Both tuning choices are exposed. `kss_smooth` defaults to GCV; `kss_L`
+  defaults to the Bai and Ng (2002) `IC_p2` criterion, which is **not** the
+  original paper's threshold rule -- said plainly in `?psfm` because a
+  different rule can select a different `L`. `$kss$eigenvalues` is returned so
+  the choice can be inspected.
+
+  One trap worth knowing: `KSS`'s period centering means its `alpha_hat`
+  carries no period mean while `CSS`'s and `LS`'s do, so the two differ by a
+  per-period constant *by construction*. Correlating them directly understates
+  the agreement badly (0.93 against 0.99 on a design where they agree). Compare
+  `u_hat`, which is a within-period contrast and invariant to the shift.
+
+* **`psfm(model_name = "SSRE")` and `"SSCRE"`** complete the Schmidt-Sickles
+  (1984) family that `SSFE` starts: the GLS estimator, and its
+  correlated-random-effects correction. `SSRE` is more efficient than `SSFE`
+  and identifies time-invariant regressors, but assumes the effects are
+  uncorrelated with the regressors -- in a frontier model, that a firm's
+  inefficiency is unrelated to its input choices.
+
+  `SSCRE` adds the within-firm means of the time-varying regressors (Mundlak
+  1978), which models that correlation rather than assuming it away. Its
+  slopes then equal `SSFE`'s within slopes **exactly**, which the tests pin at
+  1e-6; the coefficients on the added means (reported with a `.mean_` prefix)
+  are the Mundlak form of the Hausman test.
+
 * **Two classical time-varying panel estimators: `psfm(model_name = "CSS")`
   and `psfm(model_name = "LS")`.** Cornwell, Schmidt and Sickles (1990) and
   Lee and Schmidt (1993). Both sit between `"SSFE"`, which holds inefficiency

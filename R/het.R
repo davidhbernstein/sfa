@@ -172,8 +172,18 @@
   ## The link decides what the intercept of each variance block means: on the
   ## "sd" link the predictor is log sigma, on "var" it is log sigma^2.
   .d0 <- function(s) if (identical(z_link, "sd")) log(s) else log(s^2)
-  dv0 <- c(.d0(mom$sigma_v), rep(0, n_v - 1L))
-  du0 <- c(.d0(mom$sigma_u), rep(0, n_u - 1L))
+  ## Put the moment estimate on the block's INTERCEPT, which is not always the
+  ## first column -- `vhet = ~ 0 + z` has none, and a user may order terms
+  ## however they like. Falling back to column one keeps a sane start either
+  ## way; this is a starting value, not a constraint.
+  .block0 <- function(Z, s) {
+    d <- rep(0, ncol(Z))
+    j <- match("(Intercept)", colnames(Z), nomatch = 1L)
+    d[j] <- .d0(s)
+    d
+  }
+  dv0 <- .block0(Zv, mom$sigma_v)
+  du0 <- .block0(Zu, mom$sigma_u)
   dm0 <- if (n_m > 0L) rep(0, n_m) else numeric(0)
   start_v <- c(b0, dv0, du0, dm0)
 

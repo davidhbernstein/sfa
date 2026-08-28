@@ -962,6 +962,7 @@
     "TRE"        = 1,     "GTRE"       = 1,   "GTRE_FML"      = 1,
 
     "CSS"        = 1,     "LS"         = 1,
+    "SSRE"       = 1,     "SSCRE"      = 1,   "KSS"           = 1,
 
     # --- 1 Pipe Allowed (2 Parts) ---
     "TRE_Z"      = 2,     "FD"         = 2,   "ZISF_Z"        = 2,

@@ -6,7 +6,7 @@
                     "GTRE", "GTRE_FML", "TFE", "TFE_WMLE", "FD",
                     "GTRE_SEQ1", "GTRE_SEQ2", "SSFE",
                     "PL80", "PL80_MVTN", "BC92", "K1990", "K1990modified",
-                    "CSS", "LS"), data,
+                    "CSS", "LS", "SSRE", "SSCRE", "KSS"), data,
                     maxit.bobyqa = 5000, maxit.nlminb = 500,
                     maxit.psoptim = 100, maxit.optim = 1000,
                     REPORT = 1, trace = 3, pgtol = 0, individual,
@@ -16,7 +16,8 @@
                     OPG_calc = FALSE,
                     estimator = c("fiml", "sml", "seq1", "seq2"),
                     collinear_action = c("start_only", "error", "warn_drop"),
-                    time = NULL, tfe_lambda_max = 100)}
+                    time = NULL, tfe_lambda_max = 100,
+                    kss_L = "auto", kss_smooth = "auto", kss_L_max = 7L)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -31,6 +32,9 @@
   \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood -- no \code{logLik()}.}
   \item{\code{"CSS"}}{Cornwell, Schmidt and Sickles (1990): a firm-specific quadratic in time, so inefficiency varies over time and firms may cross over. Not maximum likelihood -- no \code{logLik()}.}
   \item{\code{"LS"}}{Lee and Schmidt (1993): one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t \alpha_i}. Time-varying but no crossover. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"SSRE"}}{Schmidt and Sickles (1984) random effects: the GLS estimator, with inefficiency read off the firm effects' BLUPs. More efficient than \code{"SSFE"} and identifies time-invariant regressors, at the cost of assuming the effects are uncorrelated with the regressors. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"SSCRE"}}{Correlated random effects: \code{"SSRE"} augmented with the within-firm means of the time-varying regressors (Mundlak 1978), so that correlation between effects and regressors is modelled rather than assumed away. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"KSS"}}{Kneip, Sickles and Song (2012): the firm effect is a smooth function of time lying in an \eqn{L}-dimensional space whose basis is estimated from the data. Nests \code{"SSFE"}, \code{"LS"} and \code{"CSS"}. Balanced panels only. Not maximum likelihood -- no \code{logLik()}.}
   \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
   \item{\code{"PL80_MVTN"}}{Pitt and Lee's (1981) Model III: inefficiency varies over time and is CORRELATED within a firm, through a multivariate normal truncated to the negative orthant. This is the likelihood from their Appendix 2, which they derived but did not use, calling the T-dimensional integrals intractable. Balanced panels only. See \code{\link{PL80_MVTN}}.}
@@ -68,6 +72,9 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took
   \item{collinear_action}{One of \code{"start_only"} (default), \code{"error"}, or \code{"warn_drop"}. Controls what happens when the \emph{between-individual} design matrix used to build starting values is rank deficient. This is checked separately from the pooled design because the two can differ: time dummies, for example, are routinely estimable in a pooled specification while collapsing onto the intercept once averaged within each unit, which is exactly the situation that makes the internal random-effects initialization fail. \code{"start_only"} keeps the model you asked for and removes the offending columns from the starting-value regression only, taking their starting values from a pooled OLS fit; \code{"error"} stops before estimation and names the offending columns; \code{"warn_drop"} removes those terms from the estimated model. All three report what was found. Only relevant to the models initialized by a random-effects regression (\code{GTRE}, \code{TRE} and their \code{_Z}/\code{SEQ} variants).}
   \item{time}{Character. Name of a time-period column in \code{data}, used by the error-components frontier models (\code{"PL80"}, \code{"BC92"}, \code{"K1990"}, \code{"K1990modified"}). If \code{NULL} (the default), a sequential within-individual time index is constructed from row order, which assumes \code{data} is already sorted chronologically within each individual.}
   \item{tfe_lambda_max}{Numeric. Upper bound placed on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, i.e. \eqn{\sigma_v} is not allowed below about 1\% of \eqn{\sigma}. This is a guard against a genuine degeneracy of Greene's likelihood rather than a convergence tolerance -- see \sQuote{Details}. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
+\item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
+\item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
+\item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. Capped internally at \eqn{\min(T-1, n-1)}.}
 }
 \details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.
 
@@ -162,6 +169,26 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For GTRE_SEQ1 and GTRE_SEQ2 models:}
 \item{other_parms}{A matrix of additional parameters (lambda, sigma, beta_0 for SEQ1; sigma_u, sigma_v, sigma_h, sigma_r, lambda, sigma for SEQ2).}
 
+\bold{The Schmidt--Sickles family.} \code{"SSFE"}, \code{"SSRE"} and \code{"SSCRE"} are the within, GLS and correlated-random-effects members of one family: all three read inefficiency off a firm effect as distance from the best firm, and none assumes a distribution for \eqn{u}. The choice among them is the standard panel trade-off, with a frontier-specific twist. Random effects is the more efficient estimator and is the only one of the three that identifies coefficients on \emph{time-invariant} regressors, which the within transformation sweeps away -- but it requires the effects to be uncorrelated with the regressors, and in a frontier model that assumption says a firm's inefficiency is unrelated to its input choices, which is close to saying managers do not respond to their own productivity.
+
+\code{"SSCRE"} is the answer to that. Adding the within-firm means of the time-varying regressors (Mundlak 1978) models the correlation instead of assuming it away; the slopes on the original regressors then equal the within estimates \emph{exactly} -- not approximately -- while time-invariant regressors remain identified. The coefficients on the added means are reported with a \code{.mean_} prefix, and testing them jointly against zero is the Mundlak form of the Hausman test: if they are indistinguishable from zero, \code{"SSRE"} was safe. A regressor already constant within firm has a group mean identical to itself, so it contributes no Mundlak term; those are exactly the regressors random effects exists to identify, and they are left alone.
+
+\bold{Kneip, Sickles and Song (2012).} \code{"KSS"} writes the firm effect as \eqn{\alpha_{it} = \sum_{r=1}^{L}\theta_{ir} g_r(t)}, where both the basis functions \eqn{g_r} and the dimension \eqn{L} are estimated from the data rather than assumed. That makes explicit what the other time-varying estimators here are special cases of:
+
+\tabular{lll}{
+  \strong{model} \tab \strong{\eqn{L}} \tab \strong{basis} \cr
+  \code{"SSFE"} \tab 1 \tab fixed, constant in \eqn{t} \cr
+  \code{"LS"}   \tab 1 \tab free \cr
+  \code{"CSS"}  \tab 3 \tab fixed to \eqn{\{1, t, t^2\}} \cr
+  \code{"KSS"}  \tab estimated \tab estimated
+}
+
+Estimation follows the three steps of the original: cross-sectional centering by period (which imposes \eqn{\sum_i u_i(t) = 0} and removes any common function of time), then smoothing of each firm's residual trajectory followed by an eigendecomposition of their empirical covariance to give \eqn{\hat g_r}, then loadings by least squares and the effects rebuilt from them -- iterated with \eqn{\beta} until the residual sum of squares settles. Smoothing before the eigendecomposition is what makes the estimated basis a set of smooth \emph{functions} rather than \eqn{T} arbitrary period effects, and is the whole difference between this and an unrestricted factor model.
+
+Two tuning choices are therefore unavoidable, and both are exposed. \code{kss_smooth} defaults to generalized cross-validation. \code{kss_L} defaults to the Bai and Ng (2002) \eqn{IC_{p2}} criterion -- \bold{not} the threshold rule of the original paper, which is stated here because it matters: \eqn{IC_{p2}} is the standard criterion for this problem and the literature that motivates the estimator treats Bai and Ng (2002) and Bai (2009) as the comparable methods, but a different rule can select a different \eqn{L}. Set \code{kss_L} explicitly to take the choice out of the criterion's hands, and inspect \code{$kss$eigenvalues} to see whether the choice was close.
+
+One consequence of the period centering is worth knowing before comparing models: \code{"KSS"}'s \code{alpha_hat} carries no period mean, while \code{"CSS"}'s and \code{"LS"}'s do. The two therefore differ by a per-period constant by construction and should not be correlated against each other directly. \code{u_hat} is a within-period contrast and is invariant to that shift, so it is the quantity to compare across these models -- and is what the estimators are for.
+
 \bold{Time-varying fixed effects without a distribution for u.} \code{"CSS"} and \code{"LS"} sit between \code{"SSFE"}, which holds inefficiency fixed over time, and the maximum-likelihood panel models, which let it move but only by assuming a distribution for \eqn{u} and a decay path for it. Both instead let the firm effect itself vary with time and read inefficiency off it, so neither assumes any distribution and neither returns a log-likelihood.
 
 They differ in what they are willing to spend on flexibility. Cornwell, Schmidt and Sickles (1990) give every firm its own quadratic in time, \eqn{\alpha_{it} = \theta_{i1} + \theta_{i2}t + \theta_{i3}t^2}: \eqn{3N} parameters, firms may overtake one another, and \eqn{T_i \ge 4} is required before a firm contributes to \eqn{\beta} at all (a firm observed three times is fitted exactly by its own quadratic and its residuals are identically zero -- \code{sfa} warns rather than letting such firms silently dilute the estimate). Lee and Schmidt (1993) impose one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t\alpha_i}: \eqn{N + T - 1} parameters, and the ranking of firms cannot change, only the spread. Cross-over versus no cross-over is the substantive choice between them, not a technical one.
@@ -183,12 +210,21 @@ For both, inefficiency is identified only relative to the best firm \emph{in eac
 \item{theta}{\code{CSS} only. An \eqn{N \times 3} matrix of the firm-specific quadratic coefficients.}
 \item{delta, alpha_i, ls_iterations, ls_converged}{\code{LS} only. The common temporal pattern (with \code{delta[1] == 1}), the firm-specific scales, and the state of the alternating least-squares iteration.}
 
+\bold{For SSRE and SSCRE models:}
+\item{alpha_hat}{The BLUPs of the firm effects, one per firm. Under \code{SSCRE} these are net of the part the Mundlak means explain.}
+\item{theta, ercomp}{The GLS transformation parameter and the full variance-components decomposition from \code{\link[plm]{ercomp}}.}
+\item{mundlak_terms}{\code{SSCRE} only. The names of the added group-mean regressors.}
+\item{plm_fit}{The underlying \code{\link[plm]{plm}} object, for users who want its own methods.}
+
+\bold{For the KSS model:}
+\item{kss}{A list: the selected dimension \code{L}, the smoothing penalty \code{kappa}, the estimated basis (a \eqn{T \times L} matrix of orthonormal columns), the \eqn{n \times L} matrix of \code{loadings}, the full \code{eigenvalues} sequence the dimension was chosen from, and the iteration state.}
+
 \bold{For PL80 and BC92 models:}
 \item{exp_u_hat}{Predicted technical efficiency for each observation, E[exp(-B_it*u_i)|epsilon_i] (generalizes Battese and Coelli's (1988, JoE) point estimator to the panel case, pooling all of a firm's observations to predict u_i and scaling by B_it per period).}
 }
 
 \note{
-The GTRE_SEQ1 and GTRE_SEQ2 models use sequential estimation methods and do not return optimization objects or starting values. The SSFE, CSS and LS models are likewise not maximum-likelihood based and return no optimization object, starting values, or log-likelihood. All panel models require the \code{individual} argument to identify panel units.
+The GTRE_SEQ1 and GTRE_SEQ2 models use sequential estimation methods and do not return optimization objects or starting values. The SSFE, CSS, LS, SSRE, SSCRE and KSS models are likewise not maximum-likelihood based and return no optimization object, starting values, or log-likelihood. All panel models require the \code{individual} argument to identify panel units.
 }
 \examples{
 \donttest{
@@ -213,5 +249,20 @@ css_fit     <-  psfm(formula = y_tre ~ x1 + x2, model_name = "CSS",
 ls_fit      <-  psfm(formula = y_tre ~ x1 + x2, model_name = "LS",
                      data = data_trial, individual = "name", time = "year")
 ls_fit$delta      # the common temporal pattern, normalized to delta[1] = 1
+
+## The Schmidt-Sickles family: within, GLS, and correlated random effects.
+## SSCRE's slopes equal SSFE's within slopes exactly (Mundlak 1978); the
+## .mean_ coefficients are the Mundlak form of the Hausman test.
+ssre_fit    <-  psfm(formula = y_tre ~ x1 + x2, model_name = "SSRE",
+                     data = data_trial, individual = "name", time = "year")
+sscre_fit   <-  psfm(formula = y_tre ~ x1 + x2, model_name = "SSCRE",
+                     data = data_trial, individual = "name", time = "year")
+
+## Kneip, Sickles and Song (2012): the temporal basis and its dimension are
+## both estimated. Inspect what the criterion chose before trusting it.
+kss_fit     <-  psfm(formula = y_tre ~ x1 + x2, model_name = "KSS",
+                     data = data_trial, individual = "name", time = "year")
+kss_fit$kss$L                 # selected dimension
+kss_fit$kss$eigenvalues       # was the choice close?
 }
 }

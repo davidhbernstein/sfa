@@ -88,3 +88,74 @@ test_that("both estimators drop the intercept into the firm effect", {
     expect_equal(nobs(f), nrow(d))
   }
 })
+
+## Schmidt-Sickles random effects (SSRE) and correlated random effects (SSCRE).
+
+.ss_panel <- function(N = 80, Tt = 8, corr = 0, seed = 11) {
+  set.seed(seed)
+  d <- expand.grid(t = seq_len(Tt), name = seq_len(N))
+  d$year <- d$t
+  ## The firm effect, and regressors correlated with it by `corr`. corr = 0 is
+  ## the world RE assumes; corr > 0 is the world it is wrong in.
+  a_i <- -abs(rnorm(N, 0, 0.8))
+  d$x1 <- runif(nrow(d), 1, 5) + corr * a_i[d$name]
+  d$x2 <- runif(nrow(d), 1, 5)
+  d$y <- 0.6 * d$x1 + 0.3 * d$x2 + a_i[d$name] + rnorm(nrow(d), 0, 0.25)
+  attr(d, "alpha") <- a_i
+  d
+}
+
+test_that("SSCRE reproduces the within estimator exactly (Mundlak)", {
+  skip_on_cran()
+  d <- .ss_panel()
+  fe <- psfm(y ~ x1 + x2, "SSFE", d, individual = "name", time = "year")
+  cre <- psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year")
+  ## Adding the group means to a random-effects fit recovers the within
+  ## slopes. This is Mundlak (1978) and it is exact, not approximate.
+  expect_equal(coef(cre)[c("x1", "x2")], coef(fe)[c("x1", "x2")],
+    tolerance = 1e-6
+  )
+  expect_true(all(c(".mean_x1", ".mean_x2") %in% names(coef(cre))))
+})
+
+test_that("RE is biased under correlated effects where CRE is not", {
+  skip_on_cran()
+  ## x1 correlated with the firm effect: exactly what RE assumes away.
+  d <- .ss_panel(corr = 1.5, seed = 4)
+  re <- psfm(y ~ x1 + x2, "SSRE", d, individual = "name", time = "year")
+  cre <- psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year")
+  err_re <- abs(coef(re)[["x1"]] - 0.6)
+  err_cre <- abs(coef(cre)[["x1"]] - 0.6)
+  expect_gt(err_re, err_cre)
+  expect_lt(err_cre, 0.05)
+  ## And the Mundlak term is what detects it -- significant here, unlike in
+  ## the uncorrelated design above.
+  expect_gt(abs(cre$t.values[[".mean_x1"]]), 2)
+})
+
+test_that("SSRE and SSCRE return per-observation scores and no logLik", {
+  skip_on_cran()
+  d <- .ss_panel()
+  for (m in c("SSRE", "SSCRE")) {
+    f <- psfm(y ~ x1 + x2, m, d, individual = "name", time = "year")
+    expect_equal(nobs(f), nrow(d))
+    expect_length(f$exp_u_hat, nrow(d))
+    expect_true(all(f$u_hat >= 0))
+    ## One firm is the benchmark, so its inefficiency is exactly zero.
+    expect_equal(min(f$u_hat), 0)
+    expect_length(f$alpha_hat, max(d$name))
+    expect_true(is.na(suppressWarnings(as.numeric(logLik(f)))))
+  }
+})
+
+test_that("SSCRE refuses a design with nothing to correct", {
+  skip_on_cran()
+  d <- .ss_panel(N = 40, Tt = 5)
+  ## A regressor constant within firm is what RE exists to identify; with only
+  ## such regressors there are no Mundlak means to form.
+  d$z <- rep(rnorm(40), each = 5)
+  expect_error(
+    psfm(y ~ z, "SSCRE", d, individual = "name", time = "year"),
+    "nothing for the Mundlak means to correct"
+  )
+})
