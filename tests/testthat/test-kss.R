@@ -182,3 +182,39 @@ test_that("the rank criterion tracks the signal, not the arithmetic", {
   expect_identical(strong$kss$L, 3L)
   expect_lt(weak$kss$L, strong$kss$L)
 })
+
+test_that("the dimension criterion is not let loose on a short panel", {
+  skip_on_cran()
+  ## Bai-Ng needs T large relative to L. Allowing the criterion up to T - 1
+  ## lets the factors span nearly the whole time dimension, V(L) collapses,
+  ## and it returns the cap every time -- measured at 10 of 10 designs for
+  ## both T = 6 and T = 8 before the floor(T/2) cap was imposed.
+  for (Tt in c(8, 10, 15)) {
+    for (L in 1:2) {
+      d <- .kss_dgp(N = 100, Tt = Tt, L = L, seed = 40 + L)
+      f <- suppressWarnings(
+        psfm(y ~ x1 + x2, "KSS", d, individual = "name", time = "year")
+      )
+      expect_identical(f$kss$L, L,
+        info = paste("T =", Tt, "true L =", L)
+      )
+    }
+  }
+})
+
+test_that("KSS warns when the criterion lands on its own cap", {
+  skip_on_cran()
+  ## T = 6 caps the automatic search at 3. A design whose true rank is 3
+  ## therefore selects the cap, and that is not a free choice.
+  d <- .kss_dgp(N = 100, Tt = 6, L = 3, seed = 1)
+  expect_warning(
+    psfm(y ~ x1 + x2, "KSS", d, individual = "name", time = "year"),
+    "largest it is allowed to consider"
+  )
+  ## An explicit kss_L is the user's own call and is honoured above the
+  ## automatic cap, without the warning.
+  f <- psfm(y ~ x1 + x2, "KSS", d,
+    individual = "name", time = "year", kss_L = 5
+  )
+  expect_identical(f$kss$L, 5L)
+})

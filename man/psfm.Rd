@@ -74,7 +74,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took
   \item{tfe_lambda_max}{Numeric. Upper bound placed on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, i.e. \eqn{\sigma_v} is not allowed below about 1\% of \eqn{\sigma}. This is a guard against a genuine degeneracy of Greene's likelihood rather than a convergence tolerance -- see \sQuote{Details}. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
 \item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
 \item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
-\item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. Capped internally at \eqn{\min(T-1, n-1)}.}
+\item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is capped internally at \eqn{\lfloor T/2 \rfloor} as well, for the reason given in \sQuote{Details}, and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
 }
 \details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.
 
@@ -187,6 +187,8 @@ Estimation follows the three steps of the original: cross-sectional centering by
 
 Two tuning choices are therefore unavoidable, and both are exposed. \code{kss_smooth} defaults to generalized cross-validation. \code{kss_L} defaults to the Bai and Ng (2002) \eqn{IC_{p2}} criterion -- \bold{not} the threshold rule of the original paper, which is stated here because it matters: \eqn{IC_{p2}} is the standard criterion for this problem and the literature that motivates the estimator treats Bai and Ng (2002) and Bai (2009) as the comparable methods, but a different rule can select a different \eqn{L}. Set \code{kss_L} explicitly to take the choice out of the criterion's hands, and inspect \code{$kss$eigenvalues} to see whether the choice was close.
 
+\bold{The criterion needs a long enough panel, and says so.} \eqn{IC_{p2}} works because the residual variance flattens out once the real factors are in and the penalty then dominates. On a short panel that never happens: if \eqn{L} is allowed up to \eqn{T-1} the factors can span nearly the whole time dimension, the variance collapses toward zero, and no penalty competes. Measured at \eqn{n = 100} over five seeds and two true ranks, an uncapped criterion returned its maximum on \emph{all ten} designs at \eqn{T = 6} and again at \eqn{T = 8}. The automatic search is therefore capped at \eqn{\lfloor T/2 \rfloor}, which recovers the true rank exactly from \eqn{T = 8} upward; at \eqn{T = 6} it is right for a one-factor structure and occasionally one too high for a two-factor one. Whenever the automatic choice lands \emph{on} that cap \code{psfm} warns, because a selection at the boundary is not a free choice -- read it as "at least this many", inspect the eigenvalues, and prefer a longer panel to a larger \code{kss_L_max}.
+
 One consequence of the period centering is worth knowing before comparing models: \code{"KSS"}'s \code{alpha_hat} carries no period mean, while \code{"CSS"}'s and \code{"LS"}'s do. The two therefore differ by a per-period constant by construction and should not be correlated against each other directly. \code{u_hat} is a within-period contrast and is invariant to that shift, so it is the quantity to compare across these models -- and is what the estimators are for.
 
 \bold{Time-varying fixed effects without a distribution for u.} \code{"CSS"} and \code{"LS"} sit between \code{"SSFE"}, which holds inefficiency fixed over time, and the maximum-likelihood panel models, which let it move but only by assuming a distribution for \eqn{u} and a decay path for it. Both instead let the firm effect itself vary with time and read inefficiency off it, so neither assumes any distribution and neither returns a log-likelihood.
@@ -230,16 +232,23 @@ The GTRE_SEQ1 and GTRE_SEQ2 models use sequential estimation methods and do not 
 \donttest{
 library(sfa)     
 
-data_trial <- data_gen_p(t=10,N=100, rand = 100, 
-                         sig_u = 1,  sig_v = 0.3, 
-                         sig_r = .2, sig_h = .4, 
+## A deliberately small panel with few simulation draws, so the examples
+## build quickly. Do not read the estimates as a serious fit. TRE_Z becomes
+## unstable below about 60 firms, so this is close to the floor.
+data_trial <- data_gen_p(t=6, N=60, rand = 100,
+                         sig_u = 1,  sig_v = 0.3,
+                         sig_r = .2, sig_h = .4,
                          cons = 0.5, beta1 = 0.5,
                          beta2 = 0.5)
 
+## rand.psoptim is not optional with PSopt = TRUE: the particle swarm draws
+## from the session RNG, so results otherwise change between builds.
 max_tre_z   <-  psfm(formula    = y_tre_z ~ x1 +x2| z_gtre,
                      model_name = "TRE_Z",
                      data       = data_trial,
                      individual = "name",
+                     halton_num = 50,
+                     rand.psoptim = 7L,
                      PSopt      = TRUE)
 
 ## Time-varying fixed effects, no distribution assumed for u. CSS gives each

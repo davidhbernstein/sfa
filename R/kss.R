@@ -92,7 +92,17 @@
       call. = FALSE
     )
   }
-  L_max <- min(as.integer(kss_L_max), Tn - 1L, n - 1L)
+  ## Two caps, because they answer different questions. L_hard is what the
+  ## algebra permits; L_auto_cap is what the SELECTION CRITERION can be trusted
+  ## with. Bai-Ng needs T large relative to L: allowing the criterion up to
+  ## T - 1 lets the factors span nearly the whole time dimension, V(L)
+  ## collapses toward zero, and no penalty can compete. Measured at n = 100
+  ## over 5 seeds and two true ranks: with the cap at T - 1 the criterion
+  ## returned the cap on 10 of 10 designs at T = 6 and again at T = 8; with
+  ## floor(T/2) it recovers the true rank exactly from T = 8 upward. An
+  ## explicit `kss_L` is the user's own call and is allowed up to L_hard.
+  L_hard <- max(1L, min(as.integer(kss_L_max), Tn - 1L, n - 1L))
+  L_auto_cap <- max(1L, min(L_hard, Tn %/% 2L))
 
   ## Equation 74: centre by PERIOD, across firms.
   ymat <- matrix(0, n, Tn)
@@ -132,7 +142,7 @@
     Rs <- R %*% t(S)
 
     ev <- eigen(crossprod(Rs) / n, symmetric = TRUE)
-    G_full <- ev$vectors[, seq_len(L_max), drop = FALSE]
+    G_full <- ev$vectors[, seq_len(L_hard), drop = FALSE]
 
     ## Score the criterion on the RAW residuals, not the smoothed ones, even
     ## though the basis comes from the smoothed. Bai-Ng works because V(L)
@@ -141,8 +151,8 @@
     ## every extra factor keep paying and the rank runs to L_max. Measured on a
     ## 2-factor design with eigenvalues 3.23, 0.50, 0.045, ...: scoring on Rs
     ## selected 7, scoring on R selects 2.
-    if (identical(kss_L, "auto")) L <- .kss_select_L(R, G_full, L_max)
-    L <- max(1L, min(as.integer(L), L_max))
+    if (identical(kss_L, "auto")) L <- .kss_select_L(R, G_full, L_auto_cap)
+    L <- max(1L, min(as.integer(L), L_hard))
     G <- G_full[, seq_len(L), drop = FALSE]
 
     ## Step 2b/3: loadings by least squares on the estimated basis, then the
@@ -163,6 +173,18 @@
     }
     ssr_old <- ssr
   }
+  ## A selection that lands ON the cap did not choose freely, so say so rather
+  ## than reporting it as though the criterion settled on it.
+  if (identical(kss_L, "auto") && L >= L_auto_cap && L_auto_cap < L_hard) {
+    warning("psfm(model_name = \"KSS\"): the dimension criterion selected ",
+      L, ", which is the largest it is allowed to consider at T = ", Tn,
+      " (floor(T/2)). The factor space may be richer than this fit reports. ",
+      "Inspect $kss$eigenvalues, and set kss_L explicitly if a larger ",
+      "dimension is warranted; a longer panel is the real remedy.",
+      call. = FALSE
+    )
+  }
+
   converged <- it < maxit
   if (!converged) {
     warning("psfm(model_name = \"KSS\"): the iteration hit maxit = ", maxit,

@@ -26,3 +26,4 @@
 # Rendered vignette output (sources live in vignettes/*.Rmd)
 inst/doc/
 docs/
+figure/

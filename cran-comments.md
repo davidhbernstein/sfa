@@ -1,98 +1,111 @@
-## Resubmission
-
-This is a resubmission, addressing Uwe Ligges's request to reduce the
-vignette build time. Both pretests of 1.1.4 checked `Status: OK`, and
-`checking re-building of vignette outputs` was reported at 10 minutes.
-
-The package has one vignette, `intro_to_psfm`, which fits panel stochastic
-frontier models by simulated maximum likelihood over Halton draws. It now
-uses toy data and few iterations throughout, following your first two
-suggestions:
-
-* the simulated panel is 70 firms over 6 periods, down from 100 over 10;
-
-* the simulated-ML fits pass `halton_num = 50`, where the default is
-  `ceiling(sqrt(nrow(data))) + 100` -- about 130 draws at the old data size.
-  The number of draws is the dominant cost in these likelihoods;
-
-* the parametric-bootstrap example runs 5 replications on a 30-firm panel,
-  down from 10 replications on 60 firms. Each replication refits the model,
-  so this was the single most expensive chunk;
-
-* the second simulated data set has been dropped. It was generated with
-  arguments identical to the first, so the `GTRE_Z` section now reuses the
-  panel already in hand.
-
-Measured here, rendering the vignette went from 68.8 s to 13.2 s, a factor
-of 5.2. I have not shrunk it further because the four-component GTRE model
-becomes genuinely unstable on very short panels -- below about 70 firms its
-efficiency-posterior step can fail to invert on some random seeds -- and I
-would rather the vignette be fast than be fast and fragile. The chosen size
-was checked against 12 seeds with no failures.
-
-Two related points, in the interest of the vignette staying cheap and
-predictable to check:
-
-* every fit now sets `rand.gtre` and `rand.psoptim`. With `PSopt = TRUE` the
-  particle-swarm stage draws from the session RNG, so the vignette's printed
-  results previously changed from build to build. They are now reproducible.
-
-* the vignette states explicitly that its settings are chosen to build
-  quickly and that the estimates are not to be read as a serious fit.
-
-No R code, `NAMESPACE`, or documented interface changed in this version.
-
 ## Submission
 
-This is a feature update to `sfa`, from the current CRAN version 1.0.4 to
-1.1.5. It bundles the work of six development versions (1.1.0-1.1.5) that
-were never submitted, so `NEWS.md` is correspondingly long.
+This is an update to `sfa`, from the current CRAN version 1.1.5 to 1.2.0.
 
 There are **no reverse dependencies on CRAN**, so no other package is affected
 by anything below.
 
-### Two deliberate breaking changes
+### On the short interval since 1.1.5
 
-Both are described at the top of their `NEWS.md` sections, and both warn at
-run time rather than changing behaviour silently.
+`R CMD check --as-cran` notes "Days since last update: 5", and I am aware that
+the policy asks for updates to be spaced out. I am submitting this soon anyway
+because **1.1.5 silently returns wrong results for one of its models**, and I
+would rather that version were on CRAN for days than for months.
 
-* `psfm(model_name = "TFE")` previously selected Chen, Schmidt and Wang's
-  (2014) within maximum-likelihood estimator and now selects Greene's (2005)
-  true fixed effects estimator, which is the standard meaning of that name in
-  the literature. The previous estimator is unchanged and available as
-  `model_name = "TFE_WMLE"`.
+`sfm(model_name = "NE")` and `"NGE"` in 1.1.5 can return a **positive**
+log-likelihood with `sigma_u` driven to zero, as an ordinary fitted object with
+no error and no warning. `log Phi(z)` and an exponential tilt both diverge like
+`z^2/2` with opposite signs as `sigma_u -> 0`, and at the scales the optimiser
+visits their sum is catastrophic cancellation returning rounding noise — which
+the optimiser then maximises by running `sigma_u` to its bound. Two examples
+from a scan of 150 samples: `sigma_v = 587.4`, `sigma_u = 0`,
+`logLik = +468992`; and `sigma_v = 3.4e15`, `logLik = +7.9e30`. Across a
+12-cell design at 1,500 replications the rate was 0.74%, reaching 4.4% at
+`lambda = 0.5`, `n = 100`.
 
-* `psfm(model_name = "GTRE")` now defaults to full information maximum
-  likelihood rather than simulated maximum likelihood. The four ways of
-  fitting the four-component GTRE model used to be four separate `model_name`
-  values, which presented them as four models rather than four routes to one;
-  they are now chosen with an `estimator` argument, in the same spirit as
-  `sfm()`'s existing `estimator = c("mle", "cols")`. The old behaviour is
-  `estimator = "sml"`.
+1.2.0 does that cancellation analytically instead. The new expression agrees
+with the old one to 8.5e-13 over 75,000 evaluations wherever the old one was
+trustworthy, integrates to 1, and gave no failures in 2,200 fits.
 
-In both cases existing scripts would otherwise silently get a different
-estimator, so `psfm()` warns whenever the affected name is used without an
-explicit choice. The warnings are intended to remain for one release cycle.
+The same release also fixes `"NGE"` aborting outright on about 7% of small
+samples, and `nobs()` returning the number of rows supplied rather than the
+number used, which made `BIC()` wrong for any fit on data with a missing value.
 
-### New dependencies in Suggests
+If you would prefer that I hold the new features and submit only the
+corrections, or that I wait, I am happy to do either — please just say which.
 
-This version adds a fifth entry point, `npsfm()`, for nonparametric stochastic
-frontier models. It needs kernel regression from `np`, and its `"SZ"` method
-solves an output-oriented DEA as one linear program per unit using `lpSolve`.
-Both are declared in **Suggests** rather
-than **Imports**, since nothing else in the package uses them: `npsfm()` tests
-for each at run time and stops with an install instruction if it is absent, and
-its examples and tests are guarded with `requireNamespace()` /
-`skip_if_not_installed()` so they are skipped rather than failing where those
-packages are unavailable.
+### No breaking changes in this version
 
-`npsfm()` returns an object of class `"npsfareg"`, not `"sfareg"` -- a
-kernel-estimated frontier has no parameter vector with standard errors, so the
-`coef`/`vcov`/`logLik` methods do not apply to it.
+Unlike 1.1.5, nothing in this release changes the meaning of an existing
+argument or `model_name`. Every addition below is a new argument defaulting to
+the previous behaviour, or a new `model_name` value.
 
-The dependency on `frontier` was removed in this cycle (along with eight
-others), and the R requirement was lowered from `R (>= 4.4.0)` to
-`R (>= 4.0.0)`.
+Two run-time warnings introduced in 1.1.5 -- for `psfm(model_name = "TFE")` and
+`psfm(model_name = "GTRE")`, whose estimators changed in that version -- are
+**retained** rather than removed, even though the one release cycle they were
+promised for has now elapsed. 1.1.5 was the first release since 1.0.4 and is
+only a few days old, so most users upgrading to 1.2.0 will be coming from
+1.0.4 and meeting those changes for the first time.
+
+### What is new
+
+Six new panel estimators, all classical (non-maximum-likelihood) and none
+assuming a distribution for the inefficiency term:
+
+* `model_name = "CSS"` -- Cornwell, Schmidt and Sickles (1990)
+* `model_name = "LS"` -- Lee and Schmidt (1993)
+* `model_name = "KSS"` -- Kneip, Sickles and Song (2012)
+* `model_name = "SSRE"` / `"SSCRE"` -- the random-effects and
+  correlated-random-effects members of the Schmidt and Sickles (1984) family,
+  whose within estimator the package already had as `"SSFE"`
+
+Like the existing `"SSFE"`, none of these is maximum likelihood, so they carry
+no optimisation object and `logLik()`/`AIC()`/`BIC()` return `NA` with a
+warning rather than a number that would not mean what it appears to.
+
+Heteroskedasticity in more than one error component, as named formula
+arguments to `sfm()`:
+
+* `vhet` for the noise scale, `uhet` for the inefficiency scale, `muhet` for
+  the pre-truncation mean -- the last being Battese and Coelli (1995).
+
+Also `z_link` for `sfm()` and `ttsfm()`, `marginal_effects()` for panel fits,
+and `efficiency_ci()` for Horrace and Schmidt (1996) intervals.
+
+### Changes that alter numeric output
+
+Three, all of them corrections:
+
+* `sfm(model_name = "NE")` and `"NGE"` could return a **positive**
+  log-likelihood with `sigma_u` driven to zero. `log Phi(z)` and an
+  exponential tilt both diverge like `z^2/2` with opposite signs as
+  `sigma_u -> 0`, and their sum was catastrophic cancellation returning
+  rounding noise, which the optimiser then maximised. Measured across a
+  12-cell design at 1,500 replications the rate was 0.74%, reaching 4.4% in
+  the worst cell. The cancellation is now done analytically.
+
+* `nobs()` counted rows **supplied** rather than rows **used**, because it
+  re-evaluated the `data` argument of the recorded call while the fitting code
+  drops incomplete cases first. `BIC()` was therefore computed against the
+  wrong `n` for any fit on data containing a missing value.
+
+* `sfm(model_name = "NGE")` aborted outright on about 7% of small samples with
+  "non-finite finite-difference value", because an out-of-domain guard
+  returned `.Machine$double.xmax` and `optim()` differences the objective for
+  its gradient.
+
+### Dependencies
+
+Unchanged. No package was added to `Imports` or `Suggests` in this version,
+and none was removed.
+
+## Vignette build time
+
+Recorded here because it was the blocker on the 1.1.5 submission. The single
+vignette is unchanged in this release and still renders in **13.9 seconds**
+locally. The six new estimators are documented in `?psfm` with runnable
+examples rather than in the vignette, deliberately, to keep the build time
+where Uwe Ligges asked for it.
 
 ## Test environments
 
@@ -103,29 +116,53 @@ others), and the R requirement was lowered from `R (>= 4.4.0)` to
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0-2 notes
+`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 15:
+**0 errors | 0 warnings | 3 notes.**
 
-Any notes seen locally are properties of the check machine rather than the
-package, and are not expected on CRAN's systems:
+1. `checking CRAN incoming feasibility ... NOTE`, reporting "Days since last
+   update: 5". This is the point addressed at the top of this file.
 
-* `checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
-  recent enough and that package `V8` is unavailable, so those two sub-checks
-  are skipped rather than failed.
+2. `checking examples ... NOTE`, listing four examples over the 5-second
+   guideline: `zsfm` (10.4 s), `PL80_MVTN` (7.6 s), `sfa_diagnostics` (5.5 s)
+   and `psfm` (5.2 s). All four are inside `\donttest{}`; they fit models by
+   simulated maximum likelihood over Halton draws, which is what costs the
+   time. The `psfm` example was reduced from 20.4 s for this release, by
+   shrinking its panel to 60 firms over 6 periods and passing
+   `halton_num = 50` -- the same treatment the vignette received for 1.1.5.
+   It is close to the floor: the `TRE_Z` fit it demonstrates becomes unstable
+   below about 60 firms.
 
-* `checking for future file timestamps ... NOTE` / `unable to verify current
-  time`, which appears intermittently when the clock-check web service is
-  unreachable.
+3. `checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
+   recent enough and that package `V8` is unavailable, so those two sub-checks
+   are skipped rather than failed. This is a property of the check machine
+   rather than the package.
+
+A fourth note, `checking for future file timestamps ... NOTE` / `unable to
+verify current time`, appears intermittently here when the clock-check web
+service is unreachable. It is also a property of the machine.
 
 ## Notes for the reviewer
 
-* A `testthat` suite is new in this version. The tests that need a
-  statistically meaningful sample size are behind `skip_on_cran()`, so the
-  suite run during CRAN's checks is limited to fast structural tests. One
-  further model (`ttsfm(model_name = "TTHN")`) is skipped unless the
-  environment variable `SFA_TEST_SLOW` is set, because it is currently much
-  slower than the other estimators.
+* `NEWS.md` is long for one version. This release adds six estimators and
+  several arguments, and the entries record the measurements behind the
+  numerical fixes rather than only naming them.
+
+* Tests needing a statistically meaningful sample size are behind
+  `skip_on_cran()`, so the suite run during CRAN's checks is limited to fast
+  structural tests. One further model (`ttsfm(model_name = "TTHN")`) is
+  skipped unless `SFA_TEST_SLOW` is set, because it is much slower than the
+  other estimators.
 
 * Several examples are wrapped in `\donttest{}` because they fit models by
   simulated maximum likelihood over Halton draws, or by kernel regression with
   bandwidth cross-validation, and take longer than the 5-second guideline.
-  They are checked with `--run-donttest` before submission.
+  They are checked with `--run-donttest` before submission, and the whole
+  examples stage runs in 46 s.
+
+* Every example using `PSopt = TRUE` now passes `rand.psoptim`. The
+  particle-swarm stage draws from the session RNG, so without a seed the
+  printed results change from build to build.
+
+* `model_name = "KSS"` requires a balanced panel, which is what the estimator
+  is defined on; it stops with a message naming `"CSS"` and `"LS"` as the
+  unbalanced-panel alternatives rather than silently fitting something else.

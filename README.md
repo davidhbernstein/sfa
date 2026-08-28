@@ -104,6 +104,17 @@ Waldman 1980), closed-form and deterministic, for `NHN`, `NE` and `NG` — and
 robust divergence-based alternatives to MLE via `robust = "mlqe" | "psi" | "mdpd"`
 for `NHN`.
 
+Any of `NHN`, `NE` and `NTN` can additionally take covariates in more than one
+error component, as named formulas rather than further pipe segments:
+
+```r
+sfm(y ~ x1 + x2 | z_u, vhet = ~ z_v, model_name = "NHN_Z")   # heteroskedastic v
+sfm(y ~ x1 + x2, muhet = ~ z_mu, model_name = "NTN")         # Battese–Coelli (1995)
+```
+
+`vhet` drives the noise scale, `uhet` the inefficiency scale (the same thing
+the `| z` segment does), and `muhet` the pre-truncation mean.
+
 ### `psfm()` — panel
 
 | `model_name` | Estimator |
@@ -115,13 +126,26 @@ for `NHN`.
 | `TFE` | true fixed effects (Greene 2005) |
 | `TFE_WMLE` | within MLE (Chen, Schmidt and Wang 2014) |
 | `FD` | first differences |
-| `SSFE` | Schmidt and Sickles fixed effects |
+| `SSFE` | Schmidt and Sickles (1984) fixed effects (within) |
+| `SSRE`, `SSCRE` | Schmidt–Sickles random effects, and correlated random effects (Mundlak 1978) |
+| `CSS` | Cornwell, Schmidt and Sickles (1990), firm-specific quadratic in time |
+| `LS` | Lee and Schmidt (1993), one common temporal pattern scaled per firm |
+| `KSS` | Kneip, Sickles and Song (2012), data-driven temporal basis |
 | `PL80` | Pitt and Lee (1980), time-invariant |
 | `BC92` | Battese and Coelli (1992) time decay |
 | `K1990`, `K1990modified` | Kumbhakar (1990) time patterns |
 
-`GTRE_SEQ1`, `GTRE_SEQ2` and `SSFE` are not maximum likelihood, so `logLik()`
-(and hence `AIC()`/`BIC()`) returns `NA` for them.
+The last five are one family: each writes the firm effect as
+`alpha_it = sum_r theta_ir * g_r(t)` and reads inefficiency off it as distance
+from the best firm, assuming no distribution for inefficiency at all. They
+differ only in how much of that structure is assumed rather than estimated —
+`SSFE` fixes `L = 1` with a constant basis, `LS` frees the basis, `CSS` fixes
+`L = 3` to `{1, t, t^2}`, and `KSS` estimates both. `KSS` needs a balanced
+panel; the others do not.
+
+`GTRE_SEQ1`, `GTRE_SEQ2`, `SSFE`, `SSRE`, `SSCRE`, `CSS`, `LS` and `KSS` are
+not maximum likelihood, so `logLik()` (and hence `AIC()`/`BIC()`) returns `NA`
+for them.
 
 `psfm_bootstrap()` provides a parametric bootstrap for GTRE-family fits,
 parallelised over cores.

@@ -3,7 +3,8 @@
 \title{Two-Tier Stochastic Frontier Model}
 \description{Code to estimate the two-tier stochastic frontier model (2TSF), which decomposes a symmetric error term into two one-sided components (e.g. buyer/seller informational rents) in addition to the usual two-sided noise term.}
 \usage{ttsfm(formula, model_name = c("TTNE", "TTHN", "TTNLS"),
-data, z_link = c("sd", "var"), maxit.bobyqa = 80000, maxit.psoptim = 1000, maxit.optim = 1000,
+data, z_link = c("sd", "var"), maxit.bobyqa = 80000,
+maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0, start_val = FALSE, PSopt = FALSE,
 optHessian = TRUE, inefdec = TRUE, upper = NA,
 Method = "L-BFGS-B", logit = TRUE, verbose = FALSE, rand.psoptim = NULL)}

@@ -1,4 +1,29 @@
-# sfa 1.1.6 (development)
+# sfa 1.2.0
+
+A feature release. In brief:
+
+* **Six new panel estimators**, all classical rather than maximum likelihood
+  and none assuming a distribution for inefficiency: `"CSS"`
+  (Cornwell-Schmidt-Sickles 1990), `"LS"` (Lee-Schmidt 1993), `"KSS"`
+  (Kneip-Sickles-Song 2012), and `"SSRE"`/`"SSCRE"`, which complete the
+  Schmidt-Sickles family that `"SSFE"` already began.
+
+* **Heteroskedasticity in more than one error component**, as named formula
+  arguments to `sfm()`: `vhet`, `uhet` and `muhet`. The last, with
+  `model_name = "NTN"`, is Battese-Coelli (1995).
+
+* **Three corrections that change numeric output**: `"NE"`/`"NGE"` could
+  return a positive log-likelihood with `sigma_u` at zero; `nobs()` counted
+  rows supplied rather than rows used, so `BIC()` used the wrong `n`; and
+  `"NGE"` aborted outright on about 7% of small samples.
+
+* Plus `z_link` for `sfm()` and `ttsfm()`, `marginal_effects()` for panel
+  fits, `efficiency_ci()`, and `sfm(model_name = "TSL")`.
+
+Nothing in this release changes the meaning of an existing argument or
+`model_name`. Every addition is a new argument defaulting to the previous
+behaviour, or a new `model_name` value.
+
 
 * **Heteroskedasticity in more than one component: new `vhet`, `uhet` and
   `muhet` arguments to `sfm()`.** `sigma_v`, `sigma_u` and (for `"NTN"`) the
@@ -63,6 +88,16 @@
   original paper's threshold rule -- said plainly in `?psfm` because a
   different rule can select a different `L`. `$kss$eigenvalues` is returned so
   the choice can be inspected.
+
+  The automatic search is capped at `floor(T/2)`, and warns if it selects that
+  cap. `IC_p2` works because the residual variance flattens out once the real
+  factors are in; on a short panel, letting `L` reach `T - 1` lets the factors
+  span nearly the whole time dimension, so the variance collapses and no
+  penalty competes. Measured at n = 100 over five seeds and two true ranks, an
+  uncapped criterion returned its maximum on **all ten** designs at `T = 6` and
+  again at `T = 8`. With the cap it recovers the true rank exactly from `T = 8`
+  upward. An explicit `kss_L` is the user's own call and is not subject to the
+  cap.
 
   One trap worth knowing: `KSS`'s period centering means its `alpha_hat`
   carries no period mean while `CSS`'s and `LS`'s do, so the two differ by a
