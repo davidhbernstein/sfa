@@ -2,7 +2,7 @@ psfm <- function(formula,
                  model_name = c(
                    "TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "TFE", "TFE_WMLE",
                    "FD", "GTRE_SEQ1", "GTRE_SEQ2", "SSFE", "PL80", "PL80_MVTN",
-                   "BC92", "K1990", "K1990modified"
+                   "BC92", "K1990", "K1990modified", "CSS", "LS"
                  ),
                  data,
                  maxit.bobyqa = 5000,
@@ -187,6 +187,59 @@ psfm <- function(formula,
         start_val = start_val, verbose = verbose, call = call,
         formula = formula
       ))
+    }
+
+    ## Cornwell, Schmidt and Sickles (1990) and Lee and Schmidt (1993): classical
+    ## time-varying fixed-effects frontiers. Neither is maximum likelihood, so
+    ## neither carries an $opt component and logLik()/AIC()/BIC() return NA.
+    if (model_name %in% c("CSS", "LS")) {
+      Start.Time <- start.time()
+      ## data_proc2() has not run yet -- these estimators do not use the ML
+      ## starting values and running start_panel() first only produces
+      ## collinearity warnings about a regression they never touch -- so take
+      ## its row filter here.
+      data <- data[rownames(data_x), , drop = FALSE]
+      setup <- .classical_panel_setup(formula_x, data, individual, time, y_var, model_name)
+      FT <- if (identical(model_name, "CSS")) {
+        .fit_css90(setup, inefdec)
+      } else {
+        .fit_ls93(setup, inefdec)
+      }
+      SC <- .classical_panel_scores(FT$alpha_it, setup$t, inefdec)
+      End.Time <- end.time(Start.Time)
+
+      out <- matrix(0, nrow = 3, ncol = length(FT$beta))
+      rownames(out) <- c("par", "st_err", "t-val")
+      colnames(out) <- names(FT$beta)
+      out[1, ] <- FT$beta
+      out[2, ] <- FT$se
+      out[3, ] <- out[1, ] / out[2, ]
+
+      results <- list(
+        t(out), End.Time, model_name, formula, data, FT$alpha_it,
+        SC$u_hat, SC$exp_u_hat,
+        out["par", ], out["st_err", ], out["t-val", ], call
+      )
+      class(results) <- "sfareg"
+      names(results) <- c(
+        "out", "total_time", "model_name", "formula", "data", "alpha_hat",
+        "u_hat", "exp_u_hat",
+        "coefficients", "std.errors", "t.values", "call"
+      )
+      results$nobs <- length(setup$y)
+      results$sigma_v <- sqrt(FT$sigma2)
+      results$residuals <- FT$residuals
+      results$df.residual <- FT$df
+      results$frontier_alpha <- SC$frontier
+      if (identical(model_name, "CSS")) {
+        results$theta <- FT$theta
+      } else {
+        results$delta <- FT$delta
+        results$alpha_i <- FT$alpha
+        results$ls_iterations <- FT$iterations
+        results$ls_converged <- FT$converged
+      }
+      return(results)
     }
 
     Start_Panel <- start_panel(formula_x, data, model_name, start_val, intercept, x_vars_vec,
@@ -2731,7 +2784,7 @@ psfm <- function(formula,
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for psfm() but has no implementation branch. ",
-      "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"GTRE_FML\", \"TFE\", \"TFE_WMLE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\", \"K1990\", \"K1990modified\"."
+      "Valid choices are: \"TRE_Z\", \"GTRE_Z\", \"TRE\", \"GTRE\", \"GTRE_FML\", \"TFE\", \"TFE_WMLE\", \"FD\", \"GTRE_SEQ1\", \"GTRE_SEQ2\", \"SSFE\", \"PL80\", \"BC92\", \"K1990\", \"K1990modified\", \"CSS\", \"LS\"."
     ), call. = FALSE)
   }
 }

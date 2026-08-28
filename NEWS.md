@@ -1,5 +1,82 @@
 # sfa 1.1.6 (development)
 
+* **Heteroskedasticity in more than one component: new `vhet`, `uhet` and
+  `muhet` arguments to `sfm()`.** `sigma_v`, `sigma_u` and (for `"NTN"`) the
+  pre-truncation mean of `u` may now each be driven by their own covariates,
+  in any combination:
+
+  ```r
+  sfm(y ~ x1 + x2 | z_u, vhet = ~ z_v, model_name = "NHN_Z")
+  sfm(y ~ x1 + x2, muhet = ~ z_mu, model_name = "NTN")   # Battese-Coelli 1995
+  ```
+
+  Named formulas rather than further pipe segments, because pipe POSITION
+  already means different things in different families -- the second segment
+  is `sigma_w` in `ttsfm()` but `sigma_h` in `psfm()`'s `GTRE_Z` -- and a
+  fourth position would not be readable. The existing `| z` keeps its meaning,
+  so nothing that worked before changes. `uhet` is the same specification as
+  `| z` and refuses if both are given; it exists so that `"NTN"`, which takes
+  no pipe segment, can still have a heteroskedastic `sigma_u`.
+
+  Available for `NHN`, `NHN_Z`, `NE`, `NE_Z` and `NTN`. `muhet` requires
+  `NTN`, the only family in which a pre-truncation mean exists. Recovery on
+  simulated data with all three blocks non-constant, n = 1500: every one of
+  the six parameters within one standard error of truth, and the two z-links
+  agree to 1e-6 in log-likelihood with deltas differing by exactly the factor
+  of two the reparameterization implies.
+
+  Two reasons this matters beyond completeness. Ignored heteroskedasticity in
+  `v` biases the estimated FRONTIER, not just its precision (Caudill, Ford and
+  Gropper 1995), because the composed error's mean depends on the scales. And
+  `vhet` is one of the few specifications that can absorb apparent wrong
+  skewness without forcing `sigma_u` onto the zero boundary.
+
+  These fits carry every positive quantity on the log scale, so the parameter
+  vector is unconstrained and no variance can be driven onto a boundary by the
+  optimizer. `marginal_effects()` reads them with no extra arguments.
+  `estimator = "cols"` and the `robust` divergences are moment-based and
+  homoskedastic respectively; both refuse rather than silently ignoring the
+  new arguments.
+
+* **Two classical time-varying panel estimators: `psfm(model_name = "CSS")`
+  and `psfm(model_name = "LS")`.** Cornwell, Schmidt and Sickles (1990) and
+  Lee and Schmidt (1993). Both sit between `"SSFE"`, which holds inefficiency
+  fixed over time, and the ML panel models, which let it move only by assuming
+  a distribution for `u` and a decay path for it: these let the firm effect
+  itself vary with time and read inefficiency off it, assuming no distribution
+  at all.
+
+  They differ in what they spend on flexibility. `CSS` gives every firm its
+  own quadratic in time (`3N` parameters; firms may overtake one another;
+  `T_i >= 4` required before a firm contributes to beta). `LS` imposes one
+  common temporal pattern scaled per firm, `alpha_it = delta_t * alpha_i`
+  (`N + T - 1` parameters; the ranking of firms cannot change, only the
+  spread). Cross-over versus no cross-over is the substantive choice between
+  them.
+
+  `CSS` residualizes on each firm's own `(1, t, t^2)` rather than building
+  `3N` dummy columns, and refuses a regressor spanned by those quadratics (a
+  pure time trend, say) instead of reporting it as a small coefficient. `LS`
+  is a rank-one factor model and is fitted by alternating least squares, so an
+  unbalanced panel needs no special-casing. On simulated data at N = 90,
+  T = 8, `LS` recovers the temporal pattern with correlation > 0.99 to truth
+  and the firm scales at 0.995; both recover the frontier slopes and the noise
+  standard deviation.
+
+  Neither is maximum likelihood, so neither carries an `$opt` component and
+  `logLik()`/`AIC()`/`BIC()` return `NA` with a warning, as for `SSFE`.
+
+* **`nobs()` counted rows SUPPLIED rather than rows USED, so `BIC()` was
+  computed against the wrong n whenever any row was dropped for
+  missingness.** `nobs.sfareg()` re-evaluated the `data` argument of the
+  recorded call, which of course returns the full frame; `data_proc2()` has
+  always dropped incomplete cases before fitting. On a 300-row frame with 7
+  missing values `nobs()` returned 300 against 293 actually used. The fitted
+  object now records the effective count directly, and `nobs()` falls back to
+  the length of a stored per-observation vector before it resorts to
+  re-evaluating the call.
+
+
 * **`sfm(model_name = "NE")` could return a positive log-likelihood with
   `sigma_u = 0` and a divergent `sigma_v`.** The log-density was built as
   `-log(sigma_u) + log Phi(z) + eps/sigma_u + sigma_v^2/(2 sigma_u^2)`. Using

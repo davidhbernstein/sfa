@@ -26,6 +26,9 @@ sfm <- function(formula,
                 verbose = FALSE,
                 Nsim = "auto",
                 z_link = c("sd", "var"),
+                vhet = NULL,
+                uhet = NULL,
+                muhet = NULL,
                 sim_type = c("halton", "sobol", "torus", "uniform"),
                 antithetics = FALSE,
                 sim_burn = NULL,
@@ -50,6 +53,57 @@ sfm <- function(formula,
   ## points. See ?sfm Details.
   z_link <- match.arg(z_link)
   .z_sigma <- if (identical(z_link, "sd")) function(eta) exp(eta) else function(eta) sqrt(exp(eta))
+
+  ## Heteroskedastic noise (vhet) and heteroskedastic pre-truncation mean
+  ## (muhet), as named formulas rather than further pipe segments -- pipe
+  ## POSITION already means different things in different model families, and a
+  ## fourth position would be unreadable. See ?sfm Details.
+  het_on <- !is.null(vhet) || !is.null(uhet) || !is.null(muhet)
+  if (het_on) {
+    .het_ok <- c("NHN", "NHN_Z", "NE", "NE_Z", "NTN")
+    if (!(model_name %in% .het_ok)) {
+      stop("sfm(): `vhet`/`muhet` are implemented for model_name ",
+        paste(dQuote(.het_ok), collapse = ", "), ", not ", dQuote(model_name), ". ",
+        "The other families have no closed-form composed density once the ",
+        "scales vary by observation.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(muhet) && model_name != "NTN") {
+      stop("sfm(): `muhet` parameterizes the PRE-TRUNCATION MEAN of u, which ",
+        "only exists for the truncated-normal family. Use model_name = ",
+        "\"NTN\" (this is Battese and Coelli 1995), or drop `muhet`.",
+        call. = FALSE
+      )
+    }
+    if (estimator != "mle") {
+      stop("sfm(): `vhet`/`muhet` are maximum-likelihood specifications; ",
+        "the moment estimator has no heteroskedastic form. Call with ",
+        "estimator = \"mle\".",
+        call. = FALSE
+      )
+    }
+    if (robust != "mle") {
+      stop("sfm(): `robust` is implemented for the homoskedastic NHN ",
+        "likelihood only, and cannot be combined with `vhet`/`muhet`.",
+        call. = FALSE
+      )
+    }
+    het_family <- switch(model_name,
+      NHN = , NHN_Z = "halfnormal",
+      NE = , NE_Z = "exponential",
+      NTN = "truncnormal"
+    )
+    ## `uhet` and the `| z` segment say the same thing; taking both would leave
+    ## it ambiguous which one the reported deltas belong to.
+    if (!is.null(uhet) && length(Formula::Formula(formula))[2] >= 2) {
+      stop("sfm(): sigma_u is specified twice -- once by the `| z` segment of ",
+        "`formula` and once by `uhet`. Give it once.",
+        call. = FALSE
+      )
+    }
+    data <- .het_prefilter(data, list(vhet, uhet, muhet))
+  }
   sim_type <- match.arg(sim_type)
   if (is.null(sim_burn)) sim_burn <- .SFA_CONSTANTS$HALTON_DISCARD
   if (!is.numeric(sim_burn) || length(sim_burn) != 1L || sim_burn < 0) {
@@ -152,6 +206,63 @@ sfm <- function(formula,
   Y <- DR2$Y
   data_i_vars <- DR2$data_i_vars
 
+  ## Heteroskedastic path. Self-contained: its own log-scale parameterization,
+  ## its own unbounded optimizer, its own packaging. Nothing above this point
+  ## behaves differently when `vhet`/`muhet` are absent.
+  if (het_on) {
+    ## `| z` keeps its meaning -- sigma_u -- so the existing pipe syntax
+    ## composes with the new arguments rather than competing with them.
+    f_u <- if (!is.null(uhet)) uhet else .parse_pipe_formula(formula)$formula_z
+    Zu <- .het_design(f_u, data, if (is.null(uhet)) "the `| z` segment" else "uhet")
+    Zv <- .het_design(vhet, data, "vhet")
+    Zmu <- .het_design(muhet, data, "muhet")
+
+    HF <- .sfm_het_fit(
+      family = het_family, Y = Y, X = as.matrix(data_i_vars),
+      Zu = Zu, Zv = Zv, Zmu = Zmu, inefdec_n = inefdec_n,
+      z_sigma = .z_sigma, z_link = z_link, x_names = x_vars_vec,
+      maxit.nlminb = maxit.nlminb, maxit.optim = maxit.optim,
+      optHessian = optHessian, verbose = verbose
+    )
+
+    results <- list(
+      t(HF$out), HF$opt, HF$total_time, HF$start_v, model_name, formula,
+      HF$exp_u_hat, HF$u_hat,
+      HF$out["par", ], HF$out["st_err", ], HF$out["t-val", ], call
+    )
+    class(results) <- "sfareg"
+    names(results) <- c(
+      "out", "opt", "total_time", "start_v", "model_name", "formula",
+      "exp_u_hat", "u_hat",
+      "coefficients", "std.errors", "t.values", "call"
+    )
+    results$nobs <- length(as.numeric(Y))
+    results$u_posterior <- HF$u_posterior
+    results$sigma_u <- HF$sigma_u
+    results$sigma_v <- HF$sigma_v
+    results$het <- list(
+      family = het_family, link = z_link, blocks = HF$n_blocks,
+      vhet = vhet, uhet = f_u, muhet = muhet,
+      mu = if (identical(het_family, "truncnormal")) HF$mu else NULL
+    )
+    ## marginal_effects() reads these; the u block is the same object the
+    ## homoskedastic `_Z` models attach, so that code needs no het-specific
+    ## branch.
+    .blk <- function(Z, idx) {
+      d <- HF$opt$par[idx]
+      names(d) <- colnames(Z)
+      list(Z = Z, delta = d, link = z_link, family = het_family)
+    }
+    nb <- HF$n_blocks
+    results$z_spec <- .blk(Zu, nb[["beta"]] + nb[["v"]] + seq_len(nb[["u"]]))
+    results$v_spec <- .blk(Zv, nb[["beta"]] + seq_len(nb[["v"]]))
+    if (nb[["mu"]] > 0L) {
+      results$mu_spec <- .blk(Zmu, nb[["beta"]] + nb[["v"]] + nb[["u"]] + seq_len(nb[["mu"]]))
+    }
+    if (isTRUE(keep_objective)) results$objective <- HF$objective
+    return(results)
+  }
+
   ## Corrected ordinary least squares.
   if (estimator == "cols") {
     Start.Time <- start.time()
@@ -236,6 +347,7 @@ sfm <- function(formula,
       "exp_u_hat", "wrong_skew", "residual_moments", "cols_boot_draws",
       "estimator", "coefficients", "std.errors", "t.values", "call"
     )
+    results$nobs <- length(Yc)
     return(results)
   }
 
@@ -1078,6 +1190,10 @@ sfm <- function(formula,
         "coefficients", "std.errors", "t.values", "call"
       )
     }
+
+    ## Rows actually used, which is not the row count of the supplied `data`
+    ## once data_proc2() has dropped incomplete cases; nobs() feeds BIC().
+    results$nobs <- length(as.numeric(Y))
 
     ## Optionally retain the objective, so sfa_diagnostics() can profile the
     ## likelihood and difference it for a gradient after the fact.

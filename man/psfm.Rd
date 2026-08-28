@@ -5,7 +5,8 @@
 \usage{psfm(formula, model_name = c("TRE_Z", "GTRE_Z", "TRE",
                     "GTRE", "GTRE_FML", "TFE", "TFE_WMLE", "FD",
                     "GTRE_SEQ1", "GTRE_SEQ2", "SSFE",
-                    "PL80", "PL80_MVTN", "BC92", "K1990", "K1990modified"), data,
+                    "PL80", "PL80_MVTN", "BC92", "K1990", "K1990modified",
+                    "CSS", "LS"), data,
                     maxit.bobyqa = 5000, maxit.nlminb = 500,
                     maxit.psoptim = 100, maxit.optim = 1000,
                     REPORT = 1, trace = 3, pgtol = 0, individual,
@@ -28,6 +29,8 @@
   \item{\code{"TFE_WMLE"}}{Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator.}
   \item{\code{"FD"}}{the first-difference estimator of Wang and Ho (2010).}
   \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"CSS"}}{Cornwell, Schmidt and Sickles (1990): a firm-specific quadratic in time, so inefficiency varies over time and firms may cross over. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"LS"}}{Lee and Schmidt (1993): one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t \alpha_i}. Time-varying but no crossover. Not maximum likelihood -- no \code{logLik()}.}
   \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
   \item{\code{"PL80_MVTN"}}{Pitt and Lee's (1981) Model III: inefficiency varies over time and is CORRELATED within a firm, through a multivariate normal truncated to the negative orthant. This is the likelihood from their Appendix 2, which they derived but did not use, calling the T-dimensional integrals intractable. Balanced panels only. See \code{\link{PL80_MVTN}}.}
@@ -159,17 +162,33 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For GTRE_SEQ1 and GTRE_SEQ2 models:}
 \item{other_parms}{A matrix of additional parameters (lambda, sigma, beta_0 for SEQ1; sigma_u, sigma_v, sigma_h, sigma_r, lambda, sigma for SEQ2).}
 
+\bold{Time-varying fixed effects without a distribution for u.} \code{"CSS"} and \code{"LS"} sit between \code{"SSFE"}, which holds inefficiency fixed over time, and the maximum-likelihood panel models, which let it move but only by assuming a distribution for \eqn{u} and a decay path for it. Both instead let the firm effect itself vary with time and read inefficiency off it, so neither assumes any distribution and neither returns a log-likelihood.
+
+They differ in what they are willing to spend on flexibility. Cornwell, Schmidt and Sickles (1990) give every firm its own quadratic in time, \eqn{\alpha_{it} = \theta_{i1} + \theta_{i2}t + \theta_{i3}t^2}: \eqn{3N} parameters, firms may overtake one another, and \eqn{T_i \ge 4} is required before a firm contributes to \eqn{\beta} at all (a firm observed three times is fitted exactly by its own quadratic and its residuals are identically zero -- \code{sfa} warns rather than letting such firms silently dilute the estimate). Lee and Schmidt (1993) impose one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t\alpha_i}: \eqn{N + T - 1} parameters, and the ranking of firms cannot change, only the spread. Cross-over versus no cross-over is the substantive choice between them, not a technical one.
+
+\code{"CSS"} is fitted by residualizing \eqn{y} and \eqn{X} on each firm's own \eqn{(1, t, t^2)} rather than by building \eqn{3N} dummy columns; a regressor spanned by those quadratics -- a pure time trend, for instance -- is a rank failure and is refused rather than reported as a small coefficient. \code{"LS"} is a rank-one factor model, so it is fitted by alternating least squares, which handles an unbalanced panel with no special-casing; \eqn{\delta_1 = 1} fixes the scale that \eqn{\delta_t\alpha_i} leaves free, with a fallback to a norm constraint when the first period's effect is near zero.
+
+For both, inefficiency is identified only relative to the best firm \emph{in each period} -- \eqn{u_{it} = \max_j \alpha_{jt} - \alpha_{it}} -- which is what makes them time-varying at all; comparing against a single overall best would collapse them back to a time-invariant ranking. Neither absorbs an intercept separately: it goes into the firm effect, as in \code{"SSFE"}, so \code{coef()} returns slopes only.
+
 \bold{For SSFE model:}
 \item{alpha_hat}{The estimated firm-specific fixed effects (named by individual).}
 \item{u_hat}{Estimated technical inefficiency for each firm, as its distance from the best-performing firm's fixed effect.}
 \item{exp_u_hat}{Predicted technical efficiency, \code{exp(-u_hat)}.}
+
+\bold{For CSS and LS models:}
+\item{alpha_hat}{The fitted firm effect for every observation, \eqn{\alpha_{it}} -- time-varying, unlike \code{SSFE}'s one value per firm.}
+\item{u_hat, exp_u_hat}{Inefficiency and efficiency per observation, measured against the best firm in the same period.}
+\item{frontier_alpha}{The best firm effect in each period, i.e. the benchmark \code{u_hat} is measured from.}
+\item{sigma_v, residuals, df.residual}{The residual standard deviation, the residuals net of the firm effect, and the residual degrees of freedom (\eqn{NT - K - 3N} for \code{CSS}, \eqn{NT - K - (N + T - 1)} for \code{LS}).}
+\item{theta}{\code{CSS} only. An \eqn{N \times 3} matrix of the firm-specific quadratic coefficients.}
+\item{delta, alpha_i, ls_iterations, ls_converged}{\code{LS} only. The common temporal pattern (with \code{delta[1] == 1}), the firm-specific scales, and the state of the alternating least-squares iteration.}
 
 \bold{For PL80 and BC92 models:}
 \item{exp_u_hat}{Predicted technical efficiency for each observation, E[exp(-B_it*u_i)|epsilon_i] (generalizes Battese and Coelli's (1988, JoE) point estimator to the panel case, pooling all of a firm's observations to predict u_i and scaling by B_it per period).}
 }
 
 \note{
-The GTRE_SEQ1 and GTRE_SEQ2 models use sequential estimation methods and do not return optimization objects or starting values. The SSFE model is likewise not maximum-likelihood based and returns no optimization object, starting values, or log-likelihood. All panel models require the \code{individual} argument to identify panel units.
+The GTRE_SEQ1 and GTRE_SEQ2 models use sequential estimation methods and do not return optimization objects or starting values. The SSFE, CSS and LS models are likewise not maximum-likelihood based and return no optimization object, starting values, or log-likelihood. All panel models require the \code{individual} argument to identify panel units.
 }
 \examples{
 \donttest{
@@ -186,5 +205,13 @@ max_tre_z   <-  psfm(formula    = y_tre_z ~ x1 +x2| z_gtre,
                      data       = data_trial,
                      individual = "name",
                      PSopt      = TRUE)
+
+## Time-varying fixed effects, no distribution assumed for u. CSS gives each
+## firm its own quadratic in time; LS gives all firms one common pattern.
+css_fit     <-  psfm(formula = y_tre ~ x1 + x2, model_name = "CSS",
+                     data = data_trial, individual = "name", time = "year")
+ls_fit      <-  psfm(formula = y_tre ~ x1 + x2, model_name = "LS",
+                     data = data_trial, individual = "name", time = "year")
+ls_fit$delta      # the common temporal pattern, normalized to delta[1] = 1
 }
 }

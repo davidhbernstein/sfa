@@ -46,8 +46,25 @@ logLik.sfareg <- function(object, ...) {
 }
 
 nobs.sfareg <- function(object, ...) {
+  ## Rows USED, not rows supplied. Re-evaluating the call (below) counts the
+  ## latter, so a fit on data with any missing value reported too many
+  ## observations and BIC() was computed against the wrong n.
+  if (!is.null(object$nobs) && is.finite(object$nobs)) {
+    return(as.integer(object$nobs))
+  }
   if (!is.null(object$data)) {
     return(nrow(object$data))
+  }
+  ## Failing an explicit count, any vector the fit stores one element of per
+  ## observation is exact where re-evaluating the call is not.
+  for (nm in c("exp_u_hat", "u_hat", "residuals", "med_u_hat")) {
+    v <- object[[nm]]
+    if (is.numeric(v) && length(v) > 0L) {
+      return(length(v))
+    }
+  }
+  if (is.numeric(object$u_posterior$mu_star)) {
+    return(length(object$u_posterior$mu_star))
   }
   ## sfm()/zsfm()/ttsfm() do not store the data on the fitted object, so fall
   ## back to re-evaluating the `data` argument of the recorded call.

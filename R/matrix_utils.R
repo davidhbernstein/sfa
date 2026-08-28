@@ -961,6 +961,8 @@
     "tHN"        = 1,     "TSL"        = 1,
     "TRE"        = 1,     "GTRE"       = 1,   "GTRE_FML"      = 1,
 
+    "CSS"        = 1,     "LS"         = 1,
+
     # --- 1 Pipe Allowed (2 Parts) ---
     "TRE_Z"      = 2,     "FD"         = 2,   "ZISF_Z"        = 2,
     "NHN_Z"      = 2,     "NE_Z"       = 2,

@@ -12,6 +12,7 @@
     Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi", "mdpd"),
     c_mlqe = 0.20, eta = 0.01, alpha = 0.2, verbose = FALSE,
     Nsim = "auto", z_link = c("sd", "var"),
+    vhet = NULL, uhet = NULL, muhet = NULL,
     sim_type = c("halton", "sobol", "torus", "uniform"), antithetics = FALSE,
     sim_burn = NULL, sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
     rand.psoptim = NULL, keep_objective = FALSE,
@@ -71,6 +72,9 @@ divergence) power parameter, used only when \code{robust = "mdpd"}.}
   \item{keep_objective}{Logical. Store the likelihood function on the fitted object, so that \code{\link{sfa_diagnostics}} can compute the gradient at the optimum and draw likelihood slices. Defaults to \code{FALSE}: a closure carries its enclosing environment, so a fit saved with one serializes the estimation data too -- on a 200-observation example the object grows from about 38 KB to 1.7 MB. Everything else \code{sfa_diagnostics()} reports works without it.}
 \item{estimator}{\code{"mle"} (default), or \code{"cols"}/\code{"mols"} -- two names for the same thing, see \sQuote{Details} -- which select the modified ordinary least squares moment estimator instead of maximum likelihood: OLS slopes are kept as they are, the second and third central moments of the OLS residuals are inverted for the scale parameters, and the intercept is shifted up by the implied \eqn{E[u]}. Closed form, no optimizer, deterministic. Implemented for \code{"NHN"}, \code{"NE"} and \code{"NG"}; other models error, because the moment inversion is distribution-specific. See \sQuote{Details}.}
   \item{z_link}{Scale on which the variance-determinant linear predictor is placed, for the \code{_Z} models. \code{"sd"} (the default, and \code{sfm}'s historical convention) sets \eqn{\sigma_u = \exp(z'\delta)}; \code{"var"} sets \eqn{\sigma_u = \sqrt{\exp(z'\delta)}}, which is what \code{\link{psfm}} and the competing packages use. The two are reparameterizations of the same model -- they reach the same maximised log-likelihood and the same \code{\link{marginal_effects}} -- but \eqn{\delta} itself differs by a factor of two, so a \eqn{\delta} from \code{sfm} is not comparable with one from \code{psfm} or from \pkg{sfaR} unless the same convention is used. Set \code{z_link = "var"} to put them on one footing. See \sQuote{Details}.}
+\item{vhet}{One-sided formula for the determinants of the \emph{noise} scale, e.g. \code{vhet = ~ z1 + z2}, giving \eqn{\sigma_v = \exp(z_v'\delta_v)} under the SD link. \code{NULL} (the default) leaves \eqn{\sigma_v} constant. Available for \code{"NHN"}, \code{"NHN_Z"}, \code{"NE"}, \code{"NE_Z"} and \code{"NTN"}.}
+\item{uhet}{One-sided formula for the determinants of \eqn{\sigma_u}. This is the same specification as the \code{| z} segment of \code{formula}, and it is an error to give both; \code{uhet} exists so that \code{"NTN"}, which takes no pipe segment, can still have a heteroskedastic \eqn{\sigma_u}.}
+\item{muhet}{One-sided formula for the determinants of the \emph{pre-truncation mean} of \eqn{u}, \eqn{\mu = z_\mu'\delta_\mu}. This is the Battese and Coelli (1995) inefficiency-effects model and requires \code{model_name = "NTN"}, the only family in which \eqn{\mu} exists. Unlike the two scale blocks \eqn{\mu} carries no link, since it may take either sign.}
   \item{sim_type}{Sequence used to build the simulated-ML draws, for the models fitted by simulation (\code{"NLN"}, \code{"NW"}). \code{"halton"} (default) reproduces previous behaviour. \code{"sobol"} accepts \code{sim_scrambling} 1--3, giving the scrambled sequence of Bhat (2003). \code{"torus"} is the Korobov sequence and accepts \code{sim_prime}. \code{"uniform"} is pseudorandom, present as a baseline to measure against rather than as a recommendation. See \sQuote{Details}.}
   \item{antithetics}{Logical. If \code{TRUE}, half the draws are taken from the sequence and the other half created as their mirror images (Hammersley and Morton 1956). Default \code{FALSE}.}
   \item{sim_burn}{Number of leading elements of the sequence discarded. Default \code{NULL}, meaning 1000. The initial elements of different sequences are correlated with one another and discarding them removes it.}
@@ -97,6 +101,12 @@ Two properties of \code{tHN} are worth knowing before using it. First, the degre
 \code{"NU"} assumes \eqn{u \sim U(0,\theta)} (Li 1996; Nguyen 2010), giving the closed-form composed density \eqn{f(e) = \theta^{-1}[\Phi((e+\theta)/\sigma_v) - \Phi(e/\sigma_v)]}. The reported \code{theta} is the upper bound of the inefficiency support, so predicted inefficiency is bounded by construction. \code{"NGE"} assumes a generalized exponential \eqn{F(u) = (1-e^{-\lambda u})^2}, whose composed density is a difference of two exponentially-tilted normal tail terms; it nests the exponential model and permits a non-monotonic inefficiency density. \code{NGE} reports \code{sigu} on the same scale as \code{NE} (the exponential mean, \eqn{\lambda = 1/\sigma_u}) so the two are directly comparable.
 
 \bold{The variance-determinant scale.} \code{sfm}'s \code{_Z} models place \eqn{z'\delta} on the standard deviation, \eqn{\sigma_u = \exp(z'\delta)}, while \code{\link{psfm}}'s \code{TRE_Z}/\code{GTRE_Z} place it on the variance, \eqn{\sigma_u = \sqrt{\exp(z'\delta)}}, as do the competing packages. Since \eqn{\exp(\eta) = \exp(\eta/2)^2}, fitting the same data under the two conventions returns the same \eqn{\sigma_u}, the same log-likelihood and the same marginal effects, but \eqn{\delta} under the SD link is exactly \bold{half} \eqn{\delta} under the variance link. Reading a \eqn{\delta} from one family as though it came from the other therefore doubles or halves every reported effect. \code{z_link} exists so the two can be aligned; the default preserves \code{sfm}'s own convention so existing results do not move.
+
+\bold{Heteroskedasticity in more than one component.} \code{vhet}, \code{uhet} and \code{muhet} let \eqn{\sigma_v}, \eqn{\sigma_u} and (for \code{"NTN"}) the pre-truncation mean \eqn{\mu} each depend on their own covariates, in any combination. They are named formulas rather than further pipe segments deliberately: pipe \emph{position} already carries different meanings in different model families -- the second segment is \eqn{\sigma_w} in \code{\link{ttsfm}} but \eqn{\sigma_h} in \code{\link{psfm}}'s \code{GTRE_Z} -- and a fourth position would not be readable. The existing \code{| z} segment keeps its meaning, so nothing that worked before changes.
+
+Two reasons to reach for \code{vhet} in particular. Ignored heteroskedasticity in \eqn{v} does not merely cost efficiency: Caudill, Ford and Gropper (1995) show that it biases the estimated frontier, because the composed error's mean depends on the scales. And a \eqn{\sigma_v} that varies with observed characteristics is one of the few specifications that can absorb apparent wrong skewness without forcing \eqn{\sigma_u} onto the zero boundary. \code{muhet} with \code{model_name = "NTN"} is the Battese and Coelli (1995) inefficiency-effects model, in which covariates shift the location of inefficiency rather than its dispersion; that is usually the model wanted when the question is \dQuote{what makes firms inefficient}, since \eqn{\delta_\mu} then has a sign that reads directly.
+
+These fits carry every positive quantity on the log scale, so the parameter vector is unconstrained and no variance can be driven onto a boundary by the optimizer; that is also why this path uses \code{nlminb} followed by an unbounded BFGS rather than the bounded four-stage scaffold the other models use. Coefficients are reported prefixed by block -- \code{Zv.}, \code{Zu.}, \code{Zmu.} -- since the same covariate may appear in more than one. \code{\link{marginal_effects}} reads the \eqn{\sigma_u} block of these fits with no extra arguments. \code{estimator = "cols"} and the \code{robust} divergences are moment-based and homoskedastic respectively, so neither combines with these arguments; both refuse rather than silently ignoring them.
 
 \bold{Simulated-ML draws.} \code{"NLN"} and \code{"NW"} have no closed-form composed density and are fitted by maximum simulated likelihood, averaging over draws built by \code{sim_type}. Two properties are enforced whatever the sequence. Each observation receives its own \emph{contiguous block} of the sequence rather than a strided subsequence: a column-major fill hands observation \eqn{i} the elements \eqn{h_i, h_{i+n}, \ldots} of a van der Corput sequence, which is not equidistributed -- at \eqn{n = 500} and \code{Nsim = 100} the first observation's block spanned only \eqn{[0.50, 0.75]}, integrating over a quarter of the inefficiency distribution. And the draws are clamped away from 0 and 1, since \code{qnorm()} of an exact endpoint is infinite.
 
@@ -188,6 +198,9 @@ An object of class \code{"sfareg"} containing the following components:
 \item{std.errors}{A vector of standard errors for the estimated parameters (NA if \code{optHessian = FALSE}). Sandwich-form (not the ordinary Hessian-inverse form) when \code{robust != "mle"} -- see Details.}
 \item{t.values}{A vector of t-values for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{call}{The matched call.}
+\item{het}{Only present when \code{vhet}, \code{uhet} or \code{muhet} was given: the family fitted, the link used, the sizes of the four parameter blocks, the formulas as supplied, and (for \code{"NTN"}) the fitted per-observation \eqn{\mu}.}
+\item{sigma_u, sigma_v}{Only present for a heteroskedastic fit: the fitted per-observation scales.}
+\item{v_spec, mu_spec}{Only present for a heteroskedastic fit: the noise and pre-truncation-mean blocks, in the same shape as \code{z_spec}.}
 \item{robust}{Only present for \code{model_name = "NHN"}: the \code{robust} argument used to fit this model (\code{"mle"}, \code{"mlqe"}, \code{"psi"}, or \code{"mdpd"}).}
 \item{robust_c}{Only present for \code{model_name = "NHN"}: the power parameter (\code{c_mlqe}/\code{eta}/\code{alpha}, whichever applies) used, or \code{NA} when \code{robust = "mle"}.}
 }
@@ -208,5 +221,16 @@ cs.nhn.mlqe <-  sfm(formula = y_pcs ~ x1 + x2, model_name = "NHN",
                     data = cs_data_trial, robust = "mlqe", c_mlqe = 0.20)
 cs.nhn.psi  <-  sfm(formula = y_pcs ~ x1 + x2, model_name = "NHN",
                     data = cs_data_trial, robust = "psi", eta = 0.20)
+
+## Heteroskedasticity in the noise as well as in the inefficiency: `| z`
+## still drives sigma_u, `vhet` drives sigma_v. Coefficients come back
+## prefixed by block (Zu., Zv.).
+cs.het      <-  sfm(formula = y_pcs_z ~ x1 + x2 | z, model_name = "NHN_Z",
+                    data = cs_data_trial, vhet = ~ z)
+
+## Battese and Coelli (1995): covariates shift the LOCATION of inefficiency
+## rather than its dispersion. Requires the truncated-normal family.
+cs.bc95     <-  sfm(formula = y_pcs ~ x1 + x2, model_name = "NTN",
+                    data = cs_data_trial, muhet = ~ z)
 }
 }
