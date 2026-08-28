@@ -1552,8 +1552,22 @@
 ##
 ## `scale_hat` is the fitted one-sided scale (or lambda), `ref` the residual
 ## scale it is judged against.
+## `rel_tol` is how small the one-sided scale has to be, relative to the
+## residual SD, to count as collapsed. 1e-2 rather than the 1e-3 this used at
+## first: on the NE design the test uses, the collapsed sample sits at
+## 8.6e-4 and the five non-collapsed ones at 0.47-0.71. 1e-3 therefore cleared
+## the boundary case by a factor of 1.16 while clearing the others by 470 --
+## knife-edge on the side that matters, and the optimizer's stopping point
+## moves by more than 16% between BLAS implementations. It passed here and
+## failed R CMD check on CI's macOS. 1e-2 sits in the middle of a gap spanning
+## nearly three orders of magnitude: 12x clear of the boundary case, 47x clear
+## of the nearest interior one.
+##
+## Loosening this is low-risk because it is only ever the SECOND condition.
+## The warning needs wrong skew (m3 >= 0) as well, and that is a deterministic
+## function of the data.
 .wrong_skew_boundary <- function(resid, scale_hat, ref, model_name,
-                                 rel_tol = 1e-3) {
+                                 rel_tol = 1e-2) {
   e <- as.numeric(resid)
   e <- e[is.finite(e)]
   if (length(e) < 4L || !is.finite(scale_hat) || !is.finite(ref) || ref <= 0) {

@@ -55,6 +55,29 @@ test_that("the warning fires on the boundary case and stays quiet otherwise", {
   expect_false(any(grepl("Olson, Schmidt and Waldman", good$warns)))
 })
 
+test_that("the boundary threshold is not knife-edge", {
+  skip_on_cran()
+  ## The point of this test is the MARGIN, not the classification. With
+  ## rel_tol = 1e-3 the collapsed sample cleared the threshold by a factor of
+  ## 1.16 while the interior ones cleared it by ~470 -- and the optimizer's
+  ## stopping point moves by more than 16% between BLAS implementations, so it
+  ## passed locally and failed R CMD check on CI's macOS. Every sample must now
+  ## sit at least 5x clear of the threshold on whichever side it belongs.
+  ratios <- vapply(1:6, function(r) {
+    d <- data_gen_cs(N = 100, rand = r, sig_u = 0.3, sig_v = 0.4, cons = 0.5,
+                     beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.1)
+    f <- suppressWarnings(sfm(y_pcs_e ~ x1 + x2, model_name = "NE", data = d))
+    X <- stats::model.matrix(y_pcs_e ~ x1 + x2, d)
+    unname(coef(f)[["sigu"]]) / stats::sd(stats::lm.fit(X, d$y_pcs_e)$residuals)
+  }, numeric(1))
+  tol <- eval(formals(sfa:::.wrong_skew_boundary)$rel_tol)
+  margin <- ifelse(ratios < tol, tol / ratios, ratios / tol)
+  expect_true(all(margin > 5), info = paste(round(margin, 1), collapse = ", "))
+  ## And the design still contains both kinds of sample, or it tests nothing.
+  expect_true(any(ratios < tol))
+  expect_true(any(ratios > tol))
+})
+
 test_that("the helper refuses to guess when it has nothing to go on", {
   ## Degenerate inputs must return NA rather than a confident FALSE.
   z <- sfa:::.wrong_skew_boundary(c(1, 2), 0.5, 1, "NE")

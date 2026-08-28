@@ -146,6 +146,21 @@ behaviour, or a new `model_name` value.
   Neither is maximum likelihood, so neither carries an `$opt` component and
   `logLik()`/`AIC()`/`BIC()` return `NA` with a warning, as for `SSFE`.
 
+* **The wrong-skew boundary report fired on a knife-edge.** `sfm()` flags
+  `sigma_u_at_bound` when the one-sided scale collapses relative to the
+  residual SD, and the threshold was `1e-3`. On the design used to test it the
+  collapsed sample sits at `8.6e-4` and the interior ones at `0.47-0.71`, so
+  the threshold cleared the case that matters by a factor of **1.16** and the
+  others by 470. An optimizer's stopping point moves by more than 16% between
+  BLAS implementations: the same fit reported `TRUE` locally and `FALSE` on
+  another platform. Now `1e-2`, which sits in the middle of a gap spanning
+  nearly three orders of magnitude and leaves every sample at least 11x clear.
+
+  This only ever changes the SECOND of two conditions -- the warning also
+  requires wrong skew (`m3 >= 0`), which is a deterministic function of the
+  data -- so the practical effect is that the report is stable across
+  platforms rather than that it fires more often.
+
 * **`nobs()` counted rows SUPPLIED rather than rows USED, so `BIC()` was
   computed against the wrong n whenever any row was dropped for
   missingness.** `nobs.sfareg()` re-evaluated the `data` argument of the
