@@ -1686,3 +1686,47 @@
   ## Firm ii takes rows ((ii-1)R+1):(ii R) -- a contiguous block, as sfm() does.
   lapply(seq_len(N), function(ii) Z[((ii - 1L) * R + 1L):(ii * R), , drop = FALSE])
 }
+
+## A persistent scale sitting on the zero boundary in a panel fit.
+##
+## The panel analogue of the cross-sectional wrong-skew case. There, negative
+## skew is absent and sigma_u = 0 is the CORRECT maximum likelihood estimate
+## (Waldman 1982), which sfm() reports rather than suppresses. Here, the
+## likelihood can prefer to merge the two persistent components -- setting
+## sigma_h to zero and letting sigma_r absorb the persistent variation -- and
+## that too can be the genuine maximum.
+##
+## Measured on a GTRE replication whose realized sigma_h scale was 0.3695, so
+## persistent inefficiency was certainly present: the boundary solution beat
+## the TRUE parameter vector by 3.66 log units, a likelihood ratio of about 39.
+## It is not an optimizer failure and must not be reported as one.
+##
+## The tell is that sigma_r comes back inflated whenever this happens: 0.30-0.34
+## against a true 0.20 in every collapsed replication observed.
+.panel_scale_at_bound <- function(scale_hat, ref, rel_tol = 1e-2) {
+  if (!is.finite(scale_hat) || !is.finite(ref) || ref <= 0) {
+    return(NA)
+  }
+  scale_hat / ref < rel_tol
+}
+
+.warn_panel_boundary <- function(model_name, scale_name, absorber = NULL,
+                                 absorber_value = NA_real_) {
+  msg <- paste0(
+    "psfm(model_name = \"", model_name, "\"): ", scale_name, " has collapsed ",
+    "to the zero boundary. For a panel with two persistent components this is ",
+    "often the CORRECT maximum likelihood estimate rather than a numerical ",
+    "failure -- the likelihood can genuinely prefer to merge them -- so it is ",
+    "reported rather than suppressed, in the same spirit as sfm()'s ",
+    "wrong-skew boundary (Waldman 1982 is the cross-sectional analogue)."
+  )
+  if (!is.null(absorber) && is.finite(absorber_value)) {
+    msg <- paste0(msg, " Note that ", absorber, " = ", signif(absorber_value, 4),
+      ", which typically comes back inflated in this situation: the persistent ",
+      "variation is not lost but reclassified. Read the two persistent scales ",
+      "together rather than separately, and treat the split between them as ",
+      "unidentified in this sample."
+    )
+  }
+  warning(msg, call. = FALSE)
+}

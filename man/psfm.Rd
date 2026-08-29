@@ -171,6 +171,14 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For GTRE_SEQ1 and GTRE_SEQ2 models:}
 \item{other_parms}{A matrix of additional parameters (lambda, sigma, beta_0 for SEQ1; sigma_u, sigma_v, sigma_h, sigma_r, lambda, sigma for SEQ2).}
 
+\bold{When a persistent scale collapses to zero.} \code{GTRE} carries two persistent components -- \eqn{\sigma_h}, persistent inefficiency, and \eqn{\sigma_r}, the firm random effect -- and the likelihood cannot always separate them in a given sample. When it cannot, it merges them: one scale goes to zero and the other absorbs its variation, coming back inflated.
+
+This is common rather than exceptional. On simulated data at \eqn{T = 6} with both components genuinely present (\eqn{\sigma_r = 0.20}, \eqn{\sigma_h = 0.40}), one of the two collapsed in \bold{37\% of 87 replications}, and the commoner direction was \eqn{\sigma_r \to 0} rather than \eqn{\sigma_h \to 0}. The share with both interior does improve with \eqn{N} (15, 19 and 21 of about 29 at \eqn{N = 50, 100, 200}) but slowly.
+
+\bold{A collapse is usually the right answer, not a numerical failure.} On one such replication -- whose realized \eqn{\sigma_h} scale was 0.3695, so persistent inefficiency was certainly present -- the boundary solution had a log-likelihood \emph{higher than the true parameter vector} by 3.66, a likelihood ratio of about 39. This is the panel counterpart of the cross-sectional wrong-skewness result (Waldman 1982), where \eqn{\sigma_u = 0} is the correct maximum likelihood estimate rather than an optimizer failure; see \code{\link{skewness_test}}.
+
+\code{psfm} therefore reports the condition rather than preventing it, in \code{$sigh_at_bound} and \code{$sigr_at_bound} and in a warning naming the surviving scale. Bounding either parameter away from zero would corrupt precisely the samples where the boundary is the answer. What the warning asks of you is to read the two persistent scales together and to treat the split between them as unidentified in that sample -- their \emph{sum} remains informative even where the division does not.
+
 \bold{Profiling a fitted panel likelihood.} With \code{keep_objective = TRUE} the fitted object carries \code{$objective}, the same negative-summed-log-likelihood the optimizer minimised. Evaluating it away from the optimum is the only way to ask whether a parameter is weakly identified, as distinct from badly estimated:
 
 \preformatted{fit <- psfm(y ~ x1 + x2, "GTRE", d, individual = "id",
@@ -217,6 +225,9 @@ For both, inefficiency is identified only relative to the best firm \emph{in eac
 \item{alpha_hat}{The estimated firm-specific fixed effects (named by individual).}
 \item{u_hat}{Estimated technical inefficiency for each firm, as its distance from the best-performing firm's fixed effect.}
 \item{exp_u_hat}{Predicted technical efficiency, \code{exp(-u_hat)}.}
+
+\bold{For the GTRE model:}
+\item{sigh_at_bound, sigr_at_bound}{\code{TRUE} when that persistent scale has collapsed to the zero boundary, judged relative to \code{sigma}. Frequently the CORRECT maximum likelihood estimate rather than a failure -- see \sQuote{Details} -- so it is reported rather than suppressed, and \code{psfm} warns naming the other persistent scale, since the two must be read together.}
 
 \bold{For CSS and LS models:}
 \item{alpha_hat}{The fitted firm effect for every observation, \eqn{\alpha_{it}} -- time-varying, unlike \code{SSFE}'s one value per firm.}

@@ -710,6 +710,23 @@ psfm <- function(formula,
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
     }
 
+    ## A persistent scale on the zero boundary. Reported, not suppressed: it is
+    ## frequently the correct MLE rather than a failure -- see
+    ## .panel_scale_at_bound() for the measurement behind that claim.
+    if (model_name == "GTRE") {
+      .pv <- out["par", ]
+      .ref <- tryCatch(unname(.pv[["sigma"]]), error = function(e) NA_real_)
+      .sh <- tryCatch(unname(.pv[["sigh"]]), error = function(e) NA_real_)
+      .sr <- tryCatch(unname(.pv[["sigr"]]), error = function(e) NA_real_)
+      results$sigh_at_bound <- .panel_scale_at_bound(.sh, .ref)
+      results$sigr_at_bound <- .panel_scale_at_bound(.sr, .ref)
+      if (isTRUE(results$sigh_at_bound)) {
+        .warn_panel_boundary(model_name, "sigh", "sigr", .sr)
+      } else if (isTRUE(results$sigr_at_bound)) {
+        .warn_panel_boundary(model_name, "sigr", "sigh", .sh)
+      }
+    }
+
     ## Retained so sfa_diagnostics() can profile the likelihood after the fact,
     ## and so the simulated log-likelihood can be evaluated at parameter values
     ## other than the optimum -- which is what a profile in sigh needs.

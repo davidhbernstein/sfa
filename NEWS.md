@@ -63,6 +63,29 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **`psfm(model_name = "GTRE")` now reports a persistent scale that has
+  collapsed to zero**, in `$sigh_at_bound` and `$sigr_at_bound` and in a
+  warning naming the surviving scale.
+
+  `GTRE` has two persistent components and the likelihood cannot always
+  separate them in a given sample. When it cannot it merges them: one goes to
+  zero, the other absorbs its variation and comes back inflated. On simulated
+  data with both genuinely present, **one of the two collapsed in 37% of 87
+  replications**, and `sigr -> 0` was three to five times commoner than
+  `sigh -> 0`.
+
+  This is usually the CORRECT maximum likelihood estimate, not a failure: on
+  one such replication the boundary solution beat the true parameter vector by
+  3.66 log units. It is the panel counterpart of the cross-sectional
+  wrong-skewness result (Waldman 1982). So it is reported rather than
+  prevented -- bounding either scale away from zero would corrupt exactly the
+  samples where the boundary is the answer.
+
+  `psfm()` also gains `keep_objective`, which retains the likelihood for the
+  simulated-ML panel models so it can be evaluated away from the optimum. That
+  is what distinguishes a weakly identified parameter from a badly estimated
+  one, and it is how the above was established. `?psfm` has a worked example.
+
 * **Robust and clustered standard errors, via `sandwich`.** `vcov()` returned
   the inverse Hessian and nothing else, which is valid only if the likelihood
   is correctly specified and the observations are independent. Neither is safe
