@@ -41,24 +41,12 @@ data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
       R <- ceiling(sqrt(nrow(data))) + 100
     } ## Integral reps
 
-    R_H <- randtoolbox::halton(R + 1000, 2, start = 1, normal = FALSE)[-c(1:1000), c(1:2)]
-    R_H <- cbind(qnorm(R_H[, 1]), sqrt(2) * pracma::erfinv(R_H[, 2])) ## using inverse error function for R_H2
-
-    if (!is.null(rand.gtre)) {
-      .rng_state <- .rng_snapshot()
-      on.exit(.rng_restore(.rng_state), add = TRUE)
-      set.seed(rand.gtre)
-    }
-
-    mat <- matrix(0, nrow = R, ncol = 9999)
-    for (v in 1:9999) {
-      mat[, v] <- sample(R_H[, 1])
-    }
-
-    cor_vec <- abs(cor(mat, R_H[, 2]))
-
-    R_H <- cbind(mat[, which.min(cor_vec)], R_H[, 2])
-    rm(cor_vec, v, mat)
+    ## One INDEPENDENT block of draws per firm, and randomization by shift
+    ## rather than by permutation. See .gtre_halton_draws() for why both
+    ## changed (gaps J1 and J2). R_H is kept for the returned object, which
+    ## reports the draws actually used; it is now firm 1's block.
+    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    R_H <- draw_list[[1L]]
 
     # print(paste( "Primes 2 and 3 are in use, with 1,000 discards.  Correlation between R and H draws is:", round(cor(R_H)[1,2],10), sep = "" ))
 
@@ -69,8 +57,12 @@ data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
     for (ii in seq_len(N)) {
       data_i[[ii]] <- data[which(data[, c(individual)] == indiv[ii]), ]
       t[ii] <- nrow(data_i[[ii]])
-      R_h1[[ii]] <- t(matrix(rep(R_H[, 1], t[[ii]]), R, t[[ii]]))
-      R_h2[[ii]] <- abs(t(matrix(rep(R_H[, 2], t[[ii]]), R, t[[ii]])))
+      ## Firm ii's own block. Within a firm the same draws are reused across
+      ## its periods -- correct, since the integral is over FIRM-level
+      ## components -- but across firms they are now different.
+      Di <- draw_list[[ii]]
+      R_h1[[ii]] <- t(matrix(rep(Di[, 1], t[[ii]]), R, t[[ii]]))
+      R_h2[[ii]] <- abs(t(matrix(rep(Di[, 2], t[[ii]]), R, t[[ii]])))
       Y[[ii]] <- matrix(rep(data_i[[ii]][, y_var], R), t[[ii]], R)
       data_i_vars[[ii]] <- as.matrix(data_i[[ii]][, c(x_vars_vec), drop = FALSE])
     }

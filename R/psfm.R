@@ -723,33 +723,11 @@ psfm <- function(formula,
     R <- if (isTRUE(is.numeric(halton_num))) halton_num else ceiling(sqrt(nrow(data))) + 100
 
     ## Halton draws
-    R_H <- randtoolbox::halton(
-      R + .SFA_CONSTANTS$HALTON_DISCARD,
-      2,
-      start = 1,
-      normal = FALSE
-    )[-c(1:.SFA_CONSTANTS$HALTON_DISCARD), c(1:2)]
-
-    ## First column: standard normal via qnorm
-    ## Second column: half-normal via inverse error function
-    R_H <- cbind(qnorm(R_H[, 1]), sqrt(2) * pracma::erfinv(R_H[, 2]))
-
-    if (!is.null(rand.gtre)) {
-      .rng_state <- .rng_snapshot()
-      on.exit(.rng_restore(.rng_state), add = TRUE)
-      set.seed(rand.gtre)
-    }
-
-    ## Optional decorrelation step retained from current code.
-    mat <- matrix(0, nrow = R, ncol = 9999)
-    for (v in 1:9999) {
-      mat[, v] <- sample(R_H[, 1])
-    }
-
-    cor_vec <- abs(cor(mat, R_H[, 2]))
-
-    R_H <- cbind(mat[, which.min(cor_vec)], R_H[, 2])
-    rm(mat, cor_vec, v)
+    ## One INDEPENDENT block of draws per firm, randomized by shift rather
+    ## than by permutation -- see .gtre_halton_draws() for why both changed
+    ## (gaps J1 and J2). R_H is firm 1's block, kept for the returned object.
+    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    R_H <- draw_list[[1L]]
 
     ## Build firm-level lists
     indiv <- noquote(as.vector(unique(data[, individual])))
@@ -766,8 +744,9 @@ psfm <- function(formula,
     for (ii in seq_len(N)) {
       data_i[[ii]] <- data[which(data[, individual] == indiv[ii]), , drop = FALSE]
       t_vec[ii] <- nrow(data_i[[ii]])
-      R_h1[[ii]] <- t(matrix(rep(R_H[, 1], t_vec[[ii]]), R, t_vec[[ii]]))
-      R_h2[[ii]] <- abs(t(matrix(rep(R_H[, 2], t_vec[[ii]]), R, t_vec[[ii]])))
+      Di <- draw_list[[ii]]
+      R_h1[[ii]] <- t(matrix(rep(Di[, 1], t_vec[[ii]]), R, t_vec[[ii]]))
+      R_h2[[ii]] <- abs(t(matrix(rep(Di[, 2], t_vec[[ii]]), R, t_vec[[ii]])))
       Y[[ii]] <- matrix(rep(data_i[[ii]][, y_var], R), t_vec[[ii]], R)
       ## Stored as plain numeric matrices (not data.frames): fn() is called
       ## thousands of times during optimization.
@@ -1537,24 +1516,10 @@ psfm <- function(formula,
       R <- ceiling(sqrt(nrow(data))) + 100
     } ## Integral reps
 
-    R_H <- randtoolbox::halton(R + .SFA_CONSTANTS$HALTON_DISCARD, 2, start = 1, normal = FALSE)[-c(1:.SFA_CONSTANTS$HALTON_DISCARD), c(1:2)]
-    R_H <- cbind(qnorm(R_H[, 1]), sqrt(2) * pracma::erfinv(R_H[, 2])) ## using inverse error function for R_H2
-
-    if (!is.null(rand.gtre)) {
-      .rng_state <- .rng_snapshot()
-      on.exit(.rng_restore(.rng_state), add = TRUE)
-      set.seed(rand.gtre)
-    }
-
-    mat <- matrix(0, nrow = R, ncol = 9999)
-    for (v in 1:9999) {
-      mat[, v] <- sample(R_H[, 1])
-    }
-
-    cor_vec <- abs(cor(mat, R_H[, 2]))
-
-    R_H <- cbind(mat[, which.min(cor_vec)], R_H[, 2])
-    rm(cor_vec, v, mat)
+    ## One INDEPENDENT block of draws per firm, randomized by shift rather than
+    ## by permutation -- see .gtre_halton_draws() (gaps J1 and J2).
+    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    R_H <- draw_list[[1L]]
 
     # if(verbose){print(paste( "Primes 2 and 3 are in use, with 1,000 discards.  Correlation between R and H draws is:", round(cor(R_H)[1,2],10), sep = "" ),quote = FALSE) }
 
@@ -1565,8 +1530,9 @@ psfm <- function(formula,
     for (ii in seq_len(N)) {
       data_i[[ii]] <- data[which(data[, c(individual)] == indiv[ii]), ]
       t[ii] <- nrow(data_i[[ii]])
-      R_h1[[ii]] <- t(matrix(rep(R_H[, 1], t[[ii]]), R, t[[ii]]))
-      R_h2[[ii]] <- abs(t(matrix(rep(R_H[, 2], t[[ii]]), R, t[[ii]])))
+      Di <- draw_list[[ii]]
+      R_h1[[ii]] <- t(matrix(rep(Di[, 1], t[[ii]]), R, t[[ii]]))
+      R_h2[[ii]] <- abs(t(matrix(rep(Di[, 2], t[[ii]]), R, t[[ii]])))
       Y[[ii]] <- matrix(rep(data_i[[ii]][, y_var], R), t[[ii]], R)
       data_i_vars[[ii]] <- as.matrix(data_i[[ii]][, c(x_vars_vec), drop = FALSE])
       data_z_vars[[ii]] <- as.matrix(data_i[[ii]][, c(z_vars), drop = FALSE])

@@ -63,6 +63,44 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **`psfm()` gave every firm the SAME simulation draws.** A single `R x 2`
+  Halton block was built once and recycled across all `N` firms, in three
+  separate places. `sfm()` already does the opposite and says why: Train (2002,
+  p. 228) attributes Halton's advantage to its coverage *and to the negative
+  correlation it induces across observations*, and the second half only exists
+  when observations get different blocks. Sharing one block also makes every
+  firm's simulation error the same realization, so it cannot average out as `N`
+  grows. Firm `i` now gets its own contiguous block.
+
+  Measured, GTRE by simulated ML, 30 replications at each of N = 50/100/200,
+  old and new on identical seeds so the comparison is paired: `sigh` improves
+  on **62 of 87 pairs** (Wilcoxon p = 0.015) and `sigr` on 48 of 87
+  (p = 0.048), while `beta1` -- the control, since the frontier slope is not
+  what the draws integrate over -- is unaffected at 46 of 87 (p = 0.41).
+  Collapses of `sigh` to exactly zero halved, 11/87 to 6/87.
+
+  The improvement **grows with `N`**, which is the point: 16/28 at N = 50
+  (p = 0.58), 21/29 at N = 100 (p = 0.25), 25/30 at N = 200 (p = 0.012). That
+  is the shape the mechanism predicts.
+
+  **It does not fix the GTRE convergence failure.** RMSE(N=50)/RMSE(N=200) for
+  `sigh` moves from 0.94 to 1.08 where root-n requires 2.00. Shared draws were
+  a contributor, not the cause.
+
+* **`rand.gtre` randomized the draws in a way that destroyed what they were
+  for.** The old code drew 9999 random permutations of Halton dimension 1 and
+  kept whichever correlated least with dimension 2. A two-dimensional Halton
+  sequence is worth having because the *pairs* cover the unit square evenly;
+  permuting one column preserves each margin, randomizes the pairing, and
+  leaves joint coverage no better than random. Measured at `R = 150` with
+  primes 2 and 3 and 1000 discarded: joint discrepancy 0.0217 before the
+  shuffle and 0.0550 after, against 0.1400 for purely random pairing -- to
+  remove a correlation of 0.008 that was never a problem.
+
+  `rand.gtre` now applies a uniform shift modulo 1 (Tuffin 1996; Train 9.3.4),
+  which moves the lattice without disturbing its structure: same measurement,
+  0.0250. Results change for anyone who passed `rand.gtre`.
+
 * **`psfm(model_name = "KSS")` -- Kneip, Sickles and Song (2012).** The firm
   effect is a smooth function of time lying in an `L`-dimensional space whose
   basis is estimated from the data:

@@ -1635,3 +1635,54 @@
   }
   list(Z = Z, delta = delta, link = "var", family = family)
 }
+
+## Halton draws for the panel simulated-ML models, one INDEPENDENT block per
+## firm. See notes/code_history/matrix_utils.md.
+##
+## Two departures from what psfm() did before, both fixing defects recorded as
+## gaps J1 and J2.
+##
+## J1: every firm used to be integrated against the SAME R draws, because a
+## single R x 2 block was built once and recycled. Train (2002, p. 228) is
+## explicit that Halton's advantage comes from its coverage *and the negative
+## correlation it induces across observations* -- and that second half only
+## exists when observations get different blocks of the sequence. Sharing one
+## block also means each firm's simulation error is the same realization
+## rather than an independent one, so the errors cannot average out as N
+## grows. sfm() already blocks by observation and says why; this makes psfm()
+## consistent with it.
+##
+## J2: the old code drew 9999 random permutations of dimension 1 and kept
+## whichever correlated least with dimension 2. A 2-d Halton sequence is worth
+## having because the PAIRS cover the unit square evenly; permuting one column
+## preserves each margin, destroys the pairing, and leaves joint coverage no
+## better than random. Measured at R = 150 with primes 2 and 3 and 1000
+## discarded -- psfm()'s exact configuration -- joint discrepancy went from
+## 0.0217 to 0.0550 against purely random pairing's 0.1400, to remove a
+## correlation of 0.008 that was never a problem. The randomization here is
+## instead a uniform shift modulo 1 (Tuffin 1996; Train 9.3.4), which moves the
+## lattice without disturbing its structure: same measurement, 0.0250.
+.gtre_halton_draws <- function(N, R, rand.gtre = NULL,
+                               burn = .SFA_CONSTANTS$HALTON_DISCARD,
+                               clamp = 1e-6) {
+  n_pt <- as.integer(N) * as.integer(R)
+  U <- randtoolbox::halton(n_pt + burn, 2, start = 1, normal = FALSE)
+  U <- U[-seq_len(burn), 1:2, drop = FALSE]
+
+  ## Randomize by SHIFTING, not by permuting: a shift preserves the lattice
+  ## structure that the sequence exists for.
+  if (!is.null(rand.gtre)) {
+    .rng_state <- .rng_snapshot()
+    on.exit(.rng_restore(.rng_state), add = TRUE)
+    set.seed(rand.gtre)
+    sh <- stats::runif(2L)
+    U[, 1] <- (U[, 1] + sh[1]) %% 1
+    U[, 2] <- (U[, 2] + sh[2]) %% 1
+  }
+  ## qnorm() of an exact endpoint is infinite, and a shift can land on one.
+  U[] <- pmin(pmax(U, clamp), 1 - clamp)
+
+  Z <- cbind(stats::qnorm(U[, 1]), sqrt(2) * pracma::erfinv(U[, 2]))
+  ## Firm ii takes rows ((ii-1)R+1):(ii R) -- a contiguous block, as sfm() does.
+  lapply(seq_len(N), function(ii) Z[((ii - 1L) * R + 1L):(ii * R), , drop = FALSE])
+}
