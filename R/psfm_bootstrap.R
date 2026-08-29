@@ -179,6 +179,34 @@ psfm_bootstrap <- function(psfm_object,
 
       if (model_name == "GTRE") {
         sig_h_hat <- out[4, 1]
+        ## A parametric bootstrap resamples from the FITTED model, so a fit
+        ## whose persistent scale collapsed to zero generates data with no
+        ## persistent component at all -- internally consistent, and useless.
+        ## Worse, the bootstrap is inconsistent on the boundary of the
+        ## parameter space: the resampled distribution piles up at the
+        ## boundary and the resulting interval understates the uncertainty
+        ## rather than reflecting it.
+        ##
+        ## This is not an edge case. One of GTRE's two persistent scales
+        ## collapses in roughly a third of samples -- see
+        ## notes/sigh_investigation_2026-08-29.md -- so this warning is
+        ## expected to fire in ordinary use, and is the point.
+        .ref_scale <- sigma_hat
+        if (isTRUE(.panel_scale_at_bound(sig_h_hat, .ref_scale)) ||
+          isTRUE(.panel_scale_at_bound(sigr_hat, .ref_scale))) {
+          warning("psfm_bootstrap(): this fit has a persistent scale on the ",
+            "zero boundary (sigh = ", signif(sig_h_hat, 4), ", sigr = ",
+            signif(sigr_hat, 4), "). A parametric bootstrap draws from the ",
+            "fitted model, so it will resample from a data-generating process ",
+            "with that component absent, and the bootstrap is in any case ",
+            "inconsistent on the boundary of the parameter space. The ",
+            "resulting intervals will understate the uncertainty in the ",
+            "persistent split rather than represent it. See ?psfm on what a ",
+            "collapsed scale means -- it is frequently the correct maximum ",
+            "likelihood estimate, but it is not a point to bootstrap around.",
+            call. = FALSE
+          )
+        }
         x_rows <- 5:(4 + Kx)
         expected_n_par <- 4 + Kx
       } else {

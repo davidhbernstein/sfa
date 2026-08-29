@@ -61,3 +61,29 @@ test_that("the warning explains that the boundary can be the correct MLE", {
     "CORRECT maximum likelihood estimate"
   )
 })
+
+test_that("psfm_bootstrap warns when bootstrapping a boundary fit", {
+  skip_on_cran()
+  ## A parametric bootstrap resamples from the FITTED model, so a collapsed
+  ## persistent scale means resampling from a DGP without that component --
+  ## and the bootstrap is inconsistent on the boundary of the parameter space
+  ## regardless. The interval would understate the uncertainty in the
+  ## persistent split rather than represent it.
+  d <- data_gen_p(t = 6, N = 200, rand = 1005, sig_u = 1, sig_v = 0.3,
+                  sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  pd <- plm::pdata.frame(d, index = c("name", "year"))
+  f <- suppressWarnings(
+    psfm(y_gtre ~ x1 + x2, "GTRE", pd, individual = "name", halton_num = 50,
+         rand.gtre = 7L, estimator = "sml"))
+  expect_true(isTRUE(f$sigh_at_bound))
+
+  w <- character(0)
+  invisible(withCallingHandlers(
+    try(psfm_bootstrap(f, B = 2, numCores = 1, individual = "name"),
+        silent = TRUE),
+    warning = function(x) {
+      w <<- c(w, conditionMessage(x))
+      invokeRestart("muffleWarning")
+    }))
+  expect_true(any(grepl("persistent scale on the zero boundary", w)))
+})

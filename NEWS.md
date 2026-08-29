@@ -63,6 +63,17 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **`psfm_bootstrap()` warns when asked to bootstrap a boundary fit.** A
+  parametric bootstrap resamples from the *fitted* model, so a fit whose
+  persistent scale has collapsed resamples from a data-generating process in
+  which that component is absent -- and the bootstrap is inconsistent on the
+  boundary of the parameter space in any case. The intervals would understate
+  the uncertainty in the persistent split rather than represent it, while
+  looking perfectly ordinary.
+
+  Since one of GTRE's two persistent scales collapses in roughly a third of
+  samples, this is expected to fire in ordinary use. That is the point.
+
 * **`psfm(model_name = "GTRE")` now reports a persistent scale that has
   collapsed to zero**, in `$sigh_at_bound` and `$sigr_at_bound` and in a
   warning naming the surviving scale.
