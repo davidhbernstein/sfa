@@ -373,8 +373,18 @@ psfm <- function(formula,
     .yv <- unlist(lapply(Y, function(m) m[, 1L]))
     .Xall <- do.call(rbind, data_i_vars)
     .gid <- rep(seq_len(N), times = vapply(Y, nrow, integer(1)))
-    .h1 <- R_h1[[1]][1, ]
-    .h2 <- R_h2[[1]][1, ]
+    ## Per-firm draw matrices, stacked to one row per OBSERVATION. Each
+    ## R_h1[[ii]] is t_i x R with its rows identical (a firm reuses its draws
+    ## across its own periods), so row 1 is that firm's block.
+    ##
+    ## These used to be a single length-R vector taken from firm 1, which was
+    ## correct only while every firm shared one block. Since firms now get
+    ## independent blocks (gap J1) the vectorized path has to index by firm, or
+    ## it silently evaluates a different likelihood from the loop path.
+    .D1 <- do.call(rbind, lapply(R_h1, function(m) m[1, ]))
+    .D2 <- do.call(rbind, lapply(R_h2, function(m) m[1, ]))
+    .H1 <- .D1[.gid, , drop = FALSE]
+    .H2 <- .D2[.gid, , drop = FALSE]
 
     fn_1_loop <- function(x) {
       if (model_name == "GTRE") {
@@ -457,14 +467,17 @@ psfm <- function(formula,
       }
 
       base <- .yv - as.vector(.Xall %*% x_x_vec)
-      c_pos <- if (model_name == "GTRE") -x[3] * .h1 + x[4] * .h2 * inefdec_n else -x[3] * .h1
-      ll <- .gtre_sim_logdens(outer(base, c_pos, "+") * inefdec_n, lam, sig, .gid, N)
+      ## `base` is length n and the draw matrices are n x R, so adding them
+      ## recycles down each column -- which is the observation-wise pairing
+      ## wanted, and replaces the outer() that assumed shared draws.
+      c_pos <- if (model_name == "GTRE") -x[3] * .H1 + x[4] * .H2 * inefdec_n else -x[3] * .H1
+      ll <- .gtre_sim_logdens((base + c_pos) * inefdec_n, lam, sig, .gid, N)
 
       if (model_name == "GTRE") {
         ## Second half of the +/- r mixture: r is symmetric, so the simulated
         ## density averages the draw and its reflection.
-        c_neg <- x[3] * .h1 + x[4] * .h2 * inefdec_n
-        ll <- 0.5 * (ll + .gtre_sim_logdens(outer(base, c_neg, "+") * inefdec_n, lam, sig, .gid, N))
+        c_neg <- x[3] * .H1 + x[4] * .H2 * inefdec_n
+        ll <- 0.5 * (ll + .gtre_sim_logdens((base + c_neg) * inefdec_n, lam, sig, .gid, N))
       }
       ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
       -sum(ll[is.finite(ll)])
