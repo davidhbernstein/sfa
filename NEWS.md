@@ -85,6 +85,13 @@ behaviour, or a new `model_name` value.
   replications**, and `sigr -> 0` was three to five times commoner than
   `sigh -> 0`.
 
+  **It depends far more on T than on N.** A crossed design (N in 50/100/200 by
+  T in 4/8/16, 251 fits) puts the elasticity of the collapse rate at -1.07 in
+  T against -0.68 in N, both significant. The rate runs 39-60% at T = 4
+  whatever N is, and falls to 7% at N = 200, T = 16. A four-period panel
+  cannot reliably separate persistent inefficiency from a firm random effect
+  however many firms it contains -- `?psfm` now says so.
+
   This is usually the CORRECT maximum likelihood estimate, not a failure: on
   one such replication the boundary solution beat the true parameter vector by
   3.66 log units. It is the panel counterpart of the cross-sectional
