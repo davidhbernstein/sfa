@@ -1221,6 +1221,10 @@ sfm <- function(formula,
       as.numeric(inefdec_n * stats::lm.fit(as.matrix(data_i_vars), as.numeric(Y))$residuals),
       error = function(e) NULL
     )
+    ## Kept so skewness_test() works on the residuals the fit actually saw,
+    ## rather than re-deriving them from the recorded call -- which is exactly
+    ## the fragility that made nobs() wrong.
+    if (!is.null(ols_resid)) results$ols_residuals <- ols_resid
     if (length(scale_nm) && !is.null(ols_resid)) {
       ref <- if (identical(scale_nm[1], "lambda")) 1 else stats::sd(ols_resid)
       ws <- .wrong_skew_boundary(ols_resid, unname(pv[[scale_nm[1]]]), ref, model_name)

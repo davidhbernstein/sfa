@@ -63,6 +63,35 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **New function `skewness_test()`: a p-value for wrong skewness.** `sfm()`
+  already detected the condition -- `$wrong_skew`, `$sigma_u_at_bound`, and a
+  warning -- but could not say whether the skew was wrong by more than sampling
+  noise. Wrong skew is the single most common reason an applied SFA fit is
+  meaningless, so that gap mattered.
+
+  Two tests: D'Agostino's (1970), which is the one Schmidt and Lin (1984)
+  appeal to, and Coelli's (1995) `M3T`. Returns an ordinary `"htest"`, so it
+  prints like `t.test()` and carries `m3`, `nobs` and `wrong_skew` alongside
+  the usual fields. Takes a fitted `sfm()` object -- using the OLS residuals
+  the fit recorded, which is what the tests are defined on, rather than the
+  composed residuals -- or a bare numeric vector.
+
+  `"agostino"` is the default because it holds its size where the asymptotic
+  form does not. One-sided at a nominal 5%, 4,000 replications of symmetric
+  residuals:
+
+  | n | 25 | 50 | 100 | 400 |
+  |---|---|---|---|---|
+  | `coelli` | 0.031 | 0.037 | 0.043 | 0.050 |
+  | `agostino` | 0.045 | 0.046 | 0.046 | 0.051 |
+
+  Coelli's is conservative below about n = 100 and the two agree by n = 400.
+  The D'Agostino implementation agrees with `moments::agostino.test` to within
+  1e-10 at n = 30/60/200/1000.
+
+  `sfm()` fits now also carry `$ols_residuals`, which is what makes the test
+  exact rather than re-derived from the recorded call.
+
 * **`psfm()` gave every firm the SAME simulation draws.** A single `R x 2`
   Halton block was built once and recycled across all `N` firms, in three
   separate places. `sfm()` already does the opposite and says why: Train (2002,
