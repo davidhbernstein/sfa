@@ -82,10 +82,31 @@ test_that("NHN_Z gets a per-observation posterior scale", {
   fit <- sfm(y_pcs_z ~ x1 + x2 | z, model_name = "NHN_Z", data = d)
   ci <- efficiency_ci(fit)
   expect_equal(nrow(ci), nrow(d))
-  ## sigma_u is a function of z here, so sigma_star must vary across
-  ## observations rather than being recycled from a single number.
-  expect_gt(length(unique(round(fit$u_posterior$sigma_star, 10))), 1)
   expect_length(fit$u_posterior$mu_star, nrow(d))
+  expect_length(fit$u_posterior$sigma_star, nrow(d))
+
+  ## sigma_star must be built from the PER-OBSERVATION sigma_u rather than
+  ## recycled from a single number. Test that by recomputing it from the fit's
+  ## own z_spec, which is exact and does not depend on where the optimizer
+  ## landed.
+  ##
+  ## The previous version asserted instead that sigma_star takes more than one
+  ## distinct value at 10 decimal places. That is a much weaker claim than it
+  ## looks: sigma_star = sigma_u sigma_v / sqrt(sigma_u^2 + sigma_v^2) is
+  ## dominated by whichever scale is smaller, so it barely moves even when
+  ## sigma_u moves a lot -- sd(sigma_star) is 2.1e-05 here. On CI's Windows the
+  ## fit landed with just enough less variation to collapse it to one value at
+  ## that rounding, and the test failed while nothing was wrong with the code.
+  zs <- fit$z_spec
+  eta <- as.numeric(zs$Z %*% zs$delta)
+  sig_u <- if (identical(zs$link, "sd")) exp(eta) else sqrt(exp(eta))
+  sig_v <- unname(coef(fit)[["sigma_v"]])
+  expect_equal(fit$u_posterior$sigma_star,
+               sig_u * sig_v / sqrt(sig_u^2 + sig_v^2),
+               tolerance = 1e-8)
+  ## A recycled scalar would only survive that if sigma_u were itself
+  ## constant, so pin that it is not.
+  expect_gt(stats::sd(sig_u), 0)
 })
 
 test_that("type selects the columns returned", {
