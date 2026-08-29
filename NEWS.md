@@ -63,6 +63,36 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **Robust and clustered standard errors, via `sandwich`.** `vcov()` returned
+  the inverse Hessian and nothing else, which is valid only if the likelihood
+  is correctly specified and the observations are independent. Neither is safe
+  to assume in applied frontier work, and clustered errors are routine on
+  firm-level panels.
+
+  `bread()` and `estfun()` methods are now registered for `"sfareg"` when
+  `sandwich` is installed, which is all that package needs:
+
+  ```r
+  fit <- sfm(y ~ x1 + x2, model_name = "NHN", data = d, keep_objective = TRUE)
+  lmtest::coeftest(fit, vcov. = sandwich::vcovCL(fit, cluster = d$firm))
+  ```
+
+  Two requirements, both of which error clearly rather than returning
+  something wrong. The fit needs `keep_objective = TRUE`, since the scores are
+  differenced from the retained likelihood; and the `robust` divergence
+  estimators are excluded, because they do not maximise a log-likelihood and so
+  have no score. `sandwich::vcovHC()` does not work and is not expected to --
+  its corrections are built from hat values, which are undefined for a
+  nonlinear likelihood whose parameters include variance components.
+
+  The scores are central differences with a per-parameter step. Validated two
+  ways at the optimum: against `NHN`'s hand-derived analytic gradient (agreeing
+  to 3e-07) and against `numDeriv` (2.9e-07), with the column sums vanishing
+  relative to their own scale, which is the identity that makes them scores.
+
+  `sandwich` and `lmtest` are in `Suggests`; neither is required to use the
+  package.
+
 * **New function `skewness_test()`: a p-value for wrong skewness.** `sfm()`
   already detected the condition -- `$wrong_skew`, `$sigma_u_at_bound`, and a
   warning -- but could not say whether the skew was wrong by more than sampling

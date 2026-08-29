@@ -391,7 +391,11 @@ sfm <- function(formula,
   }
 
   if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN", "TSL")) {
-    like.fn <- function(x) {
+    ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
+    ## contributions instead of the negative sum. That is what estfun.sfareg()
+    ## differences to build the score matrix that `sandwich` needs; the
+    ## optimizers call this with one argument and are unaffected.
+    like.fn <- function(x, per_obs = FALSE) {
       ## The offset is the number of non-beta parameters that precede the
       ## frontier coefficients.
       if (model_name %in% c("NHN", "NE", "NR", "NU", "NGE")) {
@@ -610,7 +614,7 @@ sfm <- function(formula,
 
       ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
       ## objective for the robust one, at these SAME current parameter values.
-      if (model_name == "NHN" && robust != "mle") {
+      if (model_name == "NHN" && robust != "mle" && !isTRUE(per_obs)) {
         lambda_x <- x[1]
         sigma_x <- x[2]
         sigma_u_x <- (lambda_x * sigma_x) / sqrt(1 + lambda_x^2)
@@ -626,6 +630,9 @@ sfm <- function(formula,
         ))
       }
 
+      if (isTRUE(per_obs)) {
+        return(like)
+      }
       return(-sum(like[is.finite(like)]))
     }
 
