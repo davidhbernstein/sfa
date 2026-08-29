@@ -29,6 +29,7 @@ psfm <- function(formula,
                  collinear_action = c("start_only", "error", "warn_drop"),
                  time = NULL,
                  tfe_lambda_max = 100,
+                 keep_objective = FALSE,
                  kss_L = "auto",
                  kss_smooth = "auto",
                  kss_L_max = 7L) {
@@ -708,6 +709,11 @@ psfm <- function(formula,
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
     }
+
+    ## Retained so sfa_diagnostics() can profile the likelihood after the fact,
+    ## and so the simulated log-likelihood can be evaluated at parameter values
+    ## other than the optimum -- which is what a profile in sigh needs.
+    if (isTRUE(keep_objective)) results$objective <- fn_1
 
     return(results)
   }
@@ -1500,6 +1506,8 @@ psfm <- function(formula,
     results$z_spec <- .psfm_z_spec(data, z_vars, results$out[, "par"], "halfnormal")
     results$z_spec_h <- .psfm_z_spec(data, zp_vars, results$out[, "par"],
                                      "halfnormal", anchor = "(Intercept h)")
+
+    if (isTRUE(keep_objective)) results$objective <- fn
     return(results)
   }
   if (model_name == "TRE_Z") {
@@ -1674,6 +1682,8 @@ psfm <- function(formula,
     ## VARIANCE, sigma_u = sqrt(exp(z'delta)) -- the opposite of sfm()'s
     ## default; see C1 and sfm()'s z_link.
     results$z_spec <- .psfm_z_spec(data, z_vars, out["par", ], "halfnormal")
+
+    if (isTRUE(keep_objective)) results$objective <- fn
     return(results)
   }
   if (model_name == "GTRE_FML") {

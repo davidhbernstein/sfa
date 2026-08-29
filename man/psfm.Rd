@@ -17,7 +17,8 @@
                     estimator = c("fiml", "sml", "seq1", "seq2"),
                     collinear_action = c("start_only", "error", "warn_drop"),
                     time = NULL, tfe_lambda_max = 100,
-                    kss_L = "auto", kss_smooth = "auto", kss_L_max = 7L)}
+                    keep_objective = FALSE, kss_L = "auto",
+                    kss_smooth = "auto", kss_L_max = 7L)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -72,6 +73,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took
   \item{collinear_action}{One of \code{"start_only"} (default), \code{"error"}, or \code{"warn_drop"}. Controls what happens when the \emph{between-individual} design matrix used to build starting values is rank deficient. This is checked separately from the pooled design because the two can differ: time dummies, for example, are routinely estimable in a pooled specification while collapsing onto the intercept once averaged within each unit, which is exactly the situation that makes the internal random-effects initialization fail. \code{"start_only"} keeps the model you asked for and removes the offending columns from the starting-value regression only, taking their starting values from a pooled OLS fit; \code{"error"} stops before estimation and names the offending columns; \code{"warn_drop"} removes those terms from the estimated model. All three report what was found. Only relevant to the models initialized by a random-effects regression (\code{GTRE}, \code{TRE} and their \code{_Z}/\code{SEQ} variants).}
   \item{time}{Character. Name of a time-period column in \code{data}, used by the error-components frontier models (\code{"PL80"}, \code{"BC92"}, \code{"K1990"}, \code{"K1990modified"}). If \code{NULL} (the default), a sequential within-individual time index is constructed from row order, which assumes \code{data} is already sorted chronologically within each individual.}
   \item{tfe_lambda_max}{Numeric. Upper bound placed on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, i.e. \eqn{\sigma_v} is not allowed below about 1\% of \eqn{\sigma}. This is a guard against a genuine degeneracy of Greene's likelihood rather than a convergence tolerance -- see \sQuote{Details}. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
+\item{keep_objective}{Retain the likelihood closure on the fitted object as \code{$objective}, for \code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"} and \code{"TRE_Z"} -- the simulated-ML panel models. This lets the log-likelihood be evaluated away from the optimum, which is what profiling a single parameter requires; \code{\link{sfa_diagnostics}} uses it, and it is how the \code{sigh} convergence question was localized (see \sQuote{Details}). \code{FALSE} by default, since the closure captures the data and the draws and so is not small.}
 \item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
 \item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
 \item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is capped internally at \eqn{\lfloor T/2 \rfloor} as well, for the reason given in \sQuote{Details}, and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
@@ -168,6 +170,18 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 
 \bold{For GTRE_SEQ1 and GTRE_SEQ2 models:}
 \item{other_parms}{A matrix of additional parameters (lambda, sigma, beta_0 for SEQ1; sigma_u, sigma_v, sigma_h, sigma_r, lambda, sigma for SEQ2).}
+
+\bold{Profiling a fitted panel likelihood.} With \code{keep_objective = TRUE} the fitted object carries \code{$objective}, the same negative-summed-log-likelihood the optimizer minimised. Evaluating it away from the optimum is the only way to ask whether a parameter is weakly identified, as distinct from badly estimated:
+
+\preformatted{fit <- psfm(y ~ x1 + x2, "GTRE", d, individual = "id",
+            estimator = "sml", keep_objective = TRUE)
+ih   <- which(names(coef(fit)) == "sigh")
+grid <- seq(0.05, 1, by = 0.05)
+ll   <- vapply(grid, function(v) \{
+          p <- fit$opt$par; p[ih] <- v; -fit$objective(p) \}, numeric(1))
+plot(grid, ll - max(ll), type = "l")}
+
+A flat curve means no estimator could recover the parameter from these data; a sharp one means the difficulty lies elsewhere. For \code{GTRE}'s \code{sigh} the curve spans over 200 log units at \eqn{N = 200} and sharpens with \eqn{N}, which is what ruled out weak identification as the explanation for its convergence behaviour.
 
 \bold{The Schmidt--Sickles family.} \code{"SSFE"}, \code{"SSRE"} and \code{"SSCRE"} are the within, GLS and correlated-random-effects members of one family: all three read inefficiency off a firm effect as distance from the best firm, and none assumes a distribution for \eqn{u}. The choice among them is the standard panel trade-off, with a frontier-specific twist. Random effects is the more efficient estimator and is the only one of the three that identifies coefficients on \emph{time-invariant} regressors, which the within transformation sweeps away -- but it requires the effects to be uncorrelated with the regressors, and in a frontier model that assumption says a firm's inefficiency is unrelated to its input choices, which is close to saying managers do not respond to their own productivity.
 
