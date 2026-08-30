@@ -1,6 +1,24 @@
 ## psfm_bootstrap() Parametric bootstrap for panel stochastic frontier models
 ## fit with psfm() from the sfa package.
 
+## Both GTRE arms below reach this, and they must say the same thing: the
+## "sml" route reports lambda/sigma with sigh and sigr alongside, the "fiml"
+## route reports the four raw scales, and the warning is about the model rather
+## than about either parameterization.
+.warn_boot_boundary <- function(sig_h_hat, sigr_hat) {
+  warning("psfm_bootstrap(): this fit has a persistent scale on the zero ",
+    "boundary (sigh = ", signif(sig_h_hat, 4), ", sigr = ",
+    signif(sigr_hat, 4), "). A parametric bootstrap draws from the fitted ",
+    "model, so it will resample from a data-generating process with that ",
+    "component absent, and the bootstrap is in any case inconsistent on the ",
+    "boundary of the parameter space. The resulting intervals will understate ",
+    "the uncertainty in the persistent split rather than represent it. See ",
+    "?psfm on what a collapsed scale means -- it is frequently the correct ",
+    "maximum likelihood estimate, but it is not a point to bootstrap around.",
+    call. = FALSE
+  )
+}
+
 psfm_bootstrap <- function(psfm_object,
                            numCores,
                            BOOT,
@@ -31,6 +49,43 @@ psfm_bootstrap <- function(psfm_object,
     )
   }
 
+  ## `inefdec` says whether the frontier is a production frontier (u enters
+  ## with a minus) or a cost frontier. It has no default here, and until now
+  ## omitting it failed inside parallel::clusterExport() -- the promise was
+  ## forced during serialization, so the message arrived from
+  ## postNode/sendData/serialize with nothing pointing at the user's call.
+  ##
+  ## Requiring it was the wrong contract anyway. The fit already knows: a user
+  ## who restates it can restate it WRONG, and bootstrapping a cost frontier
+  ## against a production fit is a silent error rather than a loud one. So it
+  ## is recovered from psfm_object$call and only asked for when that fails.
+  if (missing(inefdec)) {
+    .cl <- psfm_object$call
+    .arg <- if (!is.null(.cl)) as.list(.cl)[["inefdec"]] else NULL
+    inefdec <- if (is.null(.arg)) {
+      formals(psfm)$inefdec ## the fit did not name it, so it took psfm()'s default
+    } else {
+      tryCatch(eval(.arg, envir = parent.frame()), error = function(e)
+        stop("psfm_bootstrap(): `inefdec` was not supplied, and the value used ",
+          "for the original fit could not be recovered from psfm_object$call ",
+          "(it reads `", paste(deparse(.arg), collapse = ""), "`, which no ",
+          "longer evaluates here). Pass `inefdec` explicitly -- it must match ",
+          "the fit, or the bootstrap will resample from a differently oriented ",
+          "frontier.", call. = FALSE))
+    }
+    if (!isTRUE(inefdec) && !isFALSE(inefdec)) {
+      stop("psfm_bootstrap(): recovered `inefdec` is not TRUE or FALSE. ",
+        "Pass it explicitly.", call. = FALSE)
+    }
+  }
+
+  for (.nm in c("numCores", "BOOT", "individual")) {
+    if (eval(call("missing", as.name(.nm)))) {
+      stop("psfm_bootstrap(): `", .nm, "` has no default and was not supplied.",
+        call. = FALSE)
+    }
+  }
+
   if (!requireNamespace("Formula", quietly = TRUE)) {
     stop("Package 'Formula' is required to parse the multi-part model formula.", call. = FALSE)
   }
@@ -39,7 +94,7 @@ psfm_bootstrap <- function(psfm_object,
   }
 
   model_name <- psfm_object$model_name
-  supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "TRE", "TFE", "TFE_WMLE", "FD")
+  supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "GTRE_FML", "TRE", "TFE", "TFE_WMLE", "FD")
   if (!(model_name %in% supported_models)) {
     stop("psfm_bootstrap() does not support model_name = '", model_name, "'. ",
       "Supported: ", paste(supported_models, collapse = ", "), ". ",
@@ -71,7 +126,7 @@ psfm_bootstrap <- function(psfm_object,
   y_name <- all.vars(formula(form, lhs = 1, rhs = 0))[1]
 
   ## H is only returned by GTRE/GTRE_Z -- see header note.
-  H_available <- model_name %in% c("GTRE", "GTRE_Z")
+  H_available <- model_name %in% c("GTRE", "GTRE_FML", "GTRE_Z")
   if (H_available) {
     n_h <- length(psfm_object$H)
     if (n_h != n_id) {
@@ -99,6 +154,11 @@ psfm_bootstrap <- function(psfm_object,
     "TRE_Z" = 1, ## sigv
     "GTRE" = ,
     "TRE" = 2, ## sigma (total SD, not lambda itself)
+    ## GTRE_FML reports raw scales in a different order, and its transient
+    ## noise scale sits after the frontier block rather than at a fixed row --
+    ## resolved by name below, since the row index depends on how many
+    ## regressors the formula has.
+    "GTRE_FML" = NA_integer_,
     "TFE" = ,
     "TFE_WMLE" = 2, ## sig
     "FD" = c(1, 2) ## sig_u2, sig_v2
@@ -116,7 +176,7 @@ psfm_bootstrap <- function(psfm_object,
 
   ## ---- 2.
 
-  if (model_name %in% c("GTRE_Z", "TRE_Z", "GTRE", "TRE")) {
+  if (model_name %in% c("GTRE_Z", "TRE_Z", "GTRE", "GTRE_FML", "TRE")) {
     ## ---- 2a. "randeff" family --------------------------------------------
     if (model_name %in% c("GTRE_Z", "TRE_Z")) {
       ## Original (unchanged) extraction: z-covariate-driven u, optional
@@ -166,6 +226,40 @@ psfm_bootstrap <- function(psfm_object,
       beta_h_hat <- if (h_type != "none") out[h_rows, 1] else NULL
       sigv_hat <- out[sigv_row, 1]
       sigr_hat <- out[sigr_row, 1]
+    } else if (model_name == "GTRE_FML") {
+      ## Same four-component data-generating process as GTRE -- the estimator
+      ## differs, the model does not -- but the parameter vector is the four
+      ## RAW scales in the order (sigr, sigv, sigh, sigu), after the frontier
+      ## block, rather than GTRE's lambda/sigma reparameterization.
+      h_type <- "scalar"
+      Kx <- ncol(data_x)
+      expected_n_par <- Kx + 4L
+      if (n_par != expected_n_par) {
+        stop("Row count of psfm_object$out (", n_par, ") does not match the expected ",
+          "layout for model_name = 'GTRE_FML' (", expected_n_par, "). ",
+          "This usually means psfm_object was not actually fit with this model_name.",
+          call. = FALSE
+        )
+      }
+      x_rows   <- seq_len(Kx)
+      sigr_hat <- out[Kx + 1L, 1]
+      sigv_hat <- out[Kx + 2L, 1]
+      sig_h_hat <- out[Kx + 3L, 1]
+      sig_u_hat <- out[Kx + 4L, 1]
+      scale_row <- Kx + 2L ## sigv, the transient noise scale
+
+      ## Identical warning to the GTRE arm, and it matters more here: this is
+      ## the estimator psfm(model_name = "GTRE") reaches by default.
+      if (isTRUE(.panel_scale_at_bound(sig_h_hat, sqrt(sig_u_hat^2 + sigv_hat^2))) ||
+        isTRUE(.panel_scale_at_bound(sigr_hat, sqrt(sig_u_hat^2 + sigv_hat^2)))) {
+        .warn_boot_boundary(sig_h_hat, sigr_hat)
+      }
+
+      beta_x_hat <- out[x_rows, 1]
+      data_z     <- matrix(1, nrow = n_obs, ncol = 1)
+      beta_z_hat <- 2 * log(sig_u_hat)
+      beta_h_hat <- 2 * log(sig_h_hat)
+      data_h     <- NULL
     } else {
       ## Bare GTRE/TRE: homoskedastic u (and h, for GTRE), no z pipe at all.
       h_type <- if (model_name == "GTRE") "scalar" else "none"
@@ -194,18 +288,7 @@ psfm_bootstrap <- function(psfm_object,
         .ref_scale <- sigma_hat
         if (isTRUE(.panel_scale_at_bound(sig_h_hat, .ref_scale)) ||
           isTRUE(.panel_scale_at_bound(sigr_hat, .ref_scale))) {
-          warning("psfm_bootstrap(): this fit has a persistent scale on the ",
-            "zero boundary (sigh = ", signif(sig_h_hat, 4), ", sigr = ",
-            signif(sigr_hat, 4), "). A parametric bootstrap draws from the ",
-            "fitted model, so it will resample from a data-generating process ",
-            "with that component absent, and the bootstrap is in any case ",
-            "inconsistent on the boundary of the parameter space. The ",
-            "resulting intervals will understate the uncertainty in the ",
-            "persistent split rather than represent it. See ?psfm on what a ",
-            "collapsed scale means -- it is frequently the correct maximum ",
-            "likelihood estimate, but it is not a point to bootstrap around.",
-            call. = FALSE
-          )
+          .warn_boot_boundary(sig_h_hat, sigr_hat)
         }
         x_rows <- 5:(4 + Kx)
         expected_n_par <- 4 + Kx

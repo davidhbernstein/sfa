@@ -63,6 +63,19 @@ behaviour, or a new `model_name` value.
   homoskedastic respectively; both refuse rather than silently ignoring the
   new arguments.
 
+* **`print()` and `summary()` now say when a variance scale is on the zero
+  boundary**, for `sfm()`'s `sigma_u` under wrong skewness, for `"tHN"`'s
+  `sigma_u` absorbed by heavy-tailed noise, and for `psfm()`'s two persistent
+  scales. Each says which of those it is, since they mean different things.
+
+  The condition was already warned about at fit time, but a warning is a
+  one-off: it does not survive `saveRDS()`, a fresh session, or a loop that
+  suppressed warnings to keep the console readable. What people look at
+  afterwards is the printed table, and there a collapsed scale appears as an
+  ordinary coefficient of `0.0009` with nothing to say that it is a boundary
+  solution, that the split it belongs to is unidentified in this sample, or
+  that the intercept moved to absorb the difference.
+
 * **`psfm_bootstrap()` warns when asked to bootstrap a boundary fit.** A
   parametric bootstrap resamples from the *fitted* model, so a fit whose
   persistent scale has collapsed resamples from a data-generating process in
@@ -76,7 +89,9 @@ behaviour, or a new `model_name` value.
 
 * **`psfm(model_name = "GTRE")` now reports a persistent scale that has
   collapsed to zero**, in `$sigh_at_bound` and `$sigr_at_bound` and in a
-  warning naming the surviving scale.
+  warning naming the surviving scale. Under **both** estimators: `"fiml"`,
+  which is the default and packs its results in a separate branch, and
+  `"sml"`.
 
   `GTRE` has two persistent components and the likelihood cannot always
   separate them in a given sample. When it cannot it merges them: one goes to
@@ -85,12 +100,34 @@ behaviour, or a new `model_name` value.
   replications**, and `sigr -> 0` was three to five times commoner than
   `sigh -> 0`.
 
-  **It depends far more on T than on N.** A crossed design (N in 50/100/200 by
-  T in 4/8/16, 251 fits) puts the elasticity of the collapse rate at -1.07 in
-  T against -0.68 in N, both significant. The rate runs 39-60% at T = 4
-  whatever N is, and falls to 7% at N = 200, T = 16. A four-period panel
-  cannot reliably separate persistent inefficiency from a firm random effect
-  however many firms it contains -- `?psfm` now says so.
+  **Whether firms or periods help depends on the estimator, and the two
+  answers are opposite.** Crossed (N, T) designs on the same DGP, regressing
+  the collapse rate on log N and log T:
+
+  | estimator | fits | log N | log T |
+  |---|---|---|---|
+  | `"fiml"` (the default) | 600 | **-1.66** (0.18) | -0.93 (0.20) |
+  | `"sml"` | 251 | -0.68 (0.26) | **-1.07** (0.27) |
+
+  Under the default, firms buy about 1.8 times what periods do; under
+  simulated ML it is the other way round. Restricting the `"fiml"` design to
+  N <= 200 -- cell for cell the grid the `"sml"` one used -- leaves it at
+  -1.64 (0.22), so this is the estimator and not the design; the difference in
+  the N coefficient is significant (z = 2.8) and the difference in the T
+  coefficient is not.
+
+  So the practical advice under the default is **add firms**: at T = 4 the
+  collapse rate falls 68%, 36%, 18%, 6% across N = 50, 100, 200, 400 and
+  reaches 0% at N = 400, T = 16. Under `"sml"` that same row is flat (60%,
+  39%, 41%), which is why a short panel is a dead end there however many firms
+  it has. `?psfm` now gives both.
+
+  One limit, stated because it is easy to over-read: those elasticities were
+  measured at `sigma_r = 0.20` against `sigma_h = 0.40`. On a design where the
+  random effect dominates instead (0.50 against 0.40, N = 100, T = 6) the
+  *level* ordering reverses -- `"fiml"` collapses on 33% of replications and
+  `"sml"` on 20%. Which estimator handles the split better depends on how much
+  persistent inefficiency there is to find, not on the estimator alone.
 
   This is usually the CORRECT maximum likelihood estimate, not a failure: on
   one such replication the boundary solution beat the true parameter vector by
@@ -98,6 +135,45 @@ behaviour, or a new `model_name` value.
   wrong-skewness result (Waldman 1982). So it is reported rather than
   prevented -- bounding either scale away from zero would corrupt exactly the
   samples where the boundary is the answer.
+
+  **Your intercept moved with it**, and the warning now says so. One rule
+  covers what a collapse does: it *conserves the persistent variance and
+  relocates the persistent mean into the intercept*. Those are two different
+  destinations -- `h` is half-normal, carrying both a mean
+  `E[h] = sigh*sqrt(2/pi)` and a variance `Var(h) = sigh^2 (1 - 2/pi)`, and
+  the model has a separate place for each: the intercept takes the mean, since
+  `E[y] = beta0 - E[h] - E[u]`, and the surviving persistent scale takes the
+  variance. So the survivor does *not* come back at `sqrt(sigh^2 + sigr^2)`;
+  that shortcut predicts 0.447 where the answer is 0.313.
+
+  | | surviving scale | intercept |
+  |---|---|---|
+  | `sigh -> 0` | `sqrt(sigr^2 + sigh^2(1-2/pi))` = 0.3133 | `-E[h]` = -0.3192 |
+  | `sigr -> 0` | `sqrt(sigh^2 + sigr^2/(1-2/pi))` = 0.5197 | +0.0955 |
+
+  Measured over 1000 replications at each of five sample sizes: 0.2973,
+  -0.3035, 0.5058, +0.0931 -- within 2.5% to 5.1% with nothing fitted, and all
+  four slightly below prediction, which is what selection produces rather than
+  a wrong constant. The practical consequence is that a collapsed fit does not
+  only mislabel the persistent split; it displaces any level read off `coef()`
+  by a known and substantial amount.
+
+  **And it is wrong skewness, measured between firms.** Average the OLS
+  residuals within each firm -- that average is the persistent part of the
+  error -- and look at their skew. Over 1000 replications the samples whose
+  between-firm skew came out the wrong way for a production frontier lost
+  `sigma_h` to the boundary **69%** of the time against 3.6% for the rest,
+  with an ROC area of **0.955** for that one statistic, and not one of them
+  collapsed `sigma_r` instead. So a collapsed `sigma_h` is not an accident to
+  retry with different starting values: the sample carries no between-firm
+  evidence of persistent inefficiency and the estimate says so.
+
+  Read the sign, not a p-value. The firm mean of residuals contains
+  `-ubar_i` as well as `-h_i`, and the mean of T half-normals is skewed the
+  same way, so the between-firm skew leans negative even at `sigma_h = 0` --
+  82% of the time at T = 4, 63% at T = 10, 53% at T = 30. `skewness_test()`
+  is therefore not applicable to between-firm residuals as it stands, and
+  `?psfm` says so.
 
   `psfm()` also gains `keep_objective`, which retains the likelihood for the
   simulated-ML panel models so it can be evaluated away from the optimum. That
@@ -1028,6 +1104,23 @@ behaviour, or a new `model_name` value.
   which previously returned none.
 
 ## Bug fixes
+
+* **`psfm_bootstrap()` refused the estimator `psfm()` reaches by default.**
+  Since 1.1.4, `psfm(model_name = "GTRE")` defaults to `estimator = "fiml"`
+  and returns an object whose `$model_name` is `"GTRE_FML"`.
+  `psfm_bootstrap()` checked that name against a list that did not contain it,
+  so the natural two-line sequence -- fit a GTRE model, then bootstrap it --
+  stopped with `"psfm_bootstrap() does not support model_name = 'GTRE_FML'"`,
+  and the error message's own explanation named only the moment-based and
+  wrapped models, none of which applied. Reaching the bootstrap at all
+  required knowing to pass `estimator = "sml"` to the fit.
+
+  `"GTRE_FML"` is now supported. The data-generating process is the one the
+  `"GTRE"` arm already simulated -- same four-component model, different
+  estimator -- so only the parameter layout differs: FIML reports the four raw
+  scales `(sigr, sigv, sigh, sigu)` after the frontier block rather than
+  `"GTRE"`'s `lambda`/`sigma` reparameterization. `$H` and the boundary
+  warning come with it.
 
 * **`psfm(OPG_calc = TRUE)` returned `NA` for every OPG and sandwich standard
   error, and wrote a variable into the global environment.** The OPG "meat"

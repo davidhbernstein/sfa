@@ -311,6 +311,7 @@ summary.sfareg <- function(object, ...) {
     cat("log likelihood:", -object$opt$value, "\n")
   }
   .sfa_report_convergence(object)
+  .sfa_report_boundary(object)
   ## return original object
   invisible(object)
 }
@@ -327,6 +328,47 @@ print.sfareg <- function(x, ...) {
     cat("log likelihood:", -x$opt$value, "\n")
   }
   .sfa_report_convergence(x)
+  .sfa_report_boundary(x)
+}
+
+## A variance scale sitting on the zero boundary, shown by both print() and
+## summary().
+##
+## The condition is already warned about at fit time, but a warning is a
+## one-off: it does not survive saveRDS(), a fresh session, or a loop that
+## suppressed warnings to keep the console readable. What people look at
+## afterwards is the printed table, and there a collapsed scale appears as an
+## ordinary coefficient of 0.0009 with nothing to say it is a boundary
+## solution, that the split it belongs to is unidentified in this sample, or
+## that the intercept moved to absorb the difference. So the flags the fit
+## already carries are reported here too.
+.sfa_report_boundary <- function(x) {
+  if (isTRUE(x$sigma_u_at_bound)) {
+    cat("NOTE: sigma_u is on the zero boundary")
+    if (isTRUE(x$wrong_skew)) cat(" and the OLS residuals have the wrong skew")
+    cat(".\n  Under wrong skewness this is the correct MLE, not a failure ",
+      "(Waldman 1982);\n  see ?skewness_test for a p-value.\n", sep = "")
+  }
+  ## tHN reports the same condition under its own name, and for its own reason:
+  ## heavy-tailed noise can absorb the whole one-sided component, so this is not
+  ## the wrong-skew story and must not cite it.
+  if (isTRUE(x$thn_sigma_u_at_bound)) {
+    cat("NOTE: sigma_u is on the zero boundary, so this fit reports essentially",
+      " no\n  inefficiency and the efficiency scores are uninformative. Heavy-",
+      "tailed\n  noise absorbing the one-sided component is a known property of",
+      " tHN,\n  not necessarily a numerical failure. See ?sfm.\n", sep = "")
+  }
+  if (isTRUE(x$sigh_at_bound) || isTRUE(x$sigr_at_bound)) {
+    gone <- if (isTRUE(x$sigh_at_bound)) "sigh" else "sigr"
+    kept <- if (isTRUE(x$sigh_at_bound)) "sigr" else "sigh"
+    cat("NOTE: ", gone, " is on the zero boundary, so the two persistent",
+      " components\n  have merged: ", kept, " has absorbed its variance and the",
+      " intercept has\n  absorbed its mean. Frequently the correct MLE rather",
+      " than a failure --\n  read the persistent scales together, and treat",
+      " both the split and any\n  level from coef() as unidentified in this",
+      " sample. See ?psfm.\n", sep = "")
+  }
+  invisible(NULL)
 }
 
 ## One line on how the optimizer finished, shown by both print() and

@@ -87,3 +87,168 @@ test_that("psfm_bootstrap warns when bootstrapping a boundary fit", {
     }))
   expect_true(any(grepl("persistent scale on the zero boundary", w)))
 })
+
+## ---------------------------------------------------------------------------
+## The same check on the DEFAULT estimator.
+##
+## psfm(model_name = "GTRE") returns model_name = "GTRE_FML" under its default
+## estimator = "fiml", and that branch packs its results separately -- so the
+## boundary block, which keyed on model_name == "GTRE", never ran for the path
+## most users take. The FIML archive puts the collapse rate at 19.3% at
+## N = 100, T = 10, so this was silent on roughly one fit in five.
+## ---------------------------------------------------------------------------
+
+fml_fit <- function(seed) {
+  d <- data_gen_p(t = 10, N = 100, rand = seed, sig_u = 1, sig_v = 0.3,
+                  sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5,
+                  beta2 = 0.5)
+  w <- character(0)
+  f <- withCallingHandlers(
+    psfm(y_gtre ~ x1 + x2, "GTRE", as.data.frame(d), individual = "name",
+         estimator = "fiml"),
+    warning = function(x) {
+      w <<- c(w, conditionMessage(x))
+      invokeRestart("muffleWarning")
+    })
+  list(fit = f, warns = w)
+}
+
+test_that("the default FIML estimator reports a collapsed persistent scale", {
+  skip_on_cran()
+  ## Seeds chosen from the 1000-replication FIML archive, and deliberately not
+  ## marginal ones: seed 5 lands sigh at 9.1e-04 and seed 6 lands sigr at
+  ## 1.1e-06, against a threshold of 1% of a scale near 1.04. Both clear it by
+  ## three orders of magnitude or more, so the assertion is not measuring the
+  ## optimizer's last digit.
+  a <- fml_fit(5)
+  expect_identical(a$fit$model_name, "GTRE_FML")
+  expect_true(isTRUE(a$fit$sigh_at_bound))
+  expect_false(isTRUE(a$fit$sigr_at_bound))
+  expect_true(any(grepl("sigh has collapsed", a$warns)))
+
+  b <- fml_fit(6)
+  expect_true(isTRUE(b$fit$sigr_at_bound))
+  expect_false(isTRUE(b$fit$sigh_at_bound))
+  expect_true(any(grepl("sigr has collapsed", b$warns)))
+})
+
+test_that("an interior FIML fit reports FALSE rather than nothing at all", {
+  skip_on_cran()
+  ## The distinction that matters: absent is not the same as FALSE. Before the
+  ## fix these fields did not exist on a FIML fit, so isTRUE(NULL) was FALSE
+  ## and the condition read as "no collapse" whether or not there was one.
+  a <- fml_fit(1)
+  expect_false(is.null(a$fit$sigh_at_bound))
+  expect_false(is.null(a$fit$sigr_at_bound))
+  expect_false(a$fit$sigh_at_bound)
+  expect_false(a$fit$sigr_at_bound)
+})
+
+test_that("the boundary warning says the intercept moved too", {
+  skip_on_cran()
+  ## E[y] = beta0 - E[h] - E[u], so collapsing sigma_h removes
+  ## E[h] = sigh*sqrt(2/pi) from the error and the intercept absorbs it. A user
+  ## reading a level off coef() has to be told that, not only that the split is
+  ## unidentified.
+  a <- fml_fit(5)
+  expect_true(any(grepl("frontier intercept has shifted", a$warns)))
+})
+
+test_that("psfm_bootstrap accepts a fit from the default estimator", {
+  skip_on_cran()
+  ## psfm(model_name = "GTRE") returns "GTRE_FML", which psfm_bootstrap()
+  ## rejected outright -- so the natural two-line sequence (fit, then
+  ## bootstrap) failed on the default path.
+  d <- data_gen_p(t = 6, N = 40, rand = 11, sig_u = 1, sig_v = 0.3,
+                  sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  f <- suppressWarnings(
+    psfm(y_gtre ~ x1 + x2, "GTRE", as.data.frame(d), individual = "name",
+         estimator = "fiml"))
+  expect_identical(f$model_name, "GTRE_FML")
+
+  ## No `inefdec` here on purpose: psfm() defaults it to TRUE and never asked
+  ## the user about it, so psfm_bootstrap() must recover it from the fit
+  ## rather than demand it back.
+  b <- suppressWarnings(
+    psfm_bootstrap(f, BOOT = 2, numCores = 1, individual = "name"))
+  ## The FIML layout is (beta..., sigr, sigv, sigh, sigu), so the bootstrap
+  ## must carry one column per parameter, named from this model's own $out --
+  ## reading the GTRE row order here would silently mislabel every column.
+  expect_equal(nrow(b$boot_par), 2L)
+  expect_identical(colnames(b$boot_par)[seq_len(nrow(f$out))], rownames(f$out))
+  expect_true(all(c("sigr", "sigv", "sigh", "sigu") %in% colnames(b$boot_par)))
+  ## $H is returned by this model, so the persistent-score draws come with it.
+  expect_false(is.null(b$boot_eff_h))
+  expect_equal(nrow(b$boot_eff_h), 2L)
+})
+
+
+test_that("psfm_bootstrap recovers inefdec from the fit rather than demanding it", {
+  skip_on_cran()
+  ## Omitting `inefdec` used to fail inside parallel::clusterExport(): the
+  ## promise was forced during serialization, so the error arrived from
+  ## postNode/sendData/serialize with nothing naming the user's call. And
+  ## requiring it was the wrong contract -- a user who restates it can restate
+  ## it WRONG, and bootstrapping a cost frontier against a production fit is a
+  ## silent error, not a loud one.
+  d <- as.data.frame(
+    data_gen_p(t = 6, N = 40, rand = 11, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
+               sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5))
+
+  ## Cost frontier: the fit NAMES inefdec = FALSE, so the bootstrap must pick
+  ## that up. Getting it wrong would resample from a differently oriented
+  ## frontier and report perfectly ordinary-looking intervals.
+  g <- suppressWarnings(
+    psfm(c_gtre ~ x1 + x2, "GTRE", d, individual = "name",
+         estimator = "fiml", inefdec = FALSE))
+  expect_true("inefdec" %in% names(as.list(g$call)))
+  bg <- suppressWarnings(
+    psfm_bootstrap(g, BOOT = 2, numCores = 1, individual = "name"))
+  expect_equal(nrow(bg$boot_par), 2L)
+
+  ## The other required arguments now say which one is missing, in place of an
+  ## error from inside the cluster.
+  f <- suppressWarnings(
+    psfm(y_gtre ~ x1 + x2, "GTRE", d, individual = "name", estimator = "fiml"))
+  expect_error(psfm_bootstrap(f, BOOT = 2, individual = "name"),
+               "`numCores` has no default")
+})
+
+test_that("print() and summary() say when a scale is on the boundary", {
+  ## Tested on the flags rather than through a fit: the reporting logic is what
+  ## is under test, and a warning at fit time does not survive saveRDS(), a new
+  ## session, or a loop that suppressed warnings -- which is exactly why the
+  ## printed output has to carry it.
+  fake <- structure(
+    list(out = matrix(0, 1, 3), formula = y ~ x, total_time = "0s",
+         sigh_at_bound = TRUE, sigr_at_bound = FALSE),
+    class = "sfareg")
+  expect_output(sfa:::.sfa_report_boundary(fake), "sigh is on the zero boundary")
+  expect_output(sfa:::.sfa_report_boundary(fake), "sigr has absorbed its variance")
+  expect_output(sfa:::.sfa_report_boundary(fake), "absorbed its mean")
+
+  ## The other direction names the other scale, not the same one twice.
+  fake$sigh_at_bound <- FALSE; fake$sigr_at_bound <- TRUE
+  expect_output(sfa:::.sfa_report_boundary(fake), "sigr is on the zero boundary")
+  expect_output(sfa:::.sfa_report_boundary(fake), "sigh has absorbed its variance")
+
+  ## An interior fit says nothing at all.
+  fake$sigr_at_bound <- FALSE
+  expect_silent(sfa:::.sfa_report_boundary(fake))
+
+  ## The cross-sectional analogue, and it cites the test that gives a p-value.
+  cs <- structure(list(sigma_u_at_bound = TRUE, wrong_skew = TRUE), class = "sfareg")
+  expect_output(sfa:::.sfa_report_boundary(cs), "wrong skew")
+  expect_output(sfa:::.sfa_report_boundary(cs), "Waldman 1982")
+  expect_output(sfa:::.sfa_report_boundary(cs), "skewness_test")
+
+  ## tHN reports the same condition under its own field name and for a
+  ## different reason, so it must be covered AND must not cite wrong skewness.
+  th <- structure(list(thn_sigma_u_at_bound = TRUE), class = "sfareg")
+  expect_output(sfa:::.sfa_report_boundary(th), "sigma_u is on the zero boundary")
+  expect_output(sfa:::.sfa_report_boundary(th), "Heavy-")
+  expect_failure(expect_output(sfa:::.sfa_report_boundary(th), "Waldman"))
+
+  ## A model with none of these fields must not error on the missing ones.
+  expect_silent(sfa:::.sfa_report_boundary(structure(list(), class = "sfareg")))
+})

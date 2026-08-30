@@ -1710,6 +1710,27 @@
   scale_hat / ref < rel_tol
 }
 
+## Set $sigh_at_bound / $sigr_at_bound on a fitted GTRE object and warn if
+## either persistent scale has collapsed.
+##
+## Factored out because psfm() reaches this point by two different routes with
+## two different parameter layouts: estimator = "sml" reports the
+## lambda/sigma reparameterization with sigh and sigr alongside, while
+## estimator = "fiml" -- the DEFAULT -- reports the four raw scales. The check
+## used to live only in the "sml" branch, so the default estimator carried no
+## boundary flag at all. `ref` is the transient scale sqrt(su^2 + sv^2) under
+## both layouts, which is what makes the 1% rule mean the same thing in each.
+.report_panel_boundary <- function(results, model_name, sig_h, sig_r, ref) {
+  results$sigh_at_bound <- .panel_scale_at_bound(sig_h, ref)
+  results$sigr_at_bound <- .panel_scale_at_bound(sig_r, ref)
+  if (isTRUE(results$sigh_at_bound)) {
+    .warn_panel_boundary(model_name, "sigh", "sigr", sig_r)
+  } else if (isTRUE(results$sigr_at_bound)) {
+    .warn_panel_boundary(model_name, "sigr", "sigh", sig_h)
+  }
+  results
+}
+
 .warn_panel_boundary <- function(model_name, scale_name, absorber = NULL,
                                  absorber_value = NA_real_) {
   msg <- paste0(
@@ -1728,5 +1749,15 @@
       "unidentified in this sample."
     )
   }
+  ## The intercept is not a bystander here. E[y] = beta0 - E[h] - E[u], so
+  ## moving mass between sigma_h and sigma_r moves E[h] = sigma_h*sqrt(2/pi)
+  ## and the fitted intercept absorbs the difference -- measured at -0.30
+  ## against a predicted -0.319 when sigma_h collapses from a true 0.40. A user
+  ## reading a level off coef() needs to be told that, not just the scales.
+  msg <- paste0(msg, " The frontier intercept has shifted with it: it carries ",
+    "E[h] = sigh*sqrt(2/pi), so a collapsed persistent scale displaces the ",
+    "estimated intercept by roughly that amount. Treat levels from coef() ",
+    "with the same caution as the split itself."
+  )
   warning(msg, call. = FALSE)
 }

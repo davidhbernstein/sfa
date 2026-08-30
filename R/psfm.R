@@ -718,13 +718,7 @@ psfm <- function(formula,
       .ref <- tryCatch(unname(.pv[["sigma"]]), error = function(e) NA_real_)
       .sh <- tryCatch(unname(.pv[["sigh"]]), error = function(e) NA_real_)
       .sr <- tryCatch(unname(.pv[["sigr"]]), error = function(e) NA_real_)
-      results$sigh_at_bound <- .panel_scale_at_bound(.sh, .ref)
-      results$sigr_at_bound <- .panel_scale_at_bound(.sr, .ref)
-      if (isTRUE(results$sigh_at_bound)) {
-        .warn_panel_boundary(model_name, "sigh", "sigr", .sr)
-      } else if (isTRUE(results$sigr_at_bound)) {
-        .warn_panel_boundary(model_name, "sigr", "sigh", .sh)
-      }
+      results <- .report_panel_boundary(results, model_name, .sh, .sr, .ref)
     }
 
     ## Retained so sfa_diagnostics() can profile the likelihood after the fact,
@@ -1909,6 +1903,13 @@ psfm <- function(formula,
     names(results) <- c(
       "out", "opt", "total_time", "start_v", "U", "H", "model_name", "formula", "data",
       "coefficients", "std.errors", "t.values", "call", "start_search"
+    )
+
+    ## Same persistent-boundary check as the "sml" branch above. It matters
+    ## MORE here, because this is the estimator psfm(model_name = "GTRE")
+    ## reaches by default.
+    results <- .report_panel_boundary(
+      results, model_name, sig_h, sig_r, sqrt(sig_u^2 + sig_v^2)
     )
     return(results)
   }
