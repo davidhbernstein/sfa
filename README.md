@@ -156,6 +156,14 @@ parallelised over cores.
 frontier regime, with the regime probability optionally parameterised by
 covariates (`ZISF_Z`).
 
+### `lcsfm()` — latent class
+
+`LCM` and `LCM_Z`: the latent class frontier (Greene 2005; Orea and Kumbhakar
+2004) — `n_class` unobserved technologies, each with its own frontier and its
+own two scales, mixed by a multinomial logit whose covariates are optional
+(`LCM_Z`). Returns posterior class probabilities and posterior-weighted
+efficiency alongside the class-conditional predictions.
+
 ### `ttsfm()` — two tier
 
 `TTNE` (normal–exponential–exponential), `TTHN` (normal–half normal–half

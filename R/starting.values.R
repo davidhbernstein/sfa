@@ -1,4 +1,4 @@
-start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_x_vars, start_val, n_z_vars, z_vars) {
+start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_x_vars, start_val, n_z_vars, z_vars, n_class = 1) {
   plm_lm <- lm(formula_x, data_orig)
   beta_hat <- if (isTRUE(intercept == 0)) {
     plm_lm$coefficients[x_vars_vec]
@@ -152,6 +152,74 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     colnames(out) <- c("sigma_v", c(names(plm_lm$coefficients)), z_vars)
     lower_bob <- c(.Machine$double.eps, rep(-.Machine$double.xmax^.1, length(start_v[-c(1)])))
+  }
+  ## LATENT CLASS. Unlike every other model here the parameter vector has no
+  ## fixed length: J blocks of (sigv, sigu, beta) followed by the (J-1) blocks
+  ## of multinomial-logit coefficients, class J being the reference.
+  ##
+  ## The starting values are NOT J perturbations of one fit. A finite mixture
+  ## whose components start identical sits at a saddle point of the likelihood
+  ## -- the posterior class probabilities are then equal for every observation
+  ## and the score with respect to the class split is zero -- so the classes
+  ## have to be separated before the optimizer is handed the problem. Splitting
+  ## the OLS residuals at their J-quantiles and refitting within each group is
+  ## the usual EM-style initialisation and costs one lm() per class. It also
+  ## makes the labelling reproducible rather than arbitrary: class 1 starts on
+  ## the lowest-residual group. See the note on label switching in ?zsfm.
+  if (model_name %in% c("LCM", "LCM_Z")) {
+    .J <- max(2L, as.integer(n_class))
+    X_lc <- stats::model.matrix(plm_lm)
+    e_lc <- as.numeric(epsilon_hat)
+    qs <- stats::quantile(e_lc, probs = seq(0, 1, length.out = .J + 1L), names = FALSE)
+    ## Ties in the residuals can collapse a break; jitter the interior breaks
+    ## apart rather than letting cut() drop a class.
+    qs <- sort(unique(qs))
+    grp <- if (length(qs) < .J + 1L) {
+      ## Degenerate residual distribution: fall back to an even split of the
+      ## ranks, which always yields J non-empty groups.
+      cut(rank(e_lc, ties.method = "first"),
+        breaks = .J, labels = FALSE, include.lowest = TRUE)
+    } else {
+      cut(e_lc, breaks = qs, labels = FALSE, include.lowest = TRUE)
+    }
+    ## One sigma per class from that class's own residual spread, split into
+    ## sigv/sigu by the pooled lambda so the two scales start on the same
+    ## footing as the single-class models.
+    .lam0 <- 1
+    .blocks <- lapply(seq_len(.J), function(j) {
+      ok <- which(grp == j)
+      b_j <- tryCatch(
+        stats::lm.fit(X_lc[ok, , drop = FALSE], plm_lm$model[[1L]][ok])$coefficients,
+        error = function(e) plm_lm$coefficients
+      )
+      b_j[!is.finite(b_j)] <- plm_lm$coefficients[!is.finite(b_j)]
+      s_j <- stats::sd(e_lc[ok])
+      if (!is.finite(s_j) || s_j <= 0) s_j <- max(stats::sd(e_lc), 1e-3)
+      c(s_j / sqrt(1 + .lam0^2), s_j * .lam0 / sqrt(1 + .lam0^2), unname(b_j))
+    })
+    ## Class J is the reference, so only J-1 blocks of logit coefficients are
+    ## free. They start at zero: equal prior class probabilities. The classes
+    ## are already separated by the beta blocks above, so this is not the
+    ## saddle point the identical-component start would be.
+    n_q <- if (model_name == "LCM") 1L else n_z_vars
+    start_v <- c(unlist(.blocks), rep(0, (.J - 1L) * n_q))
+    .bnames <- names(plm_lm$coefficients)
+    .qnames <- if (model_name == "LCM") "(Intercept)" else z_vars
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    colnames(out) <- c(
+      unlist(lapply(seq_len(.J), function(j) {
+        paste0(c("sigv", "sigu", .bnames), "_class", j)
+      })),
+      unlist(lapply(seq_len(.J - 1L), function(j) {
+        paste0("logit_", .qnames, "_class", j)
+      }))
+    )
+    ## Positivity on the two scales of every block; the betas and the logit
+    ## coefficients are unrestricted.
+    lower_bob <- c(
+      rep(c(.Machine$double.eps, .Machine$double.eps, rep(-Inf, n_x_vars)), .J),
+      rep(-Inf, (.J - 1L) * n_q)
+    )
   }
   if (model_name %in% c("ZISF")) {
     start_v <- start_v_zisf
@@ -506,6 +574,17 @@ lower.start <- function(start_v, model_name, differ) {
   ## NLN's third parameter is a meanlog and is genuinely unbounded below.
   if (model_name == "NLN") {
     lower1 <- c(rep(.0000001, 2), start_v[3] - differ, start_v[-c(1:3)] - differ)
+  }
+  ## LCM's layout is variable-length, so the positivity pattern is derived from
+  ## the block structure recorded on start_v rather than hard-coded by index.
+  ## .lcm_pos is attached by zsfm() when it builds the starting vector.
+  if (model_name %in% c("LCM", "LCM_Z")) {
+    pos <- attr(start_v, "lcm_pos")
+    if (is.null(pos)) {
+      stop("lower.start(): LCM start_v is missing its `lcm_pos` attribute.",
+        call. = FALSE)
+    }
+    lower1 <- ifelse(pos, .0000001, start_v - differ)
   }
   if (model_name %in% c("ZISF")) {
     lower1 <- c(start_v[1] - differ, rep(.0000001, 2), start_v[-c(1:3)] - differ)

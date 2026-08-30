@@ -956,6 +956,7 @@
     "PL80_MVTN"  = 1,
     "NR"         = 1,     "THT"        = 1,   "NTN"           = 1,
     "NG"         = 1,     "ZISF"       = 1,   "NNAK"          = 1,
+    "LCM"        = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,
     "NGE"        = 1,     "NLN"        = 1,   "NW"            = 1,
     "tHN"        = 1,     "TSL"        = 1,
@@ -966,7 +967,7 @@
 
     # --- 1 Pipe Allowed (2 Parts) ---
     "TRE_Z"      = 2,     "FD"         = 2,   "ZISF_Z"        = 2,
-    "NHN_Z"      = 2,     "NE_Z"       = 2,
+    "NHN_Z"      = 2,     "NE_Z"       = 2,   "LCM_Z"         = 2,
 
     # --- 2 Pipes Allowed (3 Parts) ---
     "GTRE_Z"     = 3,     "TTNE"       = 3,   "TTHN"          = 3,
@@ -1111,6 +1112,23 @@
   out <- m + log(exp(a - m) + exp(b - m))
   ## m = -Inf means both terms are -Inf; the arithmetic above gives NaN there.
   out[!is.finite(m)] <- m[!is.finite(m)]
+  out
+}
+
+## log(sum_j exp(M[i, j])) for each row of a matrix -- the J-class
+## generalisation of .log_add2, used to mix the latent-class components and to
+## normalise the multinomial-logit class probabilities. Kept on the log scale
+## throughout: a class contribution can easily underflow to zero in absolute
+## terms while still carrying the posterior weight for that observation.
+.log_row_sum_exp <- function(M) {
+  M <- as.matrix(M)
+  mx <- do.call(pmax, c(lapply(seq_len(ncol(M)), function(j) M[, j]), na.rm = TRUE))
+  ## An all -Inf row is a genuine zero density; the shift below would make it
+  ## NaN, so carry the -Inf through untouched.
+  bad <- !is.finite(mx)
+  mx[bad] <- 0
+  out <- mx + log(rowSums(exp(M - mx)))
+  out[bad] <- -Inf
   out
 }
 

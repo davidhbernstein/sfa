@@ -7,10 +7,11 @@ by anything below.
 
 ### On the short interval since 1.1.5
 
-`R CMD check --as-cran` notes "Days since last update: 5", and I am aware that
-the policy asks for updates to be spaced out. I am submitting this soon anyway
-because **1.1.5 silently returns wrong results for one of its models**, and I
-would rather that version were on CRAN for days than for months.
+1.1.5 was published on 2026-08-23, so `R CMD check --as-cran` raises the
+"Days since last update" note, and I am aware that the policy asks for updates
+to be spaced out. I am submitting this soon anyway because **1.1.5 silently
+returns wrong results for one of its models**, and I would rather that version
+were on CRAN for days than for months.
 
 `sfm(model_name = "NE")` and `"NGE"` in 1.1.5 can return a **positive**
 log-likelihood with `sigma_u` driven to zero, as an ordinary fitted object with
@@ -74,7 +75,9 @@ and `efficiency_ci()` for Horrace and Schmidt (1996) intervals.
 
 ### Changes that alter numeric output
 
-Three, all of them corrections:
+Five. Three are corrections to defects; two change the simulation draws used
+by the panel estimators, and are listed here because they move results for
+existing users even though no argument changed meaning.
 
 * `sfm(model_name = "NE")` and `"NGE"` could return a **positive**
   log-likelihood with `sigma_u` driven to zero. `log Phi(z)` and an
@@ -94,6 +97,28 @@ Three, all of them corrections:
   returned `.Machine$double.xmax` and `optim()` differences the objective for
   its gradient.
 
+* `psfm()` gave **every firm the same simulation draws**. One `R x 2` Halton
+  block was built once and recycled across all `N` firms, in three separate
+  places, so the negative correlation across observations that is half of
+  Halton's advantage (Train 2002, p. 228) was absent, and every firm's
+  simulation error was the same realization and could not average out as `N`
+  grew. Each firm now gets its own contiguous block. Measured on 87 paired
+  replications at N = 50/100/200 with identical seeds, `sigh` improves on 62
+  of 87 (Wilcoxon p = 0.015) and `sigr` on 48 of 87 (p = 0.048), while the
+  frontier slope -- the control, since it is not what the draws integrate
+  over -- is unaffected at 46 of 87 (p = 0.41). Any simulated-ML panel fit
+  changes slightly as a result.
+
+* `rand.gtre` randomized the draws by a method that removed their point. It
+  drew 9999 random permutations of Halton dimension 1 and kept whichever
+  correlated least with dimension 2; permuting one column preserves each
+  margin but randomizes the pairing, leaving joint coverage no better than
+  random. Measured joint discrepancy at `R = 150`: 0.0217 before the shuffle,
+  0.0550 after, against 0.1400 for purely random pairing. It now applies a
+  uniform shift modulo 1 (Tuffin 1996; Train 9.3.4), which moves the lattice
+  without disturbing its structure -- 0.0250 on the same measurement. Results
+  change for anyone who passed `rand.gtre`.
+
 ### Dependencies
 
 Unchanged. No package was added to `Imports` or `Suggests` in this version,
@@ -109,18 +134,18 @@ where Uwe Ligges asked for it.
 
 ## Test environments
 
-* local macOS 15 (aarch64-apple-darwin20), R 4.5.2
+* local macOS 26.5 (aarch64-apple-darwin20), R 4.5.2
 * GitHub Actions: macOS-latest (release), windows-latest (release),
   ubuntu-latest (devel, release, oldrel-1)
 * win-builder (R-devel and R-release)
 
 ## R CMD check results
 
-`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 15:
+`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 26.5:
 **0 errors | 0 warnings | 3 notes.**
 
-1. `checking CRAN incoming feasibility ... NOTE`, reporting "Days since last
-   update: 5". This is the point addressed at the top of this file.
+1. `checking CRAN incoming feasibility ... NOTE`, reporting the days since
+   1.1.5. This is the point addressed at the top of this file.
 
 2. `checking examples ... NOTE`, listing four examples over the 5-second
    guideline: `zsfm` (10.4 s), `PL80_MVTN` (7.6 s), `sfa_diagnostics` (5.5 s)

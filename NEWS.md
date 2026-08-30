@@ -2,6 +2,9 @@
 
 A feature release. In brief:
 
+* **A fifth model-fitting entry point, `lcsfm()`** — the latent class
+  stochastic frontier, with `n_class` coexisting technologies.
+
 * **Six new panel estimators**, all classical rather than maximum likelihood
   and none assuming a distribution for inefficiency: `"CSS"`
   (Cornwell-Schmidt-Sickles 1990), `"LS"` (Lee-Schmidt 1993), `"KSS"`
@@ -249,6 +252,44 @@ behaviour, or a new `model_name` value.
 
   `sfm()` fits now also carry `$ols_residuals`, which is what makes the test
   exact rather than re-derived from the recorded call.
+
+* **`lcsfm()` -- the latent class stochastic frontier** (Greene 2005; Orea and
+  Kumbhakar 2004; Caudill 2003), a new exported entry point alongside `sfm()`,
+  `psfm()`, `zsfm()` and `ttsfm()`. `J` distinct
+  technologies coexist in one sample, each with its own frontier `beta_j` and
+  its own `sigma_v,j` and `sigma_u,j`, and which one a firm operates is
+  unobserved. Class membership follows a multinomial logit with class `J` as
+  the reference, constant under `"LCM"` and parameterized by the second formula
+  segment under `"LCM_Z"`. The number of classes is `n_class`, default 2.
+
+  Every firm contributes to every class weighted by its class probability, so
+  this is not the same as fitting separate frontiers to known subgroups -- the
+  groups are not known, and the uncertainty about them is carried into the
+  efficiency predictions. `post.prob` is the `n x J` matrix of posterior class
+  probabilities, `jlms_class` the class-conditional JLMS scores, and `jlms`
+  their posterior-weighted average.
+
+  It is its own function rather than a `model_name` inside `zsfm()`. The two
+  are related -- `zsfm()`'s `"ZISF"` is the restricted two-class case in which
+  one class has no inefficiency at all -- but a user looking for a latent class
+  model would not think to look inside a function named for zero inefficiency,
+  and `n_class` means nothing to `ZISF`, whose two components are not free.
+
+  Recovery on simulated two-class data, `n = 800`, true shares 0.60/0.40:
+  `beta_1 = (1.00, 0.48, 0.51)` against a true `(1.0, 0.5, 0.5)`,
+  `beta_2 = (2.97, 0.98, 0.21)` against `(3.0, 1.0, 0.2)`, scales
+  `0.51`/`0.98` against `0.5`/`1.0`, fitted shares `0.598`/`0.402`, and 92% of
+  firms assigned to their true class. On three classes at `n = 1200` the
+  figure is 95.5% after matching labels.
+
+  **Class labels are identified only up to permutation.** Starting values come
+  from splitting the OLS residuals at their `J`-quantiles and refitting within
+  each group, which makes a run reproducible on the same data and avoids the
+  saddle point that identical starting components would sit at, but it does
+  not pin labels to any external ordering. Match classes before comparing two
+  fits. The likelihood-ratio test of `J` against `J+1` is not valid here --
+  the null puts a class probability on the boundary -- so use `AIC()`/`BIC()`
+  and interpretability instead.
 
 * **`psfm()` gave every firm the SAME simulation draws.** A single `R x 2`
   Halton block was built once and recycled across all `N` firms, in three
