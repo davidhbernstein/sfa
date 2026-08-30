@@ -98,9 +98,9 @@ test_that("psfm_bootstrap warns when bootstrapping a boundary fit", {
 ## N = 100, T = 10, so this was silent on roughly one fit in five.
 ## ---------------------------------------------------------------------------
 
-fml_fit <- function(seed) {
+fml_fit <- function(seed, sig_r = 0.2, sig_h = 0.4) {
   d <- data_gen_p(t = 10, N = 100, rand = seed, sig_u = 1, sig_v = 0.3,
-                  sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5,
+                  sig_r = sig_r, sig_h = sig_h, cons = 0.5, beta1 = 0.5,
                   beta2 = 0.5)
   w <- character(0)
   f <- withCallingHandlers(
@@ -113,23 +113,87 @@ fml_fit <- function(seed) {
   list(fit = f, warns = w)
 }
 
+## ---------------------------------------------------------------------------
+## WHY THIS TEST DOES NOT PIN A SEED THAT COLLAPSES (2026-08-30)
+##
+## It used to, and CI went red: seeds 5 and 6 from the FIML archive collapsed
+## sigh and sigr respectively here and on ubuntu-devel and macOS, but seed 6
+## did NOT collapse on ubuntu-release or windows-release. The old comment
+## defended the assertion on the grounds that the collapse cleared the 1%
+## threshold by three orders of magnitude -- but that argues about precision AT
+## an optimum, not about which optimum a different BLAS walks to. A collapse
+## sample is a flat, wrong-skew region of the likelihood; which basin the
+## optimizer lands in is exactly what is not portable.
+##
+## So the two directions are now tested by the means each one admits:
+##
+##   sigh: forced by the DGP. Generating with sig_h = 0 -- no persistent
+##         inefficiency at all, which is a case users really do hit -- puts
+##         sigh on the boundary in 7 of 8 seeds, at 1e-3 or below. That is a
+##         property of the data, not of the optimizer.
+##
+##   sigr: NOT forceable, and the asymmetry is the finding. Generating with
+##         sig_r = 0 collapses sigr in only 1 of 8 seeds; the MLE returns
+##         sigr = 0.06-0.22 against a true 0. A symmetric sigr absorbs part of
+##         the between-firm variance at almost no likelihood cost, because the
+##         r-versus-h split is the weakly identified thing. More firms shrink
+##         it (0.18 -> 0.015 from N = 100 to 300) without driving it to the
+##         bound. So the sigr direction is covered where it is deterministic:
+##         .report_panel_boundary() itself, below.
+## ---------------------------------------------------------------------------
+
 test_that("the default FIML estimator reports a collapsed persistent scale", {
   skip_on_cran()
-  ## Seeds chosen from the 1000-replication FIML archive, and deliberately not
-  ## marginal ones: seed 5 lands sigh at 9.1e-04 and seed 6 lands sigr at
-  ## 1.1e-06, against a threshold of 1% of a scale near 1.04. Both clear it by
-  ## three orders of magnitude or more, so the assertion is not measuring the
-  ## optimizer's last digit.
-  a <- fml_fit(5)
+  ## sig_h = 0: the DGP has no persistent inefficiency, so the boundary is the
+  ## right answer on every platform rather than one basin among several.
+  a <- fml_fit(3, sig_r = 0.4, sig_h = 0)
   expect_identical(a$fit$model_name, "GTRE_FML")
   expect_true(isTRUE(a$fit$sigh_at_bound))
   expect_false(isTRUE(a$fit$sigr_at_bound))
   expect_true(any(grepl("sigh has collapsed", a$warns)))
+  ## The warning must name the other scale, as in the SML case above.
+  expect_true(any(grepl("sigr = ", a$warns)))
+})
 
-  b <- fml_fit(6)
-  expect_true(isTRUE(b$fit$sigr_at_bound))
-  expect_false(isTRUE(b$fit$sigh_at_bound))
-  expect_true(any(grepl("sigr has collapsed", b$warns)))
+test_that("the boundary reporter flags and explains a collapsed sigr", {
+  ## The sigr direction, deterministically. .report_panel_boundary() is what
+  ## both estimator branches call, so this covers the reporting contract
+  ## without asking an optimizer to land in a particular basin.
+  w <- character(0)
+  res <- withCallingHandlers(
+    sfa:::.report_panel_boundary(list(), "GTRE_FML",
+                                 sig_h = 0.52, sig_r = 1.1e-06, ref = 1.04),
+    warning = function(x) {
+      w <<- c(w, conditionMessage(x))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(isTRUE(res$sigr_at_bound))
+  expect_false(isTRUE(res$sigh_at_bound))
+  expect_true(any(grepl("sigr has collapsed", w)))
+  expect_true(any(grepl("GTRE_FML", w)))
+  ## Names the absorbing scale and its value, so the two are read together.
+  expect_true(any(grepl("sigh = 0.52", w)))
+  expect_true(any(grepl("CORRECT maximum likelihood estimate", w)))
+
+  ## And the mirror image: only one of the two can be reported at a time.
+  w2 <- character(0)
+  res2 <- withCallingHandlers(
+    sfa:::.report_panel_boundary(list(), "GTRE",
+                                 sig_h = 9.1e-04, sig_r = 0.31, ref = 1.04),
+    warning = function(x) {
+      w2 <<- c(w2, conditionMessage(x))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(isTRUE(res2$sigh_at_bound))
+  expect_false(isTRUE(res2$sigr_at_bound))
+  expect_true(any(grepl("sigh has collapsed", w2)))
+  expect_true(any(grepl("sigr = 0.31", w2)))
+
+  ## An interior fit sets both flags to FALSE and warns about neither.
+  expect_silent(res3 <- sfa:::.report_panel_boundary(
+    list(), "GTRE_FML", sig_h = 0.40, sig_r = 0.20, ref = 1.04))
+  expect_false(res3$sigh_at_bound)
+  expect_false(res3$sigr_at_bound)
 })
 
 test_that("an interior FIML fit reports FALSE rather than nothing at all", {
