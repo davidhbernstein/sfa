@@ -122,6 +122,17 @@ behaviour, or a new `model_name` value.
   39%, 41%), which is why a short panel is a dead end there however many firms
   it has. `?psfm` now gives both.
 
+  **A user-facing consequence: you can tell in advance.** The quantity that
+  governs whether a panel supports the split is not `sigma_h/sigma_r` -- that
+  only decides which scale dies -- but the persistent variance in the firm
+  means against the transient variance still in them,
+  `[sigr^2 + sigh^2 (1-2/pi)] / ([sigu^2 (1-2/pi) + sigv^2] / T)`. Across six
+  designs varying all four scales it orders the collapse rate perfectly
+  (Spearman -1 under both estimators; logistic coefficient on log(S/N) of
+  -1.15, SE 0.20): 54% of fits merge at S/N = 0.67, 31% at 1.30, 6% at 11.7.
+  Below about 1, expect half your fits to merge; it takes roughly S/N > 5 to
+  get under 10%. `?psfm` and the vignette give the formula and a helper.
+
   One limit, stated because it is easy to over-read: those elasticities were
   measured at `sigma_r = 0.20` against `sigma_h = 0.40`. On a design where the
   random effect dominates instead (0.50 against 0.40, N = 100, T = 6) the

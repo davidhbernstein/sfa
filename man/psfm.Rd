@@ -205,6 +205,29 @@ Under the default, firms buy about 1.8 times what periods do; under simulated ML
 
 The practical reading, for the estimator you get by default: \bold{add firms}. At \eqn{T = 4} the collapse rate falls 68\%, 36\%, 18\%, 6\% across \eqn{N = 50, 100, 200, 400}, and reaches 0\% at \eqn{N = 400, T = 16}. Under \code{"sml"} the same row is flat -- 60\%, 39\%, 41\% -- which is why a short panel really is a dead end there however many firms it has. If you must use \code{estimator = "sml"} (an unbalanced panel forces it), then length is what buys the split, and a four-period panel will not give it to you.
 
+\bold{How to tell in advance whether your panel can support the split.} One
+quantity governs it, and it is not \eqn{\sigma_h/\sigma_r}. What the likelihood has to do is read the persistent part out of firm means that the transient block contaminates, so write the firm-mean composite as \eqn{r_i - h_i - \bar u_i + \bar v_i} and compare its persistent variance with the transient variance left in it:
+
+\deqn{S/N = \frac{\sigma_r^2 + \sigma_h^2(1 - 2/\pi)}{[\sigma_u^2(1 - 2/\pi) + \sigma_v^2]/T}}{S/N = [sigma_r^2 + sigma_h^2 (1 - 2/pi)] / ([sigma_u^2 (1 - 2/pi) + sigma_v^2] / T)}
+
+Across six designs varying all four scales in different combinations (50 replications each, \eqn{N = 100}, \eqn{T = 6}), this orders the collapse rate \bold{perfectly} -- Spearman \eqn{-1.000} under both estimators, and a logistic coefficient on \eqn{\log(S/N)}{log(S/N)} of \eqn{-1.15} \eqn{(0.20)}:
+
+\tabular{lllll}{
+  \bold{S/N} \tab \bold{collapse} \tab \eqn{\sigma_h \to 0}{sigma_h -> 0} \tab \eqn{\sigma_r \to 0}{sigma_r -> 0} \tab \cr
+  0.67 \tab 54\% \tab 0.14 \tab 0.40 \tab \cr
+  0.90 \tab 50\% \tab 0.10 \tab 0.40 \tab \cr
+  0.96 \tab 40\% \tab 0.21 \tab 0.19 \tab \cr
+  1.30 \tab 31\% \tab 0.15 \tab 0.17 \tab \cr
+  5.20 \tab 8\% \tab 0.06 \tab 0.02 \tab \cr
+  11.69 \tab 6\% \tab 0.04 \tab 0.02 \tab
+}
+
+As a rule of thumb: below \eqn{S/N \approx 1}{S/N about 1} about half your fits will merge the two components, and it takes roughly \eqn{S/N > 5}{S/N > 5} to get under 10\%.
+
+Two things follow that are easy to get backwards. First, \bold{raising \eqn{\sigma_h/\sigma_r} does not help} -- it only decides which scale dies. Going from a ratio of 2 to 4 by shrinking \eqn{\sigma_r} takes \eqn{\sigma_h \to 0}{sigma_h -> 0} down (0.15 to 0.10) and \eqn{\sigma_r \to 0}{sigma_r -> 0} up (0.17 to 0.40), and the net rate \emph{rises} from 31\% to 50\%, because shrinking \eqn{\sigma_r} removes persistent variance and lowers \eqn{S/N} from 1.30 to 0.90. Holding the ratio at 2 and scaling both components instead takes the rate from 31\% to 8\%. Second, \bold{more transient inefficiency hurts}: \eqn{\sigma_u} enters the denominator, so a noisier transient block contaminates the firm means and makes the persistent split harder.
+
+Note what this quantity does and does not explain. \eqn{T} enters it directly, so it covers the contamination channel by which longer panels help. It says nothing about \eqn{N}, which helps through a different route -- sampling error in what is effectively a deconvolution from \eqn{N} firm-level draws -- which is why the two dimensions have to be measured separately, as above.
+
 One limit on all of that, stated because it is easy to over-read. Those elasticities were measured at \eqn{\sigma_r = 0.20} against \eqn{\sigma_h = 0.40}, where persistent inefficiency is the larger of the two time-invariant components. On a design where the random effect dominates instead (\eqn{\sigma_r = 0.50}, \eqn{\sigma_h = 0.40}, \eqn{N = 100}, \eqn{T = 6}) the \emph{level} ordering reverses: \code{"fiml"} collapses on 33\% of replications and \code{"sml"} on 20\%. Which estimator handles the split better is not a fact about the estimators alone -- it depends on how much persistent inefficiency there is to find.
 
 \code{psfm} therefore reports the condition rather than preventing it, in \code{$sigh_at_bound} and \code{$sigr_at_bound} and in a warning naming the surviving scale. Bounding either parameter away from zero would corrupt precisely the samples where the boundary is the answer. What the warning asks of you is to read the two persistent scales together and to treat the split between them as unidentified in that sample -- their \emph{sum} remains informative even where the division does not.

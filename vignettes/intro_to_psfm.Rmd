@@ -228,6 +228,29 @@ What to do when it happens:
    than periods depends on the estimator; `?psfm` gives the measured
    elasticities for both.
 
+You can tell in advance whether a panel can support the split at all. The
+quantity that governs it is *not* $\sigma_h/\sigma_r$ -- raising that only
+decides which of the two scales dies. It is the persistent variance in the
+firm means relative to the transient variance still contaminating them:
+
+$$ S/N \;=\; \frac{\sigma_r^2 + \sigma_h^2(1-2/\pi)}{\left[\sigma_u^2(1-2/\pi) + \sigma_v^2\right]/T} $$
+
+```{r setup_sn}
+sn_gtre <- function(sig_u, sig_v, sig_r, sig_h, T) {
+  k <- 1 - 2/pi
+  (sig_r^2 + sig_h^2 * k) / ((sig_u^2 * k + sig_v^2) / T)
+}
+# the fit above, read off its own estimates
+sn_gtre(sig_u = 0.3, sig_v = 0.1, sig_r = 0.1, sig_h = 0.3, T = 6)
+```
+
+Across six simulated designs varying all four scales, this ordered the
+collapse rate perfectly (Spearman $-1$, both estimators): 54% of fits merged
+at $S/N = 0.67$, 31% at $1.30$, and 6% at $11.7$. **Below about 1, expect
+roughly half your fits to merge the two components; it takes something like
+$S/N > 5$ to get under 10%.** Note that $T$ is in the denominator, so a longer
+panel raises it directly.
+
 A quick check on your own data, before fitting anything: average the OLS
 residuals within each firm and look at their skew. A production frontier
 implies it should be negative. When it comes out positive the sample carries
