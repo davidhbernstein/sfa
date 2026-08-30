@@ -1105,6 +1105,24 @@ behaviour, or a new `model_name` value.
 
 ## Bug fixes
 
+* **The vignette still described `"PL80"` and `"BC92"` as wrappers around
+  `frontier::sfa()`.** They have been native closed-form maximum-likelihood
+  implementations since 1.1.3, the release that dropped **frontier** as a
+  dependency -- so for four releases `vignette("intro_to_psfm")` advertised a
+  dependency on a competing package that the package had deliberately removed,
+  and that appears in neither `Imports` nor `Suggests`. `?psfm` had it right
+  throughout ("natively estimated ... verified against `frontier::sfa()`
+  before that dependency was removed"); only the vignette was stale.
+
+  Two related corrections in the same file. The `psfm_bootstrap()` section gave
+  the wrong reason for excluding `PL80`/`BC92` -- it is that they do not expose
+  the `$U`/`$H` efficiency structure the function reads, not that they wrap
+  anything -- and its list of supported models omitted `TFE_WMLE` and
+  `GTRE_FML`, the latter being what `psfm(model_name = "GTRE")` returns under
+  its default estimator. And the model table, which says "eleven" choices,
+  now says twenty-one and points at `?psfm` rather than implying the table is
+  exhaustive.
+
 * **`psfm_bootstrap()` refused the estimator `psfm()` reaches by default.**
   Since 1.1.4, `psfm(model_name = "GTRE")` defaults to `estimator = "fiml"`
   and returns an object whose `$model_name` is `"GTRE_FML"`.

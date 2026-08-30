@@ -2,7 +2,7 @@
 title: "Introduction to psfm"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{introduction to psfm}
+  %\VignetteIndexEntry{Introduction to psfm}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -26,8 +26,11 @@ library(sfa)
 
 `psfm()` is the panel-data entry point of the sfa package (`sfm()`,
 `zsfm()`, and `ttsfm()` are its cross-sectional counterparts -- see their
-own help pages, `?sfm`/`?zsfm`/`?ttsfm`). It fits one of eleven
-`model_name` choices, selected via the `model_name` argument:
+own help pages, `?sfm`/`?zsfm`/`?ttsfm`). It fits one of twenty-one
+`model_name` choices, selected via the `model_name` argument. The most
+commonly used are listed here; `?psfm` has the full list, including the
+classical panel estimators (`"CSS"`, `"LS"`, `"KSS"`, `"SSRE"`, `"SSCRE"`)
+added since this vignette was written:
 
 | `model_name` | Individual effect | Estimator | Notes |
 |---|---|---|---|
@@ -39,8 +42,8 @@ own help pages, `?sfm`/`?zsfm`/`?ttsfm`). It fits one of eleven
 | `"FD"` | random, persistent | first-differenced GLS (Wang & Ho 2010) | $\sigma_u$ time-invariant, scaled by covariates (1 pipe) |
 | `"GTRE_SEQ1"`, `"GTRE_SEQ2"` | random | sequential moment-based | fast, but not maximum likelihood |
 | `"SSFE"` | fixed | LSDV (Schmidt & Sickles 1984) | deterministic, no optimizer |
-| `"PL80"` | random, persistent | wraps `frontier::sfa()` | Pitt & Lee (1980) |
-| `"BC92"` | random, time-varying | wraps `frontier::sfa()` | Battese & Coelli (1992) |
+| `"PL80"` | random, persistent | ML, closed form | Pitt & Lee (1980) |
+| `"BC92"` | random, time-varying | ML, closed form | Battese & Coelli (1992) |
 
 Every model shares the same `formula`/`data`/`individual` calling
 convention, so switching between them is usually just a change of
@@ -208,10 +211,16 @@ theory. `psfm_bootstrap()` offers a parametric-bootstrap alternative:
 starting from a fitted model, it repeatedly (a) simulates a new response
 from the fitted parameters (using each model's own assumed data-generating
 process), (b) re-estimates the same model on the simulated data, and (c)
-uses the spread of those re-estimates as the standard error. This is
-supported for every maximum-likelihood model above except the
-`frontier::sfa()`-wrapped ones (`PL80`, `BC92`): `GTRE_Z`, `TRE_Z`, `GTRE`,
-`TRE`, `TFE`, and `FD`.
+uses the spread of those re-estimates as the standard error. It supports
+`GTRE_Z`, `TRE_Z`, `GTRE`, `GTRE_FML`, `TRE`, `TFE`, `TFE_WMLE` and `FD`.
+`PL80` and `BC92` are excluded because they do not expose the `$U`/`$H`
+efficiency structure the function reads, and the moment-based and LSDV
+estimators (`GTRE_SEQ1`, `GTRE_SEQ2`, `SSFE`) because they are not maximum
+likelihood.
+
+Note that `psfm(model_name = "GTRE")` returns an object whose `$model_name` is
+`"GTRE_FML"` under the default `estimator = "fiml"`, which is why both names
+appear in that list.
 
 ```{r setup7}
 data_trial_tre <- data_gen_p(t=5, N=30, rand=16, sig_u=0.3, sig_v=0.1, sig_r=0.1, sig_h=0.3,
