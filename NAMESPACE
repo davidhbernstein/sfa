@@ -1,4 +1,4 @@
-export(zsfm, lcsfm, selsfm, ivsfm, copsfm, psfm, sfm, ttsfm, npsfm, sfa_diagnostics, efficiency_ci, skewness_test, marginal_effects, efficiency, meanefficiency, simulation_se, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
+export(zsfm, lcsfm, selsfm, ivsfm, copsfm, psfm, sfm, ttsfm, npsfm, sfa_diagnostics, efficiency_ci, skewness_test, marginal_effects, efficiency, meanefficiency, simulation_se, TIC, vuong, data_gen_p, data_gen_cs, summary.sfareg, print.sfareg, psfm_bootstrap)
 
 import("methods")
 import("plm") # import whole package
@@ -40,6 +40,7 @@ S3method(residuals, npsfareg)
 S3method(nobs, npsfareg)
 S3method(plot, sfareg)
 S3method(print, sfadiag)
+S3method(print, sfa_vuong)
 
 ## Delayed registration: `sandwich` is in Suggests, not Imports, so the
 ## generics do not exist at load time. The `pkg::generic` form registers these
