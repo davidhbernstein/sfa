@@ -50,6 +50,42 @@ only a few days old, so most users upgrading to 1.2.0 will be coming from
 
 ### What is new
 
+Four new model-fitting entry points, each for a model the package could not
+previously express:
+
+* `lcsfm()` -- the latent class stochastic frontier (Greene 2005; Orea and
+  Kumbhakar 2004), with `n_class` coexisting technologies and posterior class
+  probabilities.
+* `selsfm()` -- Greene's (2010) frontier with a correction for sample
+  selection, where the units in the sample are there for reasons correlated
+  with the frontier's own noise. Two-step: probit, then maximum simulated
+  likelihood. Its standard errors are conditional on the first stage and do not
+  carry the Murphy-Topel correction, which `?selsfm` states plainly.
+* `ivsfm()` -- endogenous regressors (Amsler, Prokhorov and Schmidt 2016,
+  2017), with three estimators: full maximum likelihood, a two-step control
+  function, and corrected 2SLS. To our knowledge no other CRAN package corrects
+  for endogeneity in a stochastic frontier.
+* `copsfm()` -- dependence between the noise and the inefficiency through a
+  copula (Smith 2008), relaxing the independence assumption every other model
+  in the package makes. `?copsfm` documents, with the numbers, that the
+  dependence parameter is consistent but needs a large sample; the frontier
+  slopes are unaffected.
+
+New extractor and diagnostic functions: `efficiency()` (Battese-Coelli, JLMS
+and modal predictors, on either scale of the dependent variable),
+`meanefficiency()` (the model-implied `E[exp(-U)]` and supra-percentile means,
+in closed form for seven distributions), and `simulation_se()`, which reports
+how much of a simulated-ML standard error is simulation noise rather than
+sampling noise.
+
+Further arguments to `sfm()`: `weights`/`wscale`, `start_from` (seed a hard
+model from a simpler fitted one, matched by parameter name), `scaling` for the
+Wang and Schmidt (2002) scaling-property model, and `shapehet`, which is
+labelled experimental in `?sfm` because its coefficients do not recover well in
+testing. `vcov(type = "bhhh")` gives an outer-product-of-gradients covariance
+that is defined where the Hessian is not, and `extract()` methods let
+\pkg{texreg} render these fits into tables.
+
 Six new panel estimators, all classical (non-maximum-likelihood) and none
 assuming a distribution for the inefficiency term:
 
@@ -147,9 +183,13 @@ where Uwe Ligges asked for it.
 1. `checking CRAN incoming feasibility ... NOTE`, reporting the days since
    1.1.5. This is the point addressed at the top of this file.
 
-2. `checking examples ... NOTE`, listing four examples over the 5-second
-   guideline: `zsfm` (10.4 s), `PL80_MVTN` (7.6 s), `sfa_diagnostics` (5.5 s)
-   and `psfm` (5.2 s). All four are inside `\donttest{}`; they fit models by
+2. `checking examples ... NOTE`, listing five examples over the 5-second
+   guideline: `simulation_se` (~16 s), `zsfm` (9.9 s), `PL80_MVTN` (7.8 s),
+   `sfa_diagnostics` (5.5 s) and `psfm` (5.0 s). `simulation_se()` estimates
+   how much of a standard error is simulation noise by REFITTING the model K
+   times with independent randomizations, so its example necessarily costs
+   K + 1 simulated-ML fits; it was cut from 46 s by halving the sample and
+   using the smallest K that still shows a spread. All four are inside `\donttest{}`; they fit models by
    simulated maximum likelihood over Halton draws, which is what costs the
    time. The `psfm` example was reduced from 20.4 s for this release, by
    shrinking its panel to 60 firms over 6 periods and passing

@@ -55,10 +55,12 @@ refits succeeded and which argument was varied.
 \seealso{\code{\link{sfa_diagnostics}} for convergence diagnostics on a single fit.}
 \examples{
 \donttest{
-d <- data_gen_cs(N = 400, rand = 1, sig_u = 1, sig_v = 0.3, cons = 0.5,
+## Kept deliberately small: every refit is a full simulated-ML fit, so the
+## cost is K + 1 of them. K = 3 is the smallest that still shows the spread.
+d <- data_gen_cs(N = 200, rand = 1, sig_u = 1, sig_v = 0.3, cons = 0.5,
                  beta1 = 0.5, beta2 = 0.5, a = 1, mu = 0.5)
 fit <- sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 200)
-simulation_se(fit, K = 5, quiet = TRUE)
+simulation_se(fit, K = 3, quiet = TRUE)
 }
 }
 \keyword{models}
