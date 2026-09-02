@@ -5,6 +5,17 @@ A feature release. In brief:
 * **A fifth model-fitting entry point, `lcsfm()`** — the latent class
   stochastic frontier, with `n_class` coexisting technologies.
 
+* **A sixth entry point, `selsfm()`** — Greene's (2010) stochastic frontier
+  with a correction for sample selection, for the case where the units in the
+  sample are there because of something correlated with the frontier's own
+  noise. The selection and frontier equations are supplied as separate
+  `selection` and `frontier` arguments. Estimation is Greene's two-step
+  scheme: probit on the full sample, then maximum simulated likelihood on the
+  selected subsample, with efficiency scores from the simulated Bayes rule
+  over the same draws. Note that the standard errors are conditional on the
+  first-stage estimate and do not carry the Murphy–Topel correction; bootstrap
+  over both stages when inference on `rho` matters.
+
 * **Six new panel estimators**, all classical rather than maximum likelihood
   and none assuming a distribution for inefficiency: `"CSS"`
   (Cornwell-Schmidt-Sickles 1990), `"LS"` (Lee-Schmidt 1993), `"KSS"`
