@@ -93,10 +93,11 @@ lcsfm <- function(formula,
   ## and the likelihood mixes the J composed densities:
   ##   log L_i = log sum_j P(j | q_i) f_j(eps_ij)
   ##
-  ## This lives in zsfm() rather than sfm() because zsfm() is the finite-mixture
-  ## entry point: ZISF is the restricted two-class case in which one class has
-  ## no inefficiency at all. "LCM" gives the classes fixed probabilities,
-  ## "LCM_Z" lets the pipe segment parameterize them.
+  ## This has its own entry point rather than living inside zsfm(): ZISF is the
+  ## restricted two-class case in which one class has no inefficiency at all,
+  ## but nobody looking for a latent class model would search for it inside a
+  ## function named for zero inefficiency. "LCM" gives the classes fixed
+  ## probabilities, "LCM_Z" lets the pipe segment parameterize them.
   ## ---------------------------------------------------------------------
   if (model_name %in% c("LCM", "LCM_Z")) {
     J <- n_class
