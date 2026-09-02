@@ -762,9 +762,15 @@ sfm <- function(formula,
         }
       }
 
-      like[like == -Inf] <- -sqrt(.Machine$double.xmax / length(like))
-      like[like == Inf] <- -sqrt(.Machine$double.xmax / length(like))
-      like[is.nan(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      ## One guard, not three. The old form tested -Inf, Inf and NaN and missed
+      ## NA -- which is exactly what .log_pcf() returns when it cannot evaluate,
+      ## so NNAK leaked NA into the sum and optim died with "non-finite value
+      ## supplied by optim" on about a fifth of replications at N = 100.
+      ## `like[like == -Inf]` is worse than a missed case when NA is present:
+      ## the comparison yields NA and the subscript is then NA too.
+      ## !is.finite() covers NA, NaN, Inf and -Inf together, and for a `like`
+      ## that was already finite everywhere it changes nothing.
+      like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
 
       ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
       ## objective for the robust one, at these SAME current parameter values.
