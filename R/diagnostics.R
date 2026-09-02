@@ -73,6 +73,7 @@ sfa_diagnostics <- function(object, ...) {
       "10" = "Nelder-Mead simplex degenerated",
       "51" = "L-BFGS-B warning",
       "52" = "L-BFGS-B ERROR",
+      "99" = "final optim() polish stage did not produce a usable result -- preceding stage's estimates reported",
       if (is.na(code)) "no optimizer output (moment-based or FE estimator)" else "unknown code"
     ),
     message = if (!is.null(opt$message)) opt$message else NA_character_,

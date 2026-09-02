@@ -1,3 +1,8 @@
+## Convergence code for "the final optim() polish stage did not run or did not
+## produce a usable result". optim() itself returns 0, 1, 10, 51 or 52, so 99
+## cannot collide with one of its own codes.
+.SFA_OPTIM_SKIPPED <- 99L
+
 ## opt.nlminb() -- primary optimization stage.
 opt.nlminb <- function(fn, start_v, lower.nlminb, upper.nlminb = Inf,
                        gr = NULL, maxit.nlminb = 500, nlminb.TF = TRUE,
@@ -56,27 +61,78 @@ opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.boby
   return(results)
 }
 
+## Stage 3 is a refinement pass over a point stages 1-2 already produced, so a
+## failure here should cost the polish, not the fit. See
+## notes/code_history/opts.md for the two failures this guards.
 opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose = verbose) {
   start_feval <- fn(start_v)
   opt <- NULL
   if (isTRUE(opt.TF == TRUE)) {
-    opt <- optim(
-      par = start_v,
-      fn = fn,
-      lower = lower.optim,
-      upper = upper.optim,
-      hessian = optHessian,
-      method = method,
-      control = list(
-        maxit = maxit.optim,
-        REPORT = base::ceiling(maxit.optim / 10),
-        trace = if (verbose) {
-          1
-        } else {
-          0
-        }
+    np <- length(start_v)
+
+    run_optim <- function(use_hessian) {
+      tryCatch(
+        optim(
+          par = start_v,
+          fn = fn,
+          lower = lower.optim,
+          upper = upper.optim,
+          hessian = use_hessian,
+          method = method,
+          control = list(
+            maxit = maxit.optim,
+            REPORT = base::ceiling(maxit.optim / 10),
+            trace = if (verbose) {
+              1
+            } else {
+              0
+            }
+          )
+        ),
+        error = function(e) NULL
       )
-    )
+    }
+
+    opt <- run_optim(optHessian)
+
+    ## optim() threw, or stopped at a point the objective cannot evaluate.
+    if (!is.null(opt) && (!is.numeric(opt$value) || !is.finite(opt$value))) {
+      opt <- NULL
+    }
+
+    ## The point is usable but the numerical Hessian is not. Keep the point and
+    ## hand downstream an all-NA Hessian, which every SE path already degrades
+    ## to NA on.
+    if (!is.null(opt) && isTRUE(optHessian) &&
+      (is.null(opt$hessian) || !all(is.finite(opt$hessian)))) {
+      opt$hessian <- matrix(NA_real_, np, np)
+      opt$convergence <- .SFA_OPTIM_SKIPPED
+      opt$message <- "final optim() stage returned a non-finite Hessian; standard errors are unavailable"
+    }
+
+    ## Nothing usable came back: return an optim-shaped result at the stage-2
+    ## point so callers that index opt$par / opt$hessian keep working.
+    if (is.null(opt)) {
+      opt <- list(
+        par = start_v,
+        value = start_feval,
+        counts = c(`function` = NA_integer_, gradient = NA_integer_),
+        convergence = .SFA_OPTIM_SKIPPED,
+        message = "final optim() stage skipped: non-finite objective or optim() error; the stage-2 result is returned",
+        hessian = if (isTRUE(optHessian)) matrix(NA_real_, np, np) else NULL
+      )
+    }
+
+    ## convergence is visible in print()/summary(), but coef() and friends do
+    ## not go through those, so say it once out loud as well.
+    if (identical(opt$convergence, .SFA_OPTIM_SKIPPED)) {
+      warning(
+        "The final optim() stage did not produce a usable result (", opt$message,
+        "). Estimates come from the preceding stage and standard errors are NA. ",
+        "Try optHessian = FALSE, vcov(type = \"bhhh\"), or different starting values.",
+        call. = FALSE
+      )
+    }
 
     if (isTRUE(start_feval > opt$value)) {
       start_v <- opt$par

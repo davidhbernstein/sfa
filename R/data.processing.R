@@ -387,6 +387,7 @@ print.sfareg <- function(x, ...) {
         "10" = "Nelder-Mead simplex degenerated",
         "51" = "L-BFGS-B warning",
         "52" = "L-BFGS-B error",
+        "99" = "final optim() polish stage did not produce a usable result; the preceding stage's estimates are reported",
         "see ?optim for this code"
       ), "\n",
       sep = ""
