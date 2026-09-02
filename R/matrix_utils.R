@@ -568,6 +568,30 @@
   if (burn > 0L && nrow(raw) > burn) raw <- raw[-seq_len(burn), , drop = FALSE]
   raw <- raw[seq_len(n_need), , drop = FALSE]
 
+  ## RANDOMIZE BY SHIFTING, for the deterministic sequences.
+  ##
+  ## halton() and torus() ignore set.seed() entirely -- they are fixed lattices
+  ## -- so before this, passing `seed` with the default sim_type did precisely
+  ## nothing while looking as though it controlled the draws. Worse, it left
+  ## the cross-sectional simulated-ML models with UNrandomized draws, so the
+  ## asymptotic theory for simulation-based estimators (which assumes random
+  ## draws) was formally unjustified for them, even though the panel path had
+  ## been randomized since 1.2.0 by .gtre_halton_draws().
+  ##
+  ## A shift mod 1 rather than a permutation: it preserves the lattice
+  ## structure the sequence exists for, which is Train's (9.3.4) recommended
+  ## randomization and exactly what the panel path already does. With seed
+  ## NULL nothing shifts, so the default draws are unchanged.
+  ## No snapshot/restore here: the `seed` block above already took one and
+  ## registered its on.exit. A second pair would run AFTER that one and restore
+  ## the post-set.seed(seed) state instead of the caller's, quietly leaking the
+  ## seed into the caller's stream -- which is what a first attempt at this did.
+  if (!is.null(seed) && sim_type %in% c("halton", "torus")) {
+    set.seed(seed)
+    sh <- stats::runif(dim)
+    for (d in seq_len(dim)) raw[, d] <- (raw[, d] + sh[d]) %% 1
+  }
+
   lapply(seq_len(dim), function(d) {
     ## byrow = TRUE is essential, not cosmetic: filling column-major hands
     ## unit i the stride-n subsequence of a van der Corput sequence.
@@ -588,6 +612,52 @@
   out <- exp(-mu_star + 0.5 * sigma_star^2 +
     pnorm(z - sigma_star, log.p = TRUE) - pnorm(z, log.p = TRUE))
   pmin(pmax(out, 0), 1)
+}
+
+
+## G2/I3: seed a hard model from a simpler one already fitted.
+##
+## Matching is BY PARAMETER NAME, not by position. Position would be actively
+## dangerous here: `NHN` reports (lambda, sigma) where `NE` reports
+## (sigv, sigu), so a positional copy would slide a variance ratio into a
+## standard deviation and produce a confidently wrong start. By name, the two
+## documented idioms both work -- NE -> NG shares sigv/sigu, NHN -> NTN shares
+## lambda/sigma -- and a pair that shares nothing but the betas carries only
+## the betas, which is the honest answer rather than a silent misalignment.
+##
+## Anything not matched keeps the start the package computed for it.
+.start_from <- function(start_v, out, from, model_name, quiet = FALSE) {
+  if (!inherits(from, "sfareg")) {
+    stop("`start_from` must be a fitted \"sfareg\" object.", call. = FALSE)
+  }
+  tgt <- colnames(out)
+  src <- from$out
+  if (is.null(tgt) || length(tgt) != length(start_v) ||
+      is.null(src) || is.null(rownames(src)) || !("par" %in% colnames(src))) {
+    warning("start_from: could not read parameter names from one of the two ",
+      "fits, so the supplied fit was ignored and the default starting values ",
+      "were used.", call. = FALSE)
+    return(start_v)
+  }
+
+  vals <- stats::setNames(as.numeric(src[, "par"]), rownames(src))
+  vals <- vals[is.finite(vals)]
+  hit <- intersect(tgt, names(vals))
+
+  if (!length(hit)) {
+    warning("start_from: the fitted ", from$model_name, " model shares no ",
+      "parameter NAMES with ", model_name, " (", paste(tgt, collapse = ", "),
+      "), so nothing could be carried over and the default starting values ",
+      "were used.", call. = FALSE)
+    return(start_v)
+  }
+  start_v[match(hit, tgt)] <- vals[hit]
+  if (!quiet) {
+    message("start_from: carried ", length(hit), " of ", length(tgt),
+      " starting values from the ", from$model_name, " fit (",
+      paste(hit, collapse = ", "), ").")
+  }
+  start_v
 }
 
 .jlms_u <- function(mu_star, sigma_star) {
@@ -1464,12 +1534,69 @@
 }
 
 
+
+## log D_nu(z) for nu < 0 by the integral representation
+##
+##   D_nu(z) = e^{-z^2/4} / Gamma(-nu) * int_0^inf t^{-nu-1} e^{-t^2/2 - z t} dt
+##
+## which holds for every nu < 0 and needs no special functions at all. Used
+## where gsl::hyperg_U throws or underflows, i.e. exactly where the shape
+## parameter is large.
+##
+## The integrand is evaluated in LOGS with its own maximum factored out, so
+## nothing overflows however large the shape gets: g(t) = (a-1)log t - t^2/2 -
+## z t peaks at the positive root of t^2 + z t - (a-1) = 0, and integrating
+## exp(g(t) - g(t*)) keeps every evaluated term at or below 1.
+.log_pcf_integral <- function(nu, z) {
+  z <- as.numeric(z)
+  nu <- rep_len(as.numeric(nu), length(z))
+  a_v <- -nu
+  vapply(seq_along(z), function(i) {
+    zz <- z[i]
+    a <- a_v[i]
+    if (!is.finite(zz) || !is.finite(a) || a <= 0) return(NA_real_)
+    g <- function(t) (a - 1) * log(t) - t^2 / 2 - zz * t
+    ## g'(t) = (a-1)/t - t - z. For a > 1 that has one positive root and the
+    ## integrand has an interior peak worth factoring out. For a <= 1 it has
+    ## none -- g is decreasing on (0, Inf) and diverges as t -> 0 -- so there is
+    ## no finite maximum to factor, and none is needed: a small shape keeps the
+    ## integrand at moderate values and the plain integral is safe.
+    hi_t <- 0
+    if (a > 1) {
+      tstar <- (-zz + sqrt(zz^2 + 4 * (a - 1))) / 2
+      if (!is.finite(tstar) || tstar <= 0) tstar <- .Machine$double.eps
+      gmax <- g(tstar)
+      ## The integrand is log-concave, so a generous window either side of the
+      ## peak captures it to well past double precision.
+      w <- 40 * max(sqrt(1 / (a + zz^2 + 1)), 1) + 12
+      lo_t <- max(tstar - w, .Machine$double.eps)
+      hi_t <- tstar + w
+    } else {
+      gmax <- 0
+      lo_t <- 0
+      hi_t <- 40 + 8 * max(zz, 0)
+    }
+    val <- tryCatch(
+      stats::integrate(function(t) exp(g(t) - gmax), lo_t, hi_t,
+        rel.tol = 1e-10, stop.on.error = FALSE
+      )$value,
+      error = function(e) NA_real_
+    )
+    if (!is.finite(val) || val <= 0) return(NA_real_)
+    -zz^2 / 4 - lgamma(a) + gmax + log(val)
+  }, numeric(1))
+}
+
 ## Helper: log parabolic cylinder function log D_nu(z), for nu < 0
 .log_pcf <- function(nu, z) {
   z <- as.numeric(z)
+  ## nu may be a VECTOR, one order per observation: that is what lets the
+  ## gamma/Nakagami SHAPE depend on covariates (gap G5). A scalar recycles, so
+  ## every existing caller is unaffected.
+  nu <- rep_len(as.numeric(nu), length(z))
   a <- -nu
   out <- rep(NA_real_, length(z))
-  ok <- is.finite(z)
+  ok <- is.finite(z) & is.finite(nu) & nu < 0
   if (!any(ok)) {
     return(out)
   }
@@ -1478,21 +1605,42 @@
   lo <- ok & !(z > 0.5)
 
   if (any(hi)) {
-    u <- tryCatch(gsl::hyperg_U(a / 2, 0.5, z[hi]^2 / 2), error = function(e) NULL)
-    out[hi] <- if (is.null(u)) {
-      NA_real_
-    } else {
-      (nu / 2) * log(2) - z[hi]^2 / 4 + log(pmax(u, .Machine$double.xmin))
-    }
+    ## gsl::hyperg_U THROWS for a/2 >~ 16 at small arguments, and the call is
+    ## vectorized, so a single bad element used to null the whole vector and
+    ## take the entire fit down with it -- which is why NNAK "failed outright"
+    ## once its shape wandered above about 8. Two changes: fall back per
+    ## ELEMENT rather than all-or-nothing, and have something to fall back TO.
+    u <- tryCatch(gsl::hyperg_U(a[hi] / 2, 0.5, z[hi]^2 / 2), error = function(e) NULL)
+    v <- if (is.null(u)) rep(NA_real_, sum(hi)) else as.numeric(u)
+    val <- (nu[hi] / 2) * log(2) - z[hi]^2 / 4 + log(pmax(v, .Machine$double.xmin))
+    ## Underflow of U to exactly 0 is a silent precision failure, not an error:
+    ## log(xmin) is finite and wrong. Treat it as a miss too.
+    bad <- !is.finite(val) | !is.finite(v) | v <= 0
+    if (any(bad)) val[bad] <- .log_pcf_integral(nu[hi][bad], z[hi][bad])
+    out[hi] <- val
   }
   if (any(lo)) {
     zz <- z[lo]
+    nl <- nu[lo]
     ## Clip the 1F1 argument: exp(z^2/2) overflows past z ~ 37, and the series
     ## branch only ever sees z <= 0.5 where the result is finite anyway.
     q <- pmin(zz^2 / 2, .SFA_CONSTANTS$EXP_CLIP_UPPER)
-    br <- gsl::hyperg_1F1(-nu / 2, 0.5, q) / gamma((1 - nu) / 2) -
-      sqrt(2) * zz * gsl::hyperg_1F1((1 - nu) / 2, 1.5, q) / gamma(-nu / 2)
-    out[lo] <- (nu / 2) * log(2) + 0.5 * log(pi) - zz^2 / 4 +
+    br <- gsl::hyperg_1F1(-nl / 2, 0.5, q) / gamma((1 - nl) / 2) -
+      sqrt(2) * zz * gsl::hyperg_1F1((1 - nl) / 2, 1.5, q) / gamma(-nl / 2)
+    ## NOTE: the floor below is deliberately LEFT IN PLACE. The series is a
+    ## difference and can go non-positive where the two terms nearly cancel,
+    ## and log(pmax(br, xmin)) is then finite and wrong -- so replacing it with
+    ## the integral representation looks like a strict improvement. It is not.
+    ## `NG` evaluates on this branch for 99.8% of observations at its own
+    ## optimum, and the floor acts as a barrier keeping the optimizer out of
+    ## the sigma_v -> 0 corner where the composed likelihood is unbounded.
+    ## Removing it was measured: NG moved from (sigv 0.185, x1 0.560) to
+    ## (sigv 0.000, x1 0.775) against a true x1 of 0.5, reaching a HIGHER
+    ## likelihood (-438.02 vs -440.71) at a degenerate point. The barrier is
+    ## accidental but load-bearing; the reported NNAK failure was on the `hi`
+    ## branch and is fixed there. Revisit only alongside a proper boundary
+    ## penalty or constraint on sigma_v.
+    out[lo] <- (nl / 2) * log(2) + 0.5 * log(pi) - zz^2 / 4 +
       log(pmax(br, .Machine$double.xmin))
   }
   out

@@ -72,3 +72,23 @@ test_that("it refuses fits it cannot build scores for", {
             robust = "mdpd", keep_objective = TRUE)
   expect_error(sfa:::estfun.sfareg(fr), "do not maximise a log-likelihood")
 })
+
+test_that("the sandwich methods are REGISTERED, not merely defined", {
+  ## This is the test that would have caught a real shipped defect. Both
+  ## methods existed and both worked under devtools::load_all(), which exports
+  ## everything -- so every test passed while the INSTALLED package failed with
+  ## "no applicable method for 'estfun' applied to an object of class sfareg",
+  ## taking vcovCL() and coeftest() down with it.
+  ##
+  ## `sandwich` is in Suggests, so its generics do not exist when sfa loads and
+  ## a plain S3method() directive cannot work. The `pkg::generic` form defers
+  ## registration until sandwich is loaded. Asserting on NAMESPACE is crude but
+  ## it is the only check that survives load_all(): a dispatch test here would
+  ## pass whether or not the directive is present.
+  ns <- readLines(system.file("NAMESPACE", package = "sfa"), warn = FALSE)
+  if (!length(ns)) ns <- readLines(testthat::test_path("..", "..", "NAMESPACE"), warn = FALSE)
+  ns <- paste(ns, collapse = "\n")
+
+  expect_match(ns, "S3method\\(sandwich::bread, *sfareg\\)")
+  expect_match(ns, "S3method\\(sandwich::estfun, *sfareg\\)")
+})

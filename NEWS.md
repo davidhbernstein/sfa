@@ -5,6 +5,60 @@ A feature release. In brief:
 * **A fifth model-fitting entry point, `lcsfm()`** — the latent class
   stochastic frontier, with `n_class` coexisting technologies.
 
+* **New accessors.** `efficiency()` returns technical efficiency with a choice
+  of predictor (`"bc"`, `"jlms"`, `"mode"`) and of scale for the dependent
+  variable (`logDepVar`); the mode is the only one that reaches exactly 1, which
+  it does wherever the posterior mean of inefficiency is negative.
+  `meanefficiency()` returns the model-implied `E[exp(-U)]` for ten
+  distributions -- seven in closed form -- together with mean efficiency among
+  the most efficient p, which is a property of the fitted model rather than of
+  the sample. `simulation_se()` reports how much of a simulated-ML standard
+  error is simulation noise rather than sampling noise.
+
+* **`sfm()` gains four arguments.** `weights`/`wscale` for observation weights
+  (a weight of 2 gives the same estimates as including the row twice);
+  `start_from` to seed a hard model from a simpler fitted one, matched by
+  parameter name; `scaling` for the Wang-Schmidt scaling-property model on
+  `"NTN"`; and `shapehet`, an **experimental** covariate-dependent shape for
+  `"NG"`/`"NNAK"` whose limitations are set out in `?sfm`.
+
+* **`vcov(fit, type = "bhhh")`** returns the outer-product-of-gradients
+  covariance, which is defined even where the Hessian is not.
+
+* **Regression tables.** `texreg::screenreg()`, `texreg()` and `htmlreg()` now
+  render `"sfareg"` fits directly.
+
+* **Two fixes to things that were shipped but did not work.** The `sandwich`
+  methods were defined without being registered, so `sandwich::estfun()`,
+  `vcovCL()` and `lmtest::coeftest()` all failed on an installed package --
+  every test passed because `devtools::load_all()` exports everything. And
+  `sim_seed` silently did nothing under the default `sim_type = "halton"`,
+  leaving the cross-sectional simulated-ML models with unrandomized draws;
+  they are now shifted like the panel models. Fixing the second is what makes
+  `simulation_se()` meaningful.
+
+* **`"NNAK"` no longer fails outright at larger shape values.**
+  `gsl::hyperg_U` throws above order ~16 and the vectorized call meant one bad
+  element nulled the whole vector. There is now a fallback that evaluates the
+  parabolic cylinder function by its integral representation, agreeing with the
+  route it replaces to 1e-12 where both work.
+
+* **A seventh entry point, `ivsfm()`** — stochastic frontier estimation when a
+  regressor is endogenous, in the sense of being correlated with the noise.
+  Three estimators from Amsler, Prokhorov and Schmidt (2016): `"IVLIML"` (full
+  maximum likelihood over the frontier and the reduced form jointly), `"IVCF"`
+  (the two-step control function of Kutlu 2010) and `"C2SLS"` (corrected 2SLS,
+  which is moment-based and so reports no log-likelihood). Supplying `uhet`
+  gives the model of Amsler, Prokhorov and Schmidt (2017), in which
+  environmental variables entering the inefficiency scale may themselves be
+  endogenous. Ignoring endogeneity is not a small matter: on simulated data
+  with a correlation of 0.6 between the noise and a regressor's reduced-form
+  error, an ordinary `sfm()` fit carries a bias of 0.133 in that regressor's
+  coefficient where `ivsfm()` carries 0.002. Note that `"IVCF"`'s conventional
+  standard errors are understated unless the correlation is zero, and that the
+  case where the regressor is correlated with the *inefficiency* rather than
+  the noise is not covered.
+
 * **A sixth entry point, `selsfm()`** — Greene's (2010) stochastic frontier
   with a correction for sample selection, for the case where the units in the
   sample are there because of something correlated with the frontier's own

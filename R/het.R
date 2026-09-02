@@ -113,18 +113,29 @@
 ## the zero boundary, and there is no boundary here to keep off.
 .sfm_het_fit <- function(family, Y, X, Zu, Zv, Zmu, inefdec_n, z_sigma, z_link,
                          x_names, maxit.nlminb = 500, maxit.optim = 1000,
-                         optHessian = TRUE, verbose = FALSE) {
+                         optHessian = TRUE, verbose = FALSE, Zs = NULL,
+                         wts = NULL) {
   n <- length(as.numeric(Y))
   X <- as.matrix(X)
   n_b <- ncol(X)
   n_v <- ncol(Zv)
   n_u <- ncol(Zu)
   n_m <- if (identical(family, "truncnormal")) ncol(Zmu) else 0L
+  ## The SCALING PROPERTY (Wang and Schmidt 2002; Alvarez, Amsler, Orea and
+  ## Schmidt 2006): u_i = h(z_i, delta) * u*_i, so the covariates scale a
+  ## common draw rather than entering its variance. Both sigma_u and the
+  ## pre-truncation mean move by the SAME factor, which is what fixes the shape
+  ## of the distribution and leaves only its scale free -- the identification
+  ## argument those papers make. Zs NULL is the ordinary heteroskedastic path,
+  ## unchanged.
+  scaling <- !is.null(Zs)
+  n_s <- if (scaling) ncol(Zs) else 0L
 
   ib <- seq_len(n_b)
   iv <- n_b + seq_len(n_v)
   iu <- n_b + n_v + seq_len(n_u)
   im <- if (n_m > 0L) n_b + n_v + n_u + seq_len(n_m) else integer(0)
+  is_ <- if (n_s > 0L) n_b + n_v + n_u + n_m + seq_len(n_s) else integer(0)
 
   ## exp() of an unbounded linear predictor is the one place this
   ## parameterization can overflow, so clip the predictor rather than repairing
@@ -133,11 +144,16 @@
   .eta <- function(Z, d) pmin(pmax(as.numeric(Z %*% d), -cl), cl)
 
   .parts <- function(p) {
+    ## Under the scaling property one factor h multiplies BOTH the scale and
+    ## the pre-truncation mean. Zu and Zmu are intercept-only there, so sigma_u
+    ## and mu are the scalars of the common draw u* and h carries all the
+    ## covariate dependence.
+    h <- if (scaling) exp(.eta(Zs, p[is_])) else 1
     list(
       eps = as.numeric(inefdec_n * (Y - X %*% p[ib])),
       s_v = z_sigma(.eta(Zv, p[iv])),
-      s_u = z_sigma(.eta(Zu, p[iu])),
-      mu = if (n_m > 0L) as.numeric(Zmu %*% p[im]) else 0
+      s_u = z_sigma(.eta(Zu, p[iu])) * h,
+      mu = (if (n_m > 0L) as.numeric(Zmu %*% p[im]) else 0) * h
     )
   }
 
@@ -155,6 +171,7 @@
     ## differences the objective for its gradient, and differencing xmax
     ## overflows to a non-finite value that aborts the fit outright.
     ll[!is.finite(ll)] <- -1e12 / n
+    if (!is.null(wts)) ll <- wts * ll
     v <- -sum(ll)
     if (is.finite(v)) v else 1e12
   }
@@ -185,13 +202,18 @@
   dv0 <- .block0(Zv, mom$sigma_v)
   du0 <- .block0(Zu, mom$sigma_u)
   dm0 <- if (n_m > 0L) rep(0, n_m) else numeric(0)
-  start_v <- c(b0, dv0, du0, dm0)
+  ## delta starts at zero, i.e. h = 1 and the fit begins from the homoskedastic
+  ## model. Any other start would assert a direction for the scaling before
+  ## the data has been asked.
+  ds0 <- if (n_s > 0L) rep(0, n_s) else numeric(0)
+  start_v <- c(b0, dv0, du0, dm0, ds0)
 
   nms <- c(
     x_names,
     paste0("Zv.", colnames(Zv)),
     paste0("Zu.", colnames(Zu)),
-    if (n_m > 0L) paste0("Zmu.", colnames(Zmu)) else NULL
+    if (n_m > 0L) paste0("Zmu.", colnames(Zmu)) else NULL,
+    if (n_s > 0L) paste0("scale.", colnames(Zs)) else NULL
   )
   names(start_v) <- nms
 

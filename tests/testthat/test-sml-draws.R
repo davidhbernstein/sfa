@@ -340,3 +340,47 @@ test_that("NW and NLN share one draw rule, and NW's is far below its old one", {
   expect_true(all(fw$exp_u_hat >= 0 & fw$exp_u_hat <= 1))
   expect_true(all(fw$u_hat >= 0))
 })
+
+test_that("a seed randomizes the deterministic sequences by shifting", {
+  ## halton() and torus() ignore set.seed() -- they are fixed lattices -- so
+  ## before the shift was added, passing `seed` with the default sim_type did
+  ## nothing at all while appearing to control the draws. That also left the
+  ## cross-sectional simulated-ML models with UNrandomized draws, which the
+  ## panel path (.gtre_halton_draws) had not been since 1.2.0.
+  a <- .sml_draws(50, 200, 1, sim_type = "halton", seed = 1)[[1]]
+  b <- .sml_draws(50, 200, 1, sim_type = "halton", seed = 999)[[1]]
+  expect_false(isTRUE(all.equal(a, b)))
+
+  ## Same seed, same draws.
+  expect_equal(a, .sml_draws(50, 200, 1, sim_type = "halton", seed = 1)[[1]])
+
+  ## The default is untouched: no seed, no shift.
+  expect_equal(
+    .sml_draws(50, 200, 1, sim_type = "halton", seed = NULL)[[1]],
+    .sml_draws(50, 200, 1, sim_type = "halton", seed = NULL)[[1]]
+  )
+
+  ## A shift preserves equidistribution, which is the reason for shifting
+  ## rather than permuting: the lattice survives.
+  expect_true(all(b > 0 & b < 1))
+  expect_equal(mean(b), 0.5, tolerance = 0.01)
+  expect_equal(sd(b), 1 / sqrt(12), tolerance = 0.01)
+})
+
+test_that("a seeded shift does not leak into the caller's RNG stream", {
+  ## The `seed` block takes one snapshot and registers one on.exit. A SECOND
+  ## snapshot/restore pair around the shift would run after it and restore the
+  ## post-set.seed state instead of the caller's -- which a first attempt at
+  ## the shift did, silently reseeding the caller.
+  set.seed(1234)
+  before <- runif(3)
+  set.seed(1234)
+  invisible(.sml_draws(20, 50, 1, sim_type = "halton", seed = 77))
+  expect_equal(runif(3), before)
+
+  set.seed(4321)
+  before2 <- runif(3)
+  set.seed(4321)
+  invisible(.sml_draws(20, 50, 2, sim_type = "torus", seed = 5))
+  expect_equal(runif(3), before2)
+})

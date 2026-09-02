@@ -2,21 +2,22 @@
 \alias{sfm}
 \title{sfm}
 \description{Implementation of the cross-sectional stochastic frontier model across an array of distributional assumptions for both v and u (user specified). For panel models, see the psfm() call.}
-\usage{sfm(formula, model_name = c("NHN", "NHN_Z", "NE", "NE_Z", "NR", "THT",
-                       "NTN", "NG", "NNAK", "NU", "NGE", "NLN", "NW", "tHN",
-                       "TSL"),
-    data, maxit.bobyqa = 10000, maxit.nlminb = 500, maxit.psoptim = 1000,
-    maxit.optim = 1000, REPORT = 1, trace = 2, pgtol = 0,
-    start_val = FALSE, PSopt = FALSE, use.nlminb = "auto",
-    use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper = NA,
-    Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi", "mdpd"),
-    c_mlqe = 0.20, eta = 0.01, alpha = 0.2, verbose = FALSE,
-    Nsim = "auto", z_link = c("sd", "var"),
-    vhet = NULL, uhet = NULL, muhet = NULL,
-    sim_type = c("halton", "sobol", "torus", "uniform"), antithetics = FALSE,
-    sim_burn = NULL, sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
-    rand.psoptim = NULL, keep_objective = FALSE,
-    estimator = c("mle", "cols", "mols"), cols_boot = 0, rand.cols = NULL)}
+\usage{sfm(formula, model_name = c("NHN", "NHN_Z", "NE", "NE_Z", "NR",
+    "THT", "NTN", "NG", "NNAK", "NU", "NGE", "NLN", "NW", "tHN",
+    "TSL"), data, maxit.bobyqa = 10000, maxit.nlminb = 500,
+    maxit.psoptim = 1000, maxit.optim = 1000, REPORT = 1, trace = 2,
+    pgtol = 0, start_val = FALSE, PSopt = FALSE, use.nlminb = "auto",
+    use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper =
+    NA, Method = "L-BFGS-B", robust = c("mle", "mlqe", "psi",
+    "mdpd"), c_mlqe = 0.2, eta = 0.01, alpha = 0.2, verbose = FALSE,
+    start_from = NULL, Nsim = "auto", z_link = c("sd", "var"), vhet =
+    NULL, uhet = NULL, muhet = NULL, scaling = NULL, shapehet = NULL,
+    weights = NULL, wscale = TRUE, sim_type = c("halton", "sobol",
+    "torus", "uniform"), antithetics = FALSE, sim_burn = NULL,
+    sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
+    rand.psoptim = NULL, keep_objective = FALSE, estimator = c("mle",
+    "cols", "mols"), cols_boot = 0, rand.cols = NULL)
+}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
 \item{model_name}{Which distributional pair to fit. The noise term \eqn{v} is
@@ -67,6 +68,11 @@ used only when \code{robust = "psi"}.}
 \item{alpha}{Numeric, default \code{0.2}. The MDPD (minimum density power
 divergence) power parameter, used only when \code{robust = "mdpd"}.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
+\item{weights}{Optional observation weights, one per row of the data actually fitted (that is, after missing-data handling; a length mismatch is an error rather than being recycled). They multiply the per-observation log-likelihood contributions. For \bold{frequency} weights this is exact -- a weight of 2 gives the same estimates as including the row twice, which the package tests -- and for \bold{sampling} weights it yields a pseudo-likelihood whose point estimates are consistent but whose Hessian-based standard errors are not. In that case use the \pkg{sandwich} methods this package registers, e.g. \code{sandwich::sandwich(fit)}. Cannot be combined with the robust divergence estimators, which reweight observations themselves.}
+\item{wscale}{Rescale \code{weights} to sum to the number of observations. This puts the log-likelihood on the same scale as an unweighted fit, so \code{AIC}/\code{BIC} stay comparable; it is a common factor on the objective and does not move the estimates. Set \code{FALSE} for genuine frequency weights, where the unscaled total is the quantity of interest.}
+\item{shapehet}{\bold{Experimental.} Optionally, a one-sided formula parameterizing the \emph{shape} of \eqn{u} rather than its scale, as \eqn{\mu_i = \mu\exp(z_i'\delta)}. Implemented for \code{model_name = "NG"} and \code{"NNAK"}, the two families that have a shape parameter at all. On a design with a true shape effect it improves the log-likelihood by a very large margin (about 10,000 points at \eqn{n = 2000}), so it does capture the variation. \bold{But its parameters do not recover well in testing}: on that design the shape coefficient came back at 0.19 against a true 0.4 while \eqn{\sigma_V} collapsed to its lower bound, which is the signature of a degenerate optimum rather than an estimate. Plain \code{"NG"} recovers cleanly on the same design without a shape effect, so this is specific to the extended model and not to \code{"NG"} itself. Treat the coefficients as exploratory, check \eqn{\sigma_V} for a boundary collapse before reading them, and prefer \code{uhet} where scale heterogeneity is what you actually mean.}
+\item{scaling}{Optionally, a one-sided formula of covariates imposing the \bold{scaling property} of Wang and Schmidt (2002) and Alvarez, Amsler, Orea and Schmidt (2006): \eqn{u_i = h(z_i,\delta)\,u^*_i} with \eqn{h = \exp(z_i'\delta)}, so the covariates scale a common draw \eqn{u^*} rather than entering its variance. Both \eqn{\sigma_U} and the pre-truncation mean move by the \emph{same} factor, which holds the shape of the distribution fixed and leaves only its scale free -- the identification argument those papers make. Implemented for \code{model_name = "NTN"} only: for a half-normal \eqn{u}, \eqn{h(z)|N(0,\sigma^2)|} \emph{is} \eqn{|N(0,(h\sigma)^2)|}, so \code{uhet} already fits that model exactly and a separate option would be two names for one thing. Cannot be combined with \code{uhet} or \code{muhet}, since letting those vary separately would undo the restriction. The reported \code{scale.} coefficients are \eqn{\delta}; \code{Zu.(Intercept)} and \code{Zmu.(Intercept)} are the scale and pre-truncation mean of the common draw.}
+\item{start_from}{Optionally, a previously fitted \code{"sfareg"} object to take starting values from. Parameters are matched \bold{by name}, not by position: \code{"NE"} reports \code{sigv}/\code{sigu} where \code{"NHN"} reports \code{lambda}/\code{sigma}, so a positional copy would slide a variance ratio into a standard deviation. Anything unmatched keeps the start the package computes for it, and a fit sharing nothing but the frontier coefficients carries only those. Fitting a simpler model first and cascading is the documented remedy for the models with awkward likelihoods: over twelve samples for \code{"NG"} seeded from \code{"NE"}, the seeded fit was never worse, identical on ten, worth \bold{176.7 log-likelihood points} on one, and succeeded on one where the default start failed outright.}
 \item{Nsim}{Total number of simulation draws per observation for the simulated-maximum-likelihood models (\code{"NLN"}, \code{"NW"}); ignored by every closed-form model. \code{"auto"} (the default) uses \code{max(200, ceiling(3*sqrt(n)))}. Half the draws are taken from each of the two proposals described under \sQuote{Details}. Simulated ML is consistent only if the draw count grows with the sample size -- at a fixed \code{Nsim} the simulation bias does not vanish and every parameter except the frontier slopes converges to the wrong value. The previous fixed default of \code{100} did exactly that: at \eqn{n = 3000} it returned \code{(0.362, 0.821, 1.284, 0.328)} against a truth of \code{(0.3, 1.0, 1.5, 0.5)} for \code{"NW"}. A numeric value below the automatic floor warns. Earlier versions warned that \code{"NLN"} needed far more draws than \code{"NW"}; that was a property of the old integration scheme, not of the model. Both now behave alike: at \eqn{n = 3000}, measured against quadrature at the true parameters, total simulation error is 3.4 log-likelihood units for \code{"NLN"} and 3.0 for \code{"NW"} at the default, falling to 0.07 and 0.06 at \code{Nsim = 6400}. The comparable figure for the old scheme was 226.8.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
   \item{keep_objective}{Logical. Store the likelihood function on the fitted object, so that \code{\link{sfa_diagnostics}} can compute the gradient at the optimum and draw likelihood slices. Defaults to \code{FALSE}: a closure carries its enclosing environment, so a fit saved with one serializes the estimation data too -- on a 200-observation example the object grows from about 38 KB to 1.7 MB. Everything else \code{sfa_diagnostics()} reports works without it.}

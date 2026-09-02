@@ -4,9 +4,37 @@ coef.sfareg <- function(object, ...) {
   object$coefficients
 }
 
-vcov.sfareg <- function(object, ...) {
+vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
+  type <- match.arg(type)
   p <- length(object$coefficients)
   nm <- names(object$coefficients)
+
+  ## BHHH: the inverse of the outer product of the per-observation scores.
+  ## Worth having because it needs no Hessian at all -- it is defined whenever
+  ## the scores are, which is exactly the case the default path fails on. When
+  ## the Hessian is singular vcov() currently falls back to a DIAGONAL
+  ## approximation, discarding every covariance; BHHH keeps them.
+  ##
+  ## It is only as good as the information-matrix equality, so it disagrees
+  ## with the Hessian under misspecification -- which is a feature when the two
+  ## are compared deliberately and a trap when they are not. Not the default.
+  if (identical(type, "bhhh")) {
+    G <- tryCatch(estfun.sfareg(object), error = function(e) NULL)
+    if (is.null(G)) {
+      stop("vcov(type = \"bhhh\"): the score matrix is unavailable for this ",
+        "fit. Refit with keep_objective = TRUE.",
+        call. = FALSE
+      )
+    }
+    V <- tryCatch(solve(crossprod(G)), error = function(e) NULL)
+    if (is.null(V)) {
+      stop("vcov(type = \"bhhh\"): the outer product of gradients is singular.",
+        call. = FALSE
+      )
+    }
+    dimnames(V) <- list(nm, nm)
+    return(V)
+  }
 
   if (!is.null(object$opt) && !is.null(object$opt$hessian)) {
     V <- tryCatch(solve(object$opt$hessian), error = function(e) NULL)

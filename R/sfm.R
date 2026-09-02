@@ -24,11 +24,16 @@ sfm <- function(formula,
                 eta = 0.01,
                 alpha = 0.2,
                 verbose = FALSE,
+                start_from = NULL,
                 Nsim = "auto",
                 z_link = c("sd", "var"),
                 vhet = NULL,
                 uhet = NULL,
                 muhet = NULL,
+                scaling = NULL,
+                shapehet = NULL,
+                weights = NULL,
+                wscale = TRUE,
                 sim_type = c("halton", "sobol", "torus", "uniform"),
                 antithetics = FALSE,
                 sim_burn = NULL,
@@ -58,7 +63,83 @@ sfm <- function(formula,
   ## (muhet), as named formulas rather than further pipe segments -- pipe
   ## POSITION already means different things in different model families, and a
   ## fourth position would be unreadable. See ?sfm Details.
-  het_on <- !is.null(vhet) || !is.null(uhet) || !is.null(muhet)
+  ## COVARIATE-DEPENDENT SHAPE (G5). The gamma and Nakagami families carry a
+  ## SHAPE parameter as well as a scale, and only the scale could vary before.
+  ## mu_i = mu * exp(z_i'delta): a multiplicative factor on the baseline shape,
+  ## which keeps x[3] meaning what it always meant and so leaves the starting
+  ## values and the reported parameter untouched when `shapehet` is absent.
+  if (!is.null(shapehet)) {
+    if (!inherits(shapehet, "formula")) {
+      stop("sfm(): `shapehet` must be a one-sided formula, e.g. ~ z1 + z2.",
+        call. = FALSE
+      )
+    }
+    if (!(model_name %in% c("NG", "NNAK"))) {
+      stop("sfm(): `shapehet` parameterizes the SHAPE of u, which only ",
+        "exists for the gamma and Nakagami families. Use model_name = ",
+        "\"NG\" or \"NNAK\"; for the scale of a half-normal or exponential ",
+        "u use `uhet` or the `| z` pipe segment.",
+        call. = FALSE
+      )
+    }
+  }
+
+  ## OBSERVATION WEIGHTS (H6). Weights multiply the per-observation
+  ## log-likelihood contributions, which is exactly right for FREQUENCY weights
+  ## and gives a pseudo-likelihood for sampling weights. In the latter case the
+  ## Hessian-based standard errors are not consistent -- use the sandwich
+  ## methods, which this package now registers. Said in ?sfm rather than left
+  ## for the user to discover.
+  .wts <- NULL
+  if (!is.null(weights)) {
+    .wts <- as.numeric(weights)
+    if (anyNA(.wts) || any(!is.finite(.wts))) {
+      stop("sfm(): `weights` must all be finite.", call. = FALSE)
+    }
+    if (any(.wts < 0)) {
+      stop("sfm(): `weights` must be non-negative.", call. = FALSE)
+    }
+    if (all(.wts == 0)) {
+      stop("sfm(): `weights` cannot all be zero.", call. = FALSE)
+    }
+    if (!identical(robust, "mle")) {
+      stop("sfm(): `weights` cannot be combined with a robust divergence ",
+        "estimator. The robust objectives reweight observations themselves, ",
+        "by design, and imposing a second set of weights on top of that makes ",
+        "neither the divergence nor the weighting interpretable.",
+        call. = FALSE
+      )
+    }
+  }
+
+  ## The scaling property is a CONSTRAINED heteroskedastic model, so it rides
+  ## the same fitter rather than duplicating the likelihood.
+  het_on <- !is.null(vhet) || !is.null(uhet) || !is.null(muhet) || !is.null(scaling)
+  if (!is.null(scaling)) {
+    if (!inherits(scaling, "formula")) {
+      stop("sfm(): `scaling` must be a one-sided formula, e.g. ~ z1 + z2.",
+        call. = FALSE
+      )
+    }
+    if (!identical(model_name, "NTN")) {
+      stop("sfm(): the scaling property is implemented for model_name ",
+        "\"NTN\" only. For a half-normal u it adds nothing: ",
+        "h(z)*|N(0, sigma^2)| IS |N(0, (h*sigma)^2)|, so `uhet` already fits ",
+        "that model exactly. The constraint only bites when u has a shape ",
+        "parameter for the scaling to hold fixed, which is the truncated ",
+        "normal's pre-truncation mean.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(uhet) || !is.null(muhet)) {
+      stop("sfm(): `scaling` cannot be combined with `uhet` or `muhet`. The ",
+        "whole content of the scaling property is that ONE factor moves both ",
+        "sigma_u and mu together; letting them also vary separately would ",
+        "undo the restriction being imposed.",
+        call. = FALSE
+      )
+    }
+  }
   if (het_on) {
     .het_ok <- c("NHN", "NHN_Z", "NE", "NE_Z", "NTN")
     if (!(model_name %in% .het_ok)) {
@@ -192,6 +273,32 @@ sfm <- function(formula,
   sigma_u <- Start_Cs$sigma_u
   sigma_v <- Start_Cs$sigma_v
   start_v <- Start_Cs$start_v
+  ## Seed from a simpler fitted model, matched by parameter name.
+  if (!is.null(start_from)) {
+    start_v <- .start_from(start_v, out, start_from, model_name)
+  }
+
+  ## The shape block is APPENDED, after the frontier coefficients, so the
+  ## existing index arithmetic (betas at 4:(k+3)) is untouched. lower.start()
+  ## already handles any tail beyond the first three parameters.
+  Zsh <- NULL
+  i_sh <- integer(0)
+  if (!is.null(shapehet)) {
+    Zsh <- .het_design(shapehet, data, "shapehet")
+    Zsh <- Zsh[, setdiff(colnames(Zsh), "(Intercept)"), drop = FALSE]
+    if (!ncol(Zsh)) {
+      stop("sfm(): `shapehet` must contain at least one covariate besides an ",
+        "intercept; a constant factor on the shape is already the shape.",
+        call. = FALSE
+      )
+    }
+    n_sh <- ncol(Zsh)
+    i_sh <- length(start_v) + seq_len(n_sh)
+    start_v <- c(start_v, rep(0, n_sh))
+    lower_bob <- c(lower_bob, rep(-Inf, n_sh))
+    out <- cbind(out, matrix(0, nrow = nrow(out), ncol = n_sh))
+    colnames(out)[i_sh] <- paste0("shape.", colnames(Zsh))
+  }
   start_v_ne <- Start_Cs$start_v_ne
   start_v_ng <- Start_Cs$start_v_ng
   start_v_nhn <- Start_Cs$start_v_nhn
@@ -206,6 +313,24 @@ sfm <- function(formula,
   Y <- DR2$Y
   data_i_vars <- DR2$data_i_vars
 
+  ## Length is checked against the rows actually USED, after missing-data
+  ## handling -- checking against nrow(data) as supplied would accept a weight
+  ## vector that silently misaligns with the fitted sample.
+  if (!is.null(.wts)) {
+    n_used <- length(as.numeric(Y))
+    if (length(.wts) != n_used) {
+      stop("sfm(): `weights` has length ", length(.wts), " but ", n_used,
+        " observations are used after missing-data handling. Supply one ",
+        "weight per row of the data actually fitted.",
+        call. = FALSE
+      )
+    }
+    ## wscale rescales the weights to sum to n, so the log-likelihood stays on
+    ## the same scale as an unweighted fit and AIC/BIC remain comparable. It
+    ## does not change the estimates -- only a common factor on the objective.
+    if (isTRUE(wscale)) .wts <- .wts * (n_used / sum(.wts))
+  }
+
   ## Heteroskedastic path. Self-contained: its own log-scale parameterization,
   ## its own unbounded optimizer, its own packaging. Nothing above this point
   ## behaves differently when `vhet`/`muhet` are absent.
@@ -213,16 +338,37 @@ sfm <- function(formula,
     ## `| z` keeps its meaning -- sigma_u -- so the existing pipe syntax
     ## composes with the new arguments rather than competing with them.
     f_u <- if (!is.null(uhet)) uhet else .parse_pipe_formula(formula)$formula_z
-    Zu <- .het_design(f_u, data, if (is.null(uhet)) "the `| z` segment" else "uhet")
+    ## Under scaling, sigma_u and mu are SCALARS -- the covariate dependence
+    ## all lives in h -- so their designs are intercept-only and the scaling
+    ## design drops its intercept to keep h identified against them.
+    Zs <- NULL
+    if (!is.null(scaling)) {
+      Zs <- .het_design(scaling, data, "scaling")
+      Zs <- Zs[, setdiff(colnames(Zs), "(Intercept)"), drop = FALSE]
+      if (!ncol(Zs)) {
+        stop("sfm(): `scaling` must contain at least one covariate besides ",
+          "an intercept; h(z) with only an intercept is a constant and is ",
+          "already absorbed into sigma_u.",
+          call. = FALSE
+        )
+      }
+      one <- matrix(1, nrow = length(as.numeric(Y)), 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
+      Zu <- one
+      Zmu <- one
+    } else {
+      Zu <- .het_design(f_u, data, if (is.null(uhet)) "the `| z` segment" else "uhet")
+      Zmu <- .het_design(muhet, data, "muhet")
+    }
     Zv <- .het_design(vhet, data, "vhet")
-    Zmu <- .het_design(muhet, data, "muhet")
 
     HF <- .sfm_het_fit(
       family = het_family, Y = Y, X = as.matrix(data_i_vars),
       Zu = Zu, Zv = Zv, Zmu = Zmu, inefdec_n = inefdec_n,
       z_sigma = .z_sigma, z_link = z_link, x_names = x_vars_vec,
       maxit.nlminb = maxit.nlminb, maxit.optim = maxit.optim,
-      optHessian = optHessian, verbose = verbose
+      optHessian = optHessian, verbose = verbose, Zs = Zs, wts = .wts
     )
 
     results <- list(
@@ -594,7 +740,15 @@ sfm <- function(formula,
         lnDv <- function(nu, z) .log_pcf(nu, z)
         sig_v <- x[1]
         sig_u <- x[2]
-        mu <- x[3]
+        ## A vector shape where `shapehet` is given, a scalar otherwise.
+        ## .log_pcf() recycles a scalar order, so both cases go the same path.
+        mu <- if (length(i_sh)) {
+          x[3] * exp(pmin(pmax(as.numeric(Zsh %*% x[i_sh]),
+            -.SFA_CONSTANTS$EXP_CLIP_UPPER / 4),
+            .SFA_CONSTANTS$EXP_CLIP_UPPER / 4))
+        } else {
+          x[3]
+        }
         if (model_name == "NG") {
           like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u)
             - 1 / 2 * (eps / sig_v)^2 + 1 / 4 * (eps / sig_v + sig_v / sig_u)^2
@@ -630,6 +784,9 @@ sfm <- function(formula,
         ))
       }
 
+      ## Weighted contributions, so per-observation consumers (estfun, and so
+      ## every sandwich covariance) see the same weighting the objective did.
+      if (!is.null(.wts)) like <- .wts * like
       if (isTRUE(per_obs)) {
         return(like)
       }
