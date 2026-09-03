@@ -84,14 +84,19 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
   if (!inherits(object, "sfareg")) {
     stop("`object` must be an \"sfareg\" fit from lcsfm().", call. = FALSE)
   }
-  if (!identical(object$model_name, "LCM")) {
-    stop("lcsfm_homogeneity(): this test is for model_name \"LCM\". ",
-      "\"LCM_Z\" drives the class probabilities with covariates, which is ",
-      "outside the published result. This fit is model_name \"",
+  if (!object$model_name %in% c("LCM", "LCM_CN")) {
+    stop("lcsfm_homogeneity(): this test is for model_name \"LCM\" or ",
+      "\"LCM_CN\". \"LCM_Z\" drives the class probabilities with ",
+      "covariates, which is outside the published result. This fit is ",
+      "model_name \"",
       if (is.null(object$model_name)) "unknown" else object$model_name, "\".",
       call. = FALSE
     )
   }
+  ## "LCM_CN" IS the restricted specification the chi^2_{0:1} limit is stated
+  ## for -- one scalar parameter (the noise scale) differing between
+  ## components, everything else common. "LCM" is not.
+  .restricted <- identical(object$model_name, "LCM_CN")
   if (length(c) != 1L || !is.numeric(c) || !is.finite(c) || c <= 0) {
     stop("`c` must be a single positive number. Chen et al. (2001) report ",
       "their simulations were insensitive to it; Stead, Wheat and Greene ",
@@ -136,9 +141,10 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
   ## observed value and every bootstrap replicate are produced by identical
   ## code -- a bootstrap whose replicates are computed differently from the
   ## observed statistic tests nothing.
+  .mn <- object$model_name
   .stat_on <- function(d) {
     fJ <- tryCatch(suppressWarnings(
-      lcsfm(frm, model_name = "LCM", data = d, n_class = J,
+      lcsfm(frm, model_name = .mn, data = d, n_class = J,
         inefdec = inefdec, penalty_c = c)
     ), error = function(e) NULL)
     f1 <- tryCatch(suppressWarnings(
@@ -162,7 +168,17 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
 
   boot <- NULL
   n_ok <- NA_integer_
-  if (identical(null, "chisq01")) {
+  if (identical(null, "chisq01") && .restricted) {
+    ## "LCM_CN" IS the specification the limit is stated for, and restricting
+    ## to it takes the measured size from 63.5% to 8.0% at a nominal 5% -- so
+    ## no warning. It is still mildly LIBERAL in finite samples (150
+    ## replications, n = 400: 13.3% at 10%, 8.0% at 5%, 3.3% at 1%), partly
+    ## because the two-component optimizer lands below the one-component fit
+    ## on about half of null samples, piling 65% of the mass at exactly zero
+    ## against the 50% the mixture predicts. Reported through `size_note` so a
+    ## reader is not left thinking the p-value is exact.
+    p <- .chi2_01_p(stat)
+  } else if (identical(null, "chisq01")) {
     warning("lcsfm_homogeneity(null = \"chisq01\"): the chi^2_{0:1} limit is ",
       "stated for a SCALAR parameter differing between classes, and ",
       "lcsfm()'s \"LCM\" lets every parameter vary by class. Measured on a ",
@@ -240,7 +256,14 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
     class_prob = fit_J$class_prob,
     level = level,
     reject = isTRUE(p < level),
-    provisional = identical(null, "chisq01")
+    provisional = identical(null, "chisq01") && !.restricted,
+    restricted = .restricted,
+    size_note = if (identical(null, "chisq01") && .restricted) {
+      paste0("measured size at n = 400: 13.3% at nominal 10%, 8.0% at 5%, ",
+        "3.3% at 1% -- mildly liberal")
+    } else {
+      NULL
+    }
   )
   class(out) <- c("sfa_mlrt", "htest")
   out
@@ -287,6 +310,12 @@ print.sfa_mlrt <- function(x, ...) {
     cat("  Do not reject homogeneity at the ", 100 * x$level,
       "% level.\n", sep = ""
     )
+  }
+  if (!is.null(x$size_note)) {
+    cat("\n  NOTE: \"LCM_CN\" is the restricted case the chi^2_{0:1} limit is\n")
+    cat("  stated for, so it applies here -- but it is not exact in finite\n")
+    cat("  samples. ", x$size_note, ".\n", sep = "")
+    cat("  Use null = \"bootstrap\" if the p-value is close to your cutoff.\n")
   }
   if (isTRUE(x$provisional)) {
     cat("\n  NOTE: the chi^2_{0:1} limit assumes a SCALAR parameter differs\n")

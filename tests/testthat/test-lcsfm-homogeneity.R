@@ -188,3 +188,77 @@ test_that("print reports the verdict and flags J > 2 as provisional", {
   expect_true(tt$provisional)
   expect_output(print(tt), "63.5")
 })
+
+## --- LCM_CN: the contaminated normal frontier -------------------------------
+##
+## The specification the chi^2_{0:1} limit is actually stated for: one scalar
+## parameter (the noise scale) differs between components and everything else
+## is common. It exists so the asymptotic null can be used honestly, and it is
+## a useful model in its own right -- heavier-tailed noise without letting the
+## frontier or the inefficiency vary.
+
+cn_data <- function(seed = 5, n = 800, p = 0.2, sv1 = 0.3, sv2 = 1.2, su = 0.8) {
+  set.seed(seed)
+  x1 <- rnorm(n)
+  cont <- rbinom(n, 1, p)
+  v <- ifelse(cont == 1, rnorm(n, 0, sv2), rnorm(n, 0, sv1))
+  data.frame(y = 1 + 0.5 * x1 + v - abs(rnorm(n, 0, su)), x1 = x1)
+}
+
+test_that("the contaminated-normal composed density is a MIXTURE of NHN densities", {
+  ## The identity the branch is built on. f_eps = int f_v(e + Su) f_u(u) du is
+  ## linear in f_v, so a scale-mixture noise density passes straight through:
+  ##   f_eps(e) = sum_j p_j f_NHN(e; sigma_vj, sigma_u)
+  ## sharing ONE sigma_u. If this were false the likelihood would be wrong and
+  ## nothing else in this block would catch it.
+  dnhn <- function(e, sv, su) {
+    s <- sqrt(sv^2 + su^2)
+    2 / s * dnorm(e / s) * pnorm(-e * (su / sv) / s)
+  }
+  p <- 0.7; sv1 <- 0.3; sv2 <- 1.2; su <- 0.9
+  for (e in c(-3, -1.5, -0.5, 0, 0.5, 1.5, 3)) {
+    direct <- integrate(function(u) {
+      (p * dnorm(e + u, 0, sv1) + (1 - p) * dnorm(e + u, 0, sv2)) *
+        2 * dnorm(u, 0, su)
+    }, 0, Inf, rel.tol = 1e-12)$value
+    mixture <- p * dnhn(e, sv1, su) + (1 - p) * dnhn(e, sv2, su)
+    expect_equal(mixture, direct, tolerance = 1e-10)
+  }
+})
+
+test_that("LCM_CN recovers the contamination it was given", {
+  skip_on_cran()
+  d <- cn_data(n = 1200)
+  f <- lcsfm(y ~ x1, model_name = "LCM_CN", data = d, n_class = 2)
+  p <- f$out[, "par"]
+
+  ## One sigma_u and one frontier, not one per class -- that IS the model.
+  expect_true("sigu" %in% rownames(f$out))
+  expect_true(all(c("sigv_class1", "sigv_class2") %in% rownames(f$out)))
+  expect_false(any(grepl("^sigu_class", rownames(f$out))))
+  expect_equal(sum(grepl("^x1$", rownames(f$out))), 1L)
+
+  ## The two noise scales must actually separate, or the fit has collapsed to
+  ## a single component and the model is doing nothing.
+  expect_gt(abs(p[["sigv_class2"]] / p[["sigv_class1"]]), 2)
+  ## Loose tolerances: this is a recovery check, not a fixed-point assertion.
+  expect_equal(unname(p[["sigu"]]), 0.8, tolerance = 0.25)
+  expect_equal(unname(p[["x1"]]), 0.5, tolerance = 0.25)
+  expect_true(min(f$class_prob) > 0.05 && min(f$class_prob) < 0.45)
+})
+
+test_that("chisq01 does NOT warn on LCM_CN, and carries its measured size", {
+  skip_on_cran()
+  ## The whole point of the model_name: "LCM" is not the case the limit covers
+  ## and warns; "LCM_CN" is, and does not. It still reports the finite-sample
+  ## size rather than presenting the p-value as exact.
+  d <- cn_data(n = 800)
+  f <- lcsfm(y ~ x1, model_name = "LCM_CN", data = d, n_class = 2)
+  expect_silent(tt <- lcsfm_homogeneity(f, null = "chisq01"))
+  expect_true(tt$restricted)
+  expect_false(tt$provisional)
+  expect_true(!is.null(tt$size_note))
+  expect_output(print(tt), "restricted case")
+  ## Real contamination, so it should be found.
+  expect_lt(tt$p.value, 0.01)
+})

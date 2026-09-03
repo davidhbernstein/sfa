@@ -1,5 +1,5 @@
 lcsfm <- function(formula,
-                  model_name = c("LCM", "LCM_Z"),
+                  model_name = c("LCM", "LCM_Z", "LCM_CN"),
                   data,
                   n_class = 2,
                   maxit.bobyqa = 10000,
@@ -113,6 +113,149 @@ lcsfm <- function(formula,
       "scalar mixing proportion, so it is offered for \"LCM\" only.",
       call. = FALSE
     )
+  }
+
+  ## ---------------------------------------------------------------------
+  ## LCM_CN -- the contaminated normal frontier. Every parameter is common
+  ## across components EXCEPT the noise scale, so the noise density is a scale
+  ## mixture of normals and the composed error is heavier-tailed than a normal
+  ## without any of the frontier or inefficiency parameters varying.
+  ##
+  ## The composed density has a CLOSED FORM, and it is the reason this model is
+  ## worth having as its own branch rather than as a restricted "LCM". Since
+  ##
+  ##   f_eps(e) = int f_v(e + S u) f_u(u) du
+  ##
+  ## is linear in f_v, a mixture noise density passes straight through:
+  ##
+  ##   f_eps(e) = sum_j p_j * f_NHN(e; sigma_vj, sigma_u)
+  ##
+  ## a mixture of ORDINARY normal/half-normal densities sharing one sigma_u.
+  ## Verified against direct numerical integration to 3e-16 relative.
+  ##
+  ## This is also the specification for which the chi^2_{0:1} null of
+  ## lcsfm_homogeneity() is actually established -- one scalar parameter
+  ## differing between components -- which "LCM" is not. See
+  ## notes/code_history/lcsfm_homogeneity.md.
+  ## ---------------------------------------------------------------------
+  if (identical(model_name, "LCM_CN")) {
+    J <- n_class
+    Xm <- as.matrix(data_i_vars)
+    n_b <- n_x_vars
+    ## Layout: [sigv_1..sigv_J, sigu, beta(1..n_b), logit(1..J-1)].
+    .lcm_pos <- c(rep(TRUE, J + 1L), rep(FALSE, n_b + (J - 1L)))
+
+    .cn_logf <- function(x) {
+      sigv <- pmax(abs(x[seq_len(J)]), .SFA_CONSTANTS$MIN_POSITIVE)
+      sigu <- max(abs(x[J + 1L]), .SFA_CONSTANTS$MIN_POSITIVE)
+      b <- x[(J + 2L):(J + 1L + n_b)]
+      eps <- inefdec_n * (Y - Xm %*% b)
+      lf <- matrix(0, nrow = length(Y), ncol = J)
+      for (j in seq_len(J)) {
+        sig <- sqrt(sigv[j]^2 + sigu^2)
+        lam <- sigu / sigv[j]
+        z2 <- pmin(pmax(-eps * lam / sig,
+          .SFA_CONSTANTS$CLIP_Z1_LOWER
+        ), .SFA_CONSTANTS$CLIP_Z1_UPPER)
+        lf[, j] <- log(2) - log(sig) +
+          stats::dnorm(eps / sig, log = TRUE) +
+          stats::pnorm(z2, log.p = TRUE)
+      }
+      lf
+    }
+
+    ## Constant class probabilities: the contamination share is a scalar, which
+    ## is the whole point of the restriction.
+    .cn_logpi <- function(x) {
+      d0 <- J + 1L + n_b
+      eta <- matrix(0, nrow = length(Y), ncol = J)
+      if (J > 1L) {
+        for (j in seq_len(J - 1L)) {
+          eta[, j] <- pmin(pmax(x[d0 + j],
+            -.SFA_CONSTANTS$EXP_CLIP_UPPER
+          ), .SFA_CONSTANTS$EXP_CLIP_UPPER)
+        }
+      }
+      eta - .log_row_sum_exp(eta)
+    }
+
+    .cn_penalty <- function(x) {
+      if (!isTRUE(penalty_c > 0)) return(0)
+      penalty_c * (J * log(J) + sum(.cn_logpi(x)[1L, ]))
+    }
+
+    like.fn <- function(x, per_obs = FALSE) {
+      like <- .log_row_sum_exp(.cn_logpi(x) + .cn_logf(x))
+      like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      if (isTRUE(per_obs)) return(like)
+      -(sum(like[is.finite(like)]) + .cn_penalty(x))
+    }
+
+    Start.Time <- start.time()
+    Opt.Bobyqa <- opt.bobyqa(
+      fn = like.fn, start_v = start_v, lower.bobyqa = lower_bob,
+      maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose
+    )
+    start_v <- Opt.Bobyqa$start_v
+    bob1 <- Opt.Bobyqa$bob1
+
+    attr(start_v, "lcm_pos") <- .lcm_pos
+    Lower.Start <- lower.start(start_v, "LCM", differ = 1)
+    Opt.Psoptim <- opt.psoptim(
+      fn = like.fn, start_v, lower.psoptim = Lower.Start$lower1,
+      rand.psoptim = rand.psoptim, upper.psoptim = Lower.Start$upper1,
+      maxit.psoptim, psopt.TF = PSopt, rand.order = FALSE, verbose = verbose
+    )
+    start_v <- Opt.Psoptim$start_v
+    opt00 <- Opt.Psoptim$opt00
+
+    attr(start_v, "lcm_pos") <- .lcm_pos
+    Lower.Start <- lower.start(start_v, "LCM", differ = 0.5)
+    Opt.Optim <- opt.optim(
+      fn = like.fn, start_v = start_v, lower.optim = Lower.Start$lower1,
+      upper.optim = Lower.Start$upper1_open, maxit.optim = maxit.optim,
+      opt.TF = optHessian, method = Method, optHessian = TRUE, verbose = verbose
+    )
+    start_v <- Opt.Optim$start_v
+    opt <- Opt.Optim$opt
+    End.Time <- end.time(Start.Time)
+
+    ## The scales enter through abs(), so their sign is not identified and the
+    ## optimizer may return either. Report the magnitude.
+    .scale_at <- which(.lcm_pos)
+    start_v[.scale_at] <- abs(start_v[.scale_at])
+    st_err <- if (is.null(opt$hessian) || all(!is.finite(opt$hessian)) ||
+      isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
+      rep(NA_real_, length(start_v))
+    } else {
+      suppressWarnings(sqrt(diag(solve(opt$hessian))))
+    }
+    out[1, ] <- start_v
+    out[2, ] <- st_err
+    out[3, ] <- out[1, ] / out[2, ]
+    rownames(out) <- c("par", "st_err", "t-val")
+
+    lpi <- .cn_logpi(start_v)
+    class_prob <- colMeans(exp(lpi))
+    names(class_prob) <- paste0("class", seq_len(J))
+    post <- exp(lpi + .cn_logf(start_v) -
+      .log_row_sum_exp(lpi + .cn_logf(start_v)))
+    colnames(post) <- paste0("class", seq_len(J))
+    .pen <- .cn_penalty(start_v)
+
+    results <- list(
+      t(out), c(opt), End.Time, start_v, model_name, formula, post, J,
+      class_prob, .pen, -opt$value + .pen, penalty_c,
+      out["par", ], out["st_err", ], out["t-val", ], call
+    )
+    class(results) <- "sfareg"
+    names(results) <- c(
+      "out", "opt", "total_time", "start_v", "model_name", "formula",
+      "post.prob", "n_class", "class_prob",
+      "penalty", "logLik_unpenalised", "penalty_c",
+      "coefficients", "std.errors", "t.values", "call"
+    )
+    return(results)
   }
 
   if (model_name %in% c("LCM", "LCM_Z")) {

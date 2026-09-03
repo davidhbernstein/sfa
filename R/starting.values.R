@@ -166,6 +166,35 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   ## the usual EM-style initialisation and costs one lm() per class. It also
   ## makes the labelling reproducible rather than arbitrary: class 1 starts on
   ## the lowest-residual group. See the note on label switching in ?zsfm.
+  ## LCM_CN: the CONTAMINATED NORMAL frontier. Every parameter is common
+  ## across components except the noise scale, so the layout is
+  ## [sigv_1..sigv_J, sigu, beta, logit], not one block per class. Start the
+  ## noise scales spread around the pooled one -- a contaminating component is
+  ## by definition the wider one -- and everything else at its pooled value.
+  if (identical(model_name, "LCM_CN")) {
+    .J <- max(2L, as.integer(n_class))
+    e_lc <- as.numeric(epsilon_hat)
+    s0 <- stats::sd(e_lc)
+    if (!is.finite(s0) || s0 <= 0) s0 <- 1
+    spread <- seq(0.6, 1.8, length.out = .J)
+    lam0 <- 1
+    sigv0 <- s0 / sqrt(1 + lam0^2) * spread
+    sigu0 <- s0 * lam0 / sqrt(1 + lam0^2)
+    b0 <- unname(plm_lm$coefficients)
+    b0[!is.finite(b0)] <- 0
+    start_v <- c(sigv0, sigu0, b0, rep(0, (.J - 1L)))
+    .bnames <- names(plm_lm$coefficients)
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    colnames(out) <- c(
+      paste0("sigv_class", seq_len(.J)), "sigu", .bnames,
+      paste0("logit_(Intercept)_class", seq_len(.J - 1L))
+    )
+    lower_bob <- c(
+      rep(.Machine$double.eps, .J + 1L),
+      rep(-Inf, length(b0) + (.J - 1L))
+    )
+  }
+
   if (model_name %in% c("LCM", "LCM_Z")) {
     .J <- max(2L, as.integer(n_class))
     X_lc <- stats::model.matrix(plm_lm)

@@ -2,7 +2,7 @@
 \alias{lcsfm}
 \title{Latent Class Stochastic Frontier Models}
 \description{Fits the latent class stochastic frontier model of Greene (2005) and Orea and Kumbhakar (2004), in which several unobserved technologies coexist in one sample and each firm contributes to every one of them, weighted by its class probability.}
-\usage{lcsfm(formula, model_name = c("LCM", "LCM_Z"), 
+\usage{lcsfm(formula, model_name = c("LCM", "LCM_Z", "LCM_CN"), 
 data, n_class = 2, maxit.bobyqa = 10000, maxit.psoptim = 1000, 
 maxit.optim = 1000, REPORT = 1, trace = 0, pgtol = 0, 
 start_val = FALSE, PSopt = FALSE, optHessian = TRUE, 
@@ -10,7 +10,7 @@ inefdec = TRUE, penalty_c = 0, upper = NA, Method = "L-BFGS-B",
 verbose = FALSE, rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated. For \code{"LCM_Z"} the second part gives the covariates driving class membership (\code{y ~ x | z}).}
-\item{model_name}{Which specification to fit. \code{"LCM"} holds the class probabilities constant across the sample; \code{"LCM_Z"} lets them depend on covariates supplied in the second part of the formula. Matching ignores case, so \code{"lcm"}, \code{"LCM"} and \code{"Lcm"} are the same choice.}
+\item{model_name}{Which specification to fit. \code{"LCM"} holds the class probabilities constant across the sample and lets \bold{every} parameter vary by class; \code{"LCM_Z"} is \code{"LCM"} with the class probabilities depending on covariates supplied in the second part of the formula. \code{"LCM_CN"} is the \bold{contaminated normal} frontier, in which only the \emph{noise scale} varies between components and the frontier, the inefficiency scale and the class probabilities are all common -- see \sQuote{Details}. Matching ignores case, so \code{"lcm"}, \code{"LCM"} and \code{"Lcm"} are the same choice.}
 \item{data}{A data frame containing the variables named in \code{formula}.}
 \item{n_class}{Integer. The number of latent classes \eqn{J}, at least 2. Defaults to \code{2}. The parameter count grows as \eqn{J(k + 2)} plus \eqn{(J-1)q}, so large \eqn{J} needs a correspondingly large sample; see \sQuote{Details}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
@@ -29,7 +29,20 @@ verbose = FALSE, rand.psoptim = NULL)}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim. Default to \code{NULL}.}
 }
-\details{The latent class stochastic frontier supposes that \eqn{J} distinct technologies are present in one sample and that which technology a firm operates is unobserved. Each class \eqn{j} has its own frontier and its own two scales,
+\details{
+\bold{\code{"LCM_CN"}, the contaminated normal frontier.} A different use of the same machinery: instead of separating technologies, it gives the \emph{noise} heavier tails. The noise density is a scale mixture of normals, \eqn{f_v(v) = \sum_j p_j \phi(v/\sigma_{vj})/\sigma_{vj}}, while the frontier, \eqn{\sigma_u} and the mixing proportions stay common across components. At \eqn{J = 2} this is the scale-contaminated normal, an alternative to a Student-\eqn{t} noise term.
+
+It has a closed form, which is why it is cheap. Since \eqn{f_\epsilon(e) = \int f_v(e + Su) f_u(u)\,du} is linear in \eqn{f_v}, a mixture noise density passes straight through:
+
+\deqn{f_\epsilon(e) = \sum_j p_j\, f_{NHN}(e; \sigma_{vj}, \sigma_u)}
+
+a mixture of ordinary normal/half-normal densities sharing one \eqn{\sigma_u}. No extra integration is required, and the identity is verified against direct numerical integration in the tests.
+
+The parameter vector is \eqn{(\sigma_{v1},\dots,\sigma_{vJ}, \sigma_u, \beta, \mathrm{logit})} rather than one block per class.
+
+\bold{It is also the specification \code{\link{lcsfm_homogeneity}}'''s asymptotic null is stated for}: one scalar parameter differing between components. On \code{"LCM"}, where everything varies, the \eqn{\chi^2_{0:1}} null rejected 63.5\% of the time at a nominal 5\% under a true null; on \code{"LCM_CN"} the same null gives 8.0\%. Still mildly liberal, and the test says so, but usable.
+
+The latent class stochastic frontier supposes that \eqn{J} distinct technologies are present in one sample and that which technology a firm operates is unobserved. Each class \eqn{j} has its own frontier and its own two scales,
 \deqn{y_i = x_i'\beta_j + v_{ij} - u_{ij}, \quad v_{ij} \sim N(0, \sigma_{vj}^2), \quad u_{ij} \sim N^+(0, \sigma_{uj}^2),}
 and class membership follows a multinomial logit,
 \deqn{P(j \mid q_i) = \exp(q_i'\delta_j) / \sum_m \exp(q_i'\delta_m), \quad \delta_J = 0,}

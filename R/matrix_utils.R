@@ -1026,7 +1026,7 @@
     "PL80_MVTN"  = 1,
     "NR"         = 1,     "THT"        = 1,   "NTN"           = 1,
     "NG"         = 1,     "ZISF"       = 1,   "NNAK"          = 1,
-    "LCM"        = 1,
+    "LCM"        = 1,    "LCM_CN"     = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,
     "NGE"        = 1,     "NLN"        = 1,   "NW"            = 1,
     "tHN"        = 1,     "TSL"        = 1,
