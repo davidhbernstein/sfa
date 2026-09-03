@@ -32,7 +32,8 @@ psfm <- function(formula,
                  keep_objective = FALSE,
                  kss_L = "auto",
                  kss_smooth = "auto",
-                 kss_L_max = 7L) {
+                 kss_L_max = 7L,
+                 mundlak = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -108,6 +109,30 @@ psfm <- function(formula,
   ## Accept an ordinary data.frame (or tibble/data.table) as well as a
   ## plm::pdata.frame.
   data <- .as_panel_data(data, individual, time)
+
+  ## Mundlak adjustment terms (L10). Applied HERE, before data_proc() builds
+  ## any design matrix, because the whole point is that it widens the frontier
+  ## rather than changing the likelihood -- so every model_name that has a
+  ## frontier gets it for free, and none of the branches below need to know.
+  if (!is.null(mundlak)) {
+    if (model_name %in% c("TFE", "TFE_WMLE", "FD", "SSFE")) {
+      stop("psfm(): `mundlak` is for models that treat the firm effect as ",
+        "RANDOM. model_name \"", model_name, "\" differences or dummies the ",
+        "effect out, so the group means are collinear with what it has ",
+        "already removed and add nothing.",
+        call. = FALSE
+      )
+    }
+    .mund <- .apply_mundlak(formula, data,
+      id = as.character(data[[individual]]),
+      mundlak = mundlak, verbose = verbose
+    )
+    formula <- .mund$formula
+    data <- .mund$data
+    if (isTRUE(verbose)) {
+      message("mundlak: added ", paste(.mund$added, collapse = ", "))
+    }
+  }
 
   ## Pre-estimation collinearity check for the models whose starting values
   ## come from plm(..., model = "random").

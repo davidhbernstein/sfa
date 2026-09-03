@@ -18,7 +18,7 @@
                     collinear_action = c("start_only", "error", "warn_drop"),
                     time = NULL, tfe_lambda_max = 100,
                     keep_objective = FALSE, kss_L = "auto",
-                    kss_smooth = "auto", kss_L_max = 7L)}
+                    kss_smooth = "auto", kss_L_max = 7L, mundlak = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -77,6 +77,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took
 \item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
 \item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
 \item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is capped internally at \eqn{\lfloor T/2 \rfloor} as well, for the reason given in \sQuote{Details}, and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
+\item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
 }
 \details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.
 
@@ -261,6 +262,24 @@ A flat curve means no estimator could recover the parameter from these data; a s
 Estimation follows the three steps of the original: cross-sectional centering by period (which imposes \eqn{\sum_i u_i(t) = 0} and removes any common function of time), then smoothing of each firm's residual trajectory followed by an eigendecomposition of their empirical covariance to give \eqn{\hat g_r}, then loadings by least squares and the effects rebuilt from them -- iterated with \eqn{\beta} until the residual sum of squares settles. Smoothing before the eigendecomposition is what makes the estimated basis a set of smooth \emph{functions} rather than \eqn{T} arbitrary period effects, and is the whole difference between this and an unrestricted factor model.
 
 Two tuning choices are therefore unavoidable, and both are exposed. \code{kss_smooth} defaults to generalized cross-validation. \code{kss_L} defaults to the Bai and Ng (2002) \eqn{IC_{p2}} criterion -- \bold{not} the threshold rule of the original paper, which is stated here because it matters: \eqn{IC_{p2}} is the standard criterion for this problem and the literature that motivates the estimator treats Bai and Ng (2002) and Bai (2009) as the comparable methods, but a different rule can select a different \eqn{L}. Set \code{kss_L} explicitly to take the choice out of the criterion's hands, and inspect \code{$kss$eigenvalues} to see whether the choice was close.
+
+\bold{Mundlak adjustment terms (\code{mundlak}).} The true random effects model assumes the firm effect is independent of the regressors. In production data it usually is not -- better managers choose different input levels -- and the effect is then split between the slopes and inefficiency, biasing the technology parameters and understating inefficiency. Mundlak's (1978) device models the correlation instead of assuming it away, \eqn{\alpha_i = \pi'\bar{x}_i + \delta_i}. Substituting into the frontier leaves the \emph{same likelihood with a wider design matrix}, which is why this is an argument rather than a new \code{model_name}.
+
+Karagiannis and Kellermann (2019) widen it to \eqn{\alpha_i = \pi'\bar{x}^*_i + \gamma'z_i + \delta_i}, adding environmental variables -- conditions outside the producer's control, such as agro-ecological conditions or the geography an airline serves. Those enter the formula as ordinary time-invariant regressors; \code{mundlak} supplies the piece a user cannot easily build by hand, the within-firm means computed against the same panel index the fit uses. Naming a \emph{subset} of the regressors gives their Hausman-Taylor variant, in which only some regressors are taken to correlate with the effect.
+
+Measured over 40 replications with \eqn{N = 80}, \eqn{T = 6}, on a design where the firm effect is correlated with \eqn{\bar{x}} by construction, and on a control where it is not:
+
+\tabular{lllll}{
+  design \tab estimator \tab bias \tab RMSE \cr
+  effect correlated \tab plain \tab +0.0479 \tab 0.0570 \cr
+  effect correlated \tab \code{mundlak} \tab \bold{-0.0061} \tab \bold{0.0310} \cr
+  no correlation \tab plain \tab -0.0033 \tab \bold{0.0253} \cr
+  no correlation \tab \code{mundlak} \tab -0.0068 \tab 0.0311
+}
+
+So it removes the bias where there is one and nearly halves RMSE -- and where there is no correlation it costs about 23\% in RMSE for nothing. It is not free, and it is not a default.
+
+A variable that is already constant within firm gets no mean column: its own mean is itself, so the two would be exactly collinear. Every \code{mundlak} fit also emits a collinearity warning from the \emph{starting-value} regression, which is expected and harmless -- in a between-individual regression \eqn{x} and \eqn{\bar{x}} are the same column by construction. The starting values fall back to pooled OLS and the likelihood is estimated with the full requested formula.
 
 \bold{The criterion needs a long enough panel, and says so.} \eqn{IC_{p2}} works because the residual variance flattens out once the real factors are in and the penalty then dominates. On a short panel that never happens: if \eqn{L} is allowed up to \eqn{T-1} the factors can span nearly the whole time dimension, the variance collapses toward zero, and no penalty competes. Measured at \eqn{n = 100} over five seeds and two true ranks, an uncapped criterion returned its maximum on \emph{all ten} designs at \eqn{T = 6} and again at \eqn{T = 8}. The automatic search is therefore capped at \eqn{\lfloor T/2 \rfloor}, which recovers the true rank exactly from \eqn{T = 8} upward; at \eqn{T = 6} it is right for a one-factor structure and occasionally one too high for a two-factor one. Whenever the automatic choice lands \emph{on} that cap \code{psfm} warns, because a selection at the boundary is not a free choice -- read it as "at least this many", inspect the eigenvalues, and prefer a longer panel to a larger \code{kss_L_max}.
 
