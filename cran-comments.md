@@ -71,12 +71,49 @@ previously express:
   dependence parameter is consistent but needs a large sample; the frontier
   slopes are unaffected.
 
+A fifth specification, `lcsfm(model_name = "LCM_CN")`, the contaminated normal
+frontier: every parameter is common across components except the noise scale,
+so the noise has heavier tails without the frontier or the inefficiency varying.
+Its composed density is a closed form -- a mixture of ordinary normal/half
+normal densities sharing one `sigma_u` -- so it costs no extra integration.
+
+**Model selection and specification testing**, which is the largest addition by
+volume. The package offers fifteen cross-sectional inefficiency distributions
+and previously gave the user nothing but AIC/BIC to choose among them:
+
+* `TIC()` and `vuong()` -- Takeuchi's criterion and Vuong's non-nested test
+  (Lai and Huang 2010). Neither assumes any candidate is correctly specified,
+  which is the assumption in doubt when the choice is being made, and most of
+  these distributions are not nested so the ordinary likelihood ratio test has
+  no chi-square limit.
+* `spec_test()` and `spec_test_all()` -- Papadopoulos and Parmeter's (2023)
+  test of a distributional PAIR, computed from OLS residuals before any
+  frontier is fitted. Twelve noise/inefficiency combinations.
+* `lcsfm_homogeneity()` -- a test of a latent class fit against homogeneity.
+* `sfma()` -- model averaging over inefficiency distributions (Parmeter, Wan
+  and Zhang 2019), for when the honest answer is that the data does not
+  identify one.
+
+Each of these last three defaults to a bootstrap null rather than the published
+asymptotic one, and `?spec_test`, `?lcsfm_homogeneity` and `?sfma` give the
+measured size distortions that led to that choice. In two cases the asymptotic
+null was badly mis-sized for the models this package fits -- 63.5 and 18.7
+percent rejection at a nominal 5 percent -- because the published limits are
+stated for restricted specifications the package does not impose.
+
 New extractor and diagnostic functions: `efficiency()` (Battese-Coelli, JLMS
 and modal predictors, on either scale of the dependent variable),
 `meanefficiency()` (the model-implied `E[exp(-U)]` and supra-percentile means,
-in closed form for seven distributions), and `simulation_se()`, which reports
-how much of a simulated-ML standard error is simulation noise rather than
-sampling noise.
+in closed form for seven distributions), `simulation_se()`, which reports how
+much of a simulated-ML standard error is simulation noise rather than sampling
+noise, and `pcomposed()`/`dcomposed()`, the distribution and density of the
+composed error (Amsler, Schmidt and Tsay 2019), accurate in the far tail where
+a copula argument needs it.
+
+Further arguments: `psfm(mundlak = )` adds Mundlak adjustment terms for firm
+effects correlated with the regressors (Karagiannis and Kellermann 2019), and
+`lcsfm(penalty_c = )` maximises the modified likelihood the homogeneity test
+requires.
 
 Further arguments to `sfm()`: `weights`/`wscale`, `start_from` (seed a hard
 model from a simpler fitted one, matched by parameter name), `scaling` for the
