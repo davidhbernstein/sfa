@@ -66,6 +66,36 @@ genuinely attains a higher likelihood than the truth.
 Treat \eqn{\hat\rho} as informative only in large samples, and compare against
 an independent fit (\code{\link{sfm}}) before reading anything into it.
 
+\bold{And below a few hundred observations, the independent fit is often the better
+estimate -- even when the dependence is real.} Fitting the true copula gives a nearly
+unbiased but very noisy \eqn{\hat\sigma_U}; ignoring the copula gives a precise but
+biased one. RMSE of \eqn{\hat\sigma_U} (truth 1.0) on Gaussian-copula data, 25
+replications:
+
+\tabular{lrrr}{
+design \tab \eqn{n} \tab true copula \tab independence \cr
+\eqn{\rho = 0.5}  \tab 400  \tab 0.431 \tab \bold{0.240} \cr
+\eqn{\rho = 0.5}  \tab 1000 \tab \bold{0.151} \tab 0.220 \cr
+\eqn{\rho = -0.5} \tab 400  \tab 0.251 \tab \bold{0.196} \cr
+\eqn{\rho = -0.5} \tab 1000 \tab \bold{0.175} \tab 0.203
+}
+
+The crossover sits between \eqn{n = 400} and \eqn{n = 1000}. Below it the variance
+cost of estimating \eqn{\rho} jointly with \eqn{\sigma_U} exceeds the bias it
+removes, so plain \code{\link{sfm}} wins on RMSE; above it \code{copsfm} wins. The
+independence bias does not shrink with \eqn{n} (about 22\% of \eqn{\sigma_U}, since
+it is misspecification rather than noise), while the copula fit's RMSE falls as it
+should.
+
+\bold{Node counts, measured in paired runs.} Forty datasets sent to every node count,
+so the differences are the quadrature and not the draw. Against the 128-node default,
+the mean difference in \eqn{\hat\rho} is +0.0002 at 256 nodes (\eqn{t = 1.37}) and
++0.0046 at 64 (\eqn{t = 1.47}) -- neither distinguishable -- but \bold{-0.0783 at 32}
+(\eqn{t = -2.79}, \eqn{p = 0.008}), with per-dataset differences as large as 0.52. So
+the quadrature has converged by 64, and 32 must not be used as a fast option: it is
+biased, not merely noisier. For scale, \eqn{\hat\rho}'s own sampling standard
+deviation is 0.385 at \eqn{n = 600}, which dwarfs every node-count effect here.
+
 \bold{Families.} Only densities that could be verified are offered. Each is
 checked in the tests two ways: it integrates to 1 over the unit square, and it
 returns exactly 1 at the independence parameter. Frank, Clayton and Gumbel are
