@@ -12,6 +12,7 @@ lcsfm <- function(formula,
                   PSopt = FALSE,
                   optHessian = TRUE,
                   inefdec = TRUE,
+                  penalty_c = 0,
                   upper = NA,
                   Method = "L-BFGS-B",
                   verbose = FALSE,
@@ -99,6 +100,21 @@ lcsfm <- function(formula,
   ## function named for zero inefficiency. "LCM" gives the classes fixed
   ## probabilities, "LCM_Z" lets the pipe segment parameterize them.
   ## ---------------------------------------------------------------------
+  if (length(penalty_c) != 1L || !is.numeric(penalty_c) || !is.finite(penalty_c) ||
+    penalty_c < 0) {
+    stop("lcsfm(): `penalty_c` must be a single finite number >= 0.",
+      call. = FALSE
+    )
+  }
+  if (penalty_c > 0 && identical(model_name, "LCM_Z")) {
+    stop("lcsfm(): `penalty_c` applies to the unconditional class ",
+      "probabilities, which \"LCM_Z\" makes depend on covariates. The ",
+      "modified-likelihood result of Chen et al. (2001) is stated for a ",
+      "scalar mixing proportion, so it is offered for \"LCM\" only.",
+      call. = FALSE
+    )
+  }
+
   if (model_name %in% c("LCM", "LCM_Z")) {
     J <- n_class
     blk <- 2L + n_x_vars ## sigv, sigu, beta for one class
@@ -159,10 +175,30 @@ lcsfm <- function(formula,
       eta - .log_row_sum_exp(eta)
     }
 
-    like.fn <- function(x) {
+    ## Chen et al. (2001)'s penalty, c * log(J^J * prod_j p_j), added when
+    ## penalty_c > 0. It is what makes the modified likelihood ratio test of
+    ## L3 valid: it forces every class probability away from 0 and from 1, so
+    ## the second class's parameters stay identified under the null.
+    ##
+    ## It vanishes at equal probabilities -- at J = 2, p = 0.5 gives
+    ## 2 log 2 + 2 log 0.5 = 0 -- which is why the null model is recovered
+    ## exactly and the statistic cannot come out negative.
+    ##
+    ## Defined on the UNCONDITIONAL class probabilities, so it is only offered
+    ## for "LCM", where they are constants. "LCM_Z" makes them a function of
+    ## covariates, which is outside the published result. See
+    ## notes/L3_mlrt_design.md.
+    .lcm_penalty <- function(x) {
+      if (!isTRUE(penalty_c > 0)) return(0)
+      lp <- .lcm_logpi(x)[1L, ]
+      penalty_c * (J * log(J) + sum(lp))
+    }
+
+    like.fn <- function(x, per_obs = FALSE) {
       like <- .log_row_sum_exp(.lcm_logpi(x) + .lcm_logf(x))
       like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
-      -sum(like[is.finite(like)])
+      if (isTRUE(per_obs)) return(like)
+      -(sum(like[is.finite(like)]) + .lcm_penalty(x))
     }
 
     Start.Time <- start.time()
@@ -258,15 +294,23 @@ lcsfm <- function(formula,
     class_prob <- colMeans(exp(lpi))
     names(class_prob) <- paste0("class", seq_len(J))
 
+    ## With penalty_c > 0 the optimizer maximised the MODIFIED likelihood, so
+    ## opt$value is the penalised objective. logLik() must not report that as
+    ## the log-likelihood, so the penalty and the plain log-likelihood are
+    ## carried separately; lcsfm_homogeneity() needs both, and .sfa_penalty is
+    ## exactly 0 (not merely small) whenever penalty_c is 0.
+    .pen <- .lcm_penalty(start_v)
     results <- list(
       t(out), c(opt), End.Time, start_v, model_name, formula, jlms, post.prob,
       jlms_class, class_assign, class_prob, J,
+      .pen, -opt$value + .pen, penalty_c,
       out["par", ], out["st_err", ], out["t-val", ], call
     )
     class(results) <- "sfareg"
     names(results) <- c(
       "out", "opt", "total_time", "start_v", "model_name", "formula", "jlms",
       "post.prob", "jlms_class", "class", "class_prob", "n_class",
+      "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
     return(results)

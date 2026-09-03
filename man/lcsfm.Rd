@@ -6,7 +6,7 @@
 data, n_class = 2, maxit.bobyqa = 10000, maxit.psoptim = 1000, 
 maxit.optim = 1000, REPORT = 1, trace = 0, pgtol = 0, 
 start_val = FALSE, PSopt = FALSE, optHessian = TRUE, 
-inefdec = TRUE, upper = NA, Method = "L-BFGS-B", 
+inefdec = TRUE, penalty_c = 0, upper = NA, Method = "L-BFGS-B", 
 verbose = FALSE, rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated. For \code{"LCM_Z"} the second part gives the covariates driving class membership (\code{y ~ x | z}).}
@@ -23,6 +23,7 @@ verbose = FALSE, rand.psoptim = NULL)}
 \item{PSopt}{use psoptim optimization routine (T or F)}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
 \item{inefdec}{Production or cost function}
+\item{penalty_c}{Tuning constant for Chen \emph{et al.}'s (2001) penalty \eqn{c\log(J^J\prod_j p_j)}, which is added to the log-likelihood so that no class probability can be driven to 0 or 1. The default \code{0} leaves the ordinary likelihood untouched. A positive value is what \code{\link{lcsfm_homogeneity}} needs, and it changes what is maximised: \code{$opt$value} then holds the penalised objective, while \code{$logLik_unpenalised} and \code{$penalty} carry the two pieces separately. Only available for \code{model_name = "LCM"}, since the penalty is defined on a scalar mixing proportion.}
 \item{upper}{Vector of upper values for the optim package.}
 \item{Method}{The method to be used for optim. See 'Details' within optim.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
@@ -52,7 +53,7 @@ Caudill, S.B. (2003) 'Estimating a mixture of stochastic frontier regression mod
 Jondrow, J., Lovell, C.A.K., Materov, I.S. and Schmidt, P. (1982) 'On the estimation of technical inefficiency in the stochastic frontier production function model', \emph{Journal of Econometrics}, 19(2-3), pp. 233-238. doi:10.1016/0304-4076(82)90004-5.}
 \author{Christopher F. Parmeter and David H. Bernstein}
 \note{Standard errors require optHessian set to TRUE}
-\seealso{\code{\link{zsfm}}, \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{ttsfm}}, \code{\link{sfareg-methods}}}
+\seealso{\code{\link{lcsfm_homogeneity}}, \code{\link{zsfm}}, \code{\link{sfm}}, \code{\link{psfm}}, \code{\link{ttsfm}}, \code{\link{sfareg-methods}}}
 \value{
 An object of class \code{"sfareg"} containing the following components:
 
