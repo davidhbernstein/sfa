@@ -79,7 +79,7 @@ the Stochastic Frontier Model. Working paper.
 \examples{
 \donttest{
 set.seed(3)
-n <- 200
+n <- 120
 x <- runif(n, 1, 10)
 d <- data.frame(y = 1 + 0.5 * log(x) + rnorm(n, 0, 0.3) - abs(rnorm(n, 0, 0.6)),
                 x = log(x))

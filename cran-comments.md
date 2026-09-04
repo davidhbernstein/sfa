@@ -171,19 +171,34 @@ Two `WARNING`s also appear locally, both saying that `inst/doc` does not exist
 and that `intro_to_psfm.Rmd` has no rendered output. Both are the same missing
 pandoc. They do not appear where the vignette can be built.
 
-`checking examples ... OK` and `checking examples with --run-donttest ...
-[292s/288s] OK`. The five slow examples flagged for earlier releases ---
-`simulation_se` (~16 s), `zsfm` (9.9 s), `PL80_MVTN` (7.8 s), `sfa_diagnostics`
-(5.5 s) and `psfm` (5.0 s) --- are all inside `\donttest{}`. They fit models by
-simulated maximum likelihood over Halton draws, which is what costs the time.
-`simulation_se()` estimates how much of a standard error is simulation noise by
-REFITTING the model K times with independent randomizations, so its example
-necessarily costs K + 1 simulated-ML fits; it was cut from 46 s by halving the
-sample and using the smallest K that still shows a spread. The `psfm` example
-was reduced from 20.4 s by shrinking its panel to 60 firms over 6 periods and
-passing `halton_num = 50`, the same treatment the vignette received for 1.1.5.
-It is close to the floor: the `TRE_Z` fit it demonstrates becomes unstable
-below about 60 firms.
+`checking examples ... OK` and `checking examples with --run-donttest ... OK`.
+The examples that dominate that stage, measured from `sfa-Ex.timings`:
+
+\tabular{ll}{
+ `influence_sfa` \tab 76 s \cr
+ `simulation_se` \tab 38 s \cr
+ `zsfm` \tab 23 s \cr
+ `PL80_MVTN` \tab 15 s \cr
+ `lcsfm_homogeneity` \tab 14 s
+}
+
+All are inside `\donttest{}`. They fit models by simulated maximum likelihood
+over Halton draws, by quadrature per observation, or by bootstrap, which is
+what costs the time. `simulation_se()` estimates how much of a standard error
+is simulation noise by REFITTING the model K times with independent
+randomizations, so its example necessarily costs K + 1 simulated-ML fits; it
+was cut from 46 s by halving the sample and using the smallest K that still
+shows a spread. `influence_sfa`'s example fits a Student-t noise model, which
+is multi-start because that likelihood is bimodal in its degrees of freedom;
+below n = 120 its Hessian stops inverting, so that is the floor rather than a
+choice.
+
+Two examples were cut for this submission after measuring rather than
+estimating: `copsfm` from **239 s to 7 s**, by moving its example from n = 4000
+at the default 128 quadrature nodes to n = 600 at 64 -- the release notes
+already record that the quadrature is converged by 64, so nothing is lost --
+and `influence_sfa` from 116 s to 76 s. The whole `--run-donttest` stage falls
+from 511 s to about 240 s as a result.
 
 Not reproduced locally, and expected on the submission machine:
 `checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not

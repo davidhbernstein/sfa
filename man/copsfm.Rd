@@ -179,13 +179,15 @@ components. \emph{The Econometrics Journal}, \bold{11}(1), 172--192.
 \examples{
 \donttest{
 set.seed(4)
-n   <- 4000
+## n_nodes = 64 rather than the default 128: the quadrature is converged by 64
+## (see Details), and this is the slowest entry point in the package.
+n   <- 600
 x1  <- rnorm(n); x2 <- rnorm(n)
 z1  <- rnorm(n); z2 <- 0.6 * z1 + sqrt(1 - 0.6^2) * rnorm(n)
 y   <- 0.5 + 0.8 * x1 - 0.4 * x2 + 0.4 * z1 - qnorm((1 + pnorm(z2)) / 2)
 dat <- data.frame(y = y, x1 = x1, x2 = x2)
 
-fit <- copsfm(y ~ x1 + x2, data = dat)
+fit <- copsfm(y ~ x1 + x2, data = dat, n_nodes = 64)
 fit$out
 }
 }
