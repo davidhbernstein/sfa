@@ -29,10 +29,24 @@ A feature release. In brief:
   the switch, and below it the tilt form -- and hence the `sigma_u -> 0` fix --
   is untouched. Over 500 replications at `lambda = 3.33`, n = 1000, the rate of
   fits landing more than 0.3 from the truth falls from **3.8% to 1.0%**, the
-  log-likelihood **improves on 18 and worsens on none**, and the rate now
-  shrinks with the sample (1.5% / 0.0% / 0.0% at n = 1000 / 3000 / 5000, against
-  4.0% / 2.9% / 2.1% before) instead of standing still. `"NGE"` shares
-  `.log_phi_tilt()` and was checked for the same defect; it does not have it.
+  log-likelihood **improves on 18 and worsens on none**.
+
+  The root-n convergence sweep was then re-run in full, 1000 replications at
+  each of n = 1000 to 5000, and `"NE"` now **passes on the mean basis, which is
+  what it used to fail**: slopes -1.023 (`sigma_v`), -1.044 (`sigma_u`), -1.025,
+  -1.033 and -1.009 (the frontier coefficients), every R-squared at least 0.989,
+  and no failures in 5000 fits. Before the fix those slopes were -0.488, **+0.262**
+  -- positive, i.e. error growing with the sample -- -0.745, -0.443 and -0.165.
+
+  This also resolves a dilemma the convergence notes had recorded and left open.
+  They found that reverting the likelihood to its 1.1.5 form fixed the tail but
+  would reintroduce the `sigma_u -> 0` defect, and concluded "do not revert, fix
+  the interaction instead". Above the switch this fix *is* the 1.1.5 algebra, so
+  the re-run reproduces that configuration's slopes digit for digit while
+  keeping the `sigma_u` protection. Both boundaries are now covered.
+
+  `"NGE"` shares `.log_phi_tilt()` and was checked for the same defect; it does
+  not have it.
 
 * **Robust estimation gains its missing half.** `sfm(robust = )` already fitted
   the Normal--Half-Normal frontier by maximum \eqn{L_q}-likelihood, the power-Psi
