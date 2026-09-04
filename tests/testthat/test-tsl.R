@@ -126,3 +126,55 @@ test_that("the TSL start uses the exponential inversion, not the half-normal one
   expect_gt(sc$start_v[2], 0)
   expect_equal(sc$start_v[3], 1)
 })
+
+test_that("the TSL density is the thesis's, and its moments are too", {
+  ## Wang (2012), "A Normal Truncated Skewed-Laplace Model in Stochastic
+  ## Frontier Analysis", WKU master's thesis, equations (3.7) and (3.8). The
+  ## distribution itself is Aryal and Rao (2005); the thesis applies it to the
+  ## frontier model. Checking the package against the SOURCE rather than
+  ## against itself, which is what makes the citation in ?sfm a claim rather
+  ## than a decoration.
+  f_thesis <- function(u, phi, lam) {
+    (1 + lam) / (phi * (2 * lam + 1)) *
+      (2 * exp(-u / phi) - exp(-(1 + lam) * u / phi))
+  }
+  ## eq (3.8): E[X^k] = phi^k (1+lam) Gamma(k+1)/(2 lam+1) * {2 - (1+lam)^-(k+1)}
+  mom_thesis <- function(k, phi, lam) {
+    phi^k * (1 + lam) * gamma(k + 1) / (2 * lam + 1) * (2 - 1 / (1 + lam)^(k + 1))
+  }
+  for (lam in c(0.1, 1 / sqrt(2), 1.5, 3)) {
+    for (phi in c(0.7, 1, 1.6)) {
+      ## The density integrates to 1, so it is the truncated version.
+      ## rel.tol tightened from integrate()'s default: over (0, Inf) the
+      ## default leaves ~4e-8, which is quadrature error rather than any
+      ## disagreement with the thesis, and loosening the assertion instead
+      ## would weaken the check for no reason.
+      expect_equal(stats::integrate(function(u) f_thesis(u, phi, lam),
+        0, Inf, rel.tol = 1e-12)$value, 1, tolerance = 1e-9)
+      for (k in 1:3) {
+        num <- stats::integrate(function(u) u^k * f_thesis(u, phi, lam),
+          0, Inf, rel.tol = 1e-12, subdivisions = 400L)$value
+        expect_equal(num, mom_thesis(k, phi, lam), tolerance = 1e-7,
+          info = paste("lambda", lam, "phi", phi, "k", k))
+      }
+    }
+  }
+  ## lambda = 0 must collapse to the exponential, which is what makes TSL a
+  ## generalisation rather than a different family.
+  expect_equal(mom_thesis(1, 1, 0), 1, tolerance = 1e-12)
+})
+
+test_that("the scale-shape multiplier peaks at 4 - 2*sqrt(2)", {
+  ## The reason lambda is weakly identified, as an exact statement rather than
+  ## a measured one: E[U]/sigma_u equals 1 in BOTH limits and its maximum over
+  ## all lambda is 4 - 2 sqrt(2) = 1.1716, at lambda = 1/sqrt(2). The shape
+  ## parameter can move the standardised mean by at most 17 percent.
+  m <- function(lam) (1 + lam) / (2 * lam + 1) * (2 - 1 / (1 + lam)^2)
+  expect_equal(m(1e-10), 1, tolerance = 1e-8)
+  expect_equal(m(1e10), 1, tolerance = 1e-6)
+  o <- stats::optimize(m, c(1e-3, 50), maximum = TRUE)
+  expect_equal(o$maximum, 1 / sqrt(2), tolerance = 1e-4)
+  expect_equal(o$objective, 4 - 2 * sqrt(2), tolerance = 1e-8)
+  ## And the convergence DGP's lambda = 1.5 sits in that flat region.
+  expect_gt(m(1.5), 0.97 * (4 - 2 * sqrt(2)))
+})
