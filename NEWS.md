@@ -2,6 +2,38 @@
 
 A feature release. In brief:
 
+* **`sfm(model_name = "NE")` had a second catastrophic cancellation, at
+  `sigma_v -> 0`, and it could return a silently wrong fit.** The
+  `sigma_u -> 0` cancellation fixed earlier in this release is repaired by
+  `.log_phi_tilt()`, which returns `log Phi(z) + z^2/2`. For an observation
+  with `eps < 0` and `sigma_v` small, `z` goes large *positive*, `log Phi(z)`
+  is ~0, and so the returned value is essentially `z^2/2` -- which the NE
+  branch then subtracted `eps^2/(2 sigma_v^2)` from. At `sigma_v = 1e-8` both
+  are about 5e15, where consecutive doubles are ~1 apart, so the result was
+  rounding noise: the summed negative log-likelihood read **-5188 where the
+  true value is +4398**, an apparently excellent fit in a narrow band that a
+  minimiser walks straight into. The domain guard did not catch it, firing only
+  at `sigma_v <= 0` while the band sits at 1e-9 to 1e-7.
+
+  The consequence was not a visible failure. `nlminb` found the band, its
+  "only accept an improvement" guard passed the point through because the
+  objective had improved, and `bobyqa` and `optim` could not escape the corner;
+  `optim`'s bounds, rebuilt around the corrupted point, then pinned the
+  frontier coefficients. Such fits came back as ordinary `sfareg` objects with
+  `convergence = 0` -- correctly, since a bound-constrained stationary point is
+  a legitimate success -- while carrying a gradient in the hundreds.
+
+  The subtraction is analytic: `z^2/2 = eps^2/(2 sv^2) + eps/su + sv^2/(2 su^2)`
+  identically, so above `NE_TILT_SWITCH` the expression collapses to the 1.1.5
+  tilt with no large intermediate formed. The two forms agree to 1e-13 across
+  the switch, and below it the tilt form -- and hence the `sigma_u -> 0` fix --
+  is untouched. Over 500 replications at `lambda = 3.33`, n = 1000, the rate of
+  fits landing more than 0.3 from the truth falls from **3.8% to 1.0%**, the
+  log-likelihood **improves on 18 and worsens on none**, and the rate now
+  shrinks with the sample (1.5% / 0.0% / 0.0% at n = 1000 / 3000 / 5000, against
+  4.0% / 2.9% / 2.1% before) instead of standing still. `"NGE"` shares
+  `.log_phi_tilt()` and was checked for the same defect; it does not have it.
+
 * **Robust estimation gains its missing half.** `sfm(robust = )` already fitted
   the Normal--Half-Normal frontier by maximum \eqn{L_q}-likelihood, the power-Psi
   criterion and minimum density-power divergence, but the tuning parameter had

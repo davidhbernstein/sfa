@@ -606,7 +606,33 @@ sfm <- function(formula,
           return(1e12)
         }
         z <- -(eps / x[1]) - (x[1] / x[2])
-        like <- -log(x[2]) - (eps^2 / (2 * x[1]^2)) + .log_phi_tilt(z)
+        ## The tilt form has its OWN cancellation, at the other boundary.
+        ## .log_phi_tilt(z) returns log Phi(z) + z^2/2. For eps < 0 with
+        ## sigma_v -> 0 the argument goes large POSITIVE, so log Phi(z) is ~0
+        ## and the returned value is essentially z^2/2 -- and the line that
+        ## consumes it then subtracts eps^2/(2 sigma_v^2), which is the same
+        ## magnitude. At sigma_v = 1e-8 both are ~5e15, where consecutive
+        ## doubles are ~1 apart, so what comes back is rounding noise: measured
+        ## on one sample the summed objective read -5188 where the truth is
+        ## +4398, i.e. a spuriously EXCELLENT fit, and the optimizer ran
+        ## straight at it. This is the sigma_v twin of the sigma_u cancellation
+        ## .log_phi_tilt() exists to fix.
+        ##
+        ## The subtraction is analytic, so there is no need to do it in floating
+        ## point: z^2/2 = eps^2/(2 sv^2) + eps/su + sv^2/(2 su^2) identically,
+        ## which leaves the 1.1.5 tilt and no large intermediate at all. Used
+        ## only where log Phi(z) is flat enough for the identity to be the whole
+        ## story; below the switch the tilt form is the accurate one.
+        hi <- z > .SFA_CONSTANTS$NE_TILT_SWITCH
+        like <- numeric(length(z))
+        if (any(!hi)) {
+          like[!hi] <- -log(x[2]) - (eps[!hi]^2 / (2 * x[1]^2)) +
+            .log_phi_tilt(z[!hi])
+        }
+        if (any(hi)) {
+          like[hi] <- -log(x[2]) + (eps[hi] / x[2]) + (x[1]^2 / (2 * x[2]^2)) +
+            stats::pnorm(z[hi], log.p = TRUE)
+        }
       }
 
       if (model_name == "NU") {

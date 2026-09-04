@@ -5,6 +5,11 @@
   CLIP_Z2_UPPER  =   8,
   CLIP_Z2_LOWER  = -37,
   HALTON_DISCARD =  1000,
+  ## Where sfm()'s NE branch stops forming eps^2/(2 sigma_v^2) and the tilt
+  ## separately and uses their analytic difference instead. Above z ~ 30,
+  ## log Phi(z) is within 1e-197 of zero, so the two forms agree to machine
+  ## precision; below it the tilt form is the accurate one.
+  NE_TILT_SWITCH = 30,
   MIN_POSITIVE   = .Machine$double.eps,
   LOG_SQRT_2PI   = 0.918938533204672741780329736406,
   MAX_VALUE      = .Machine$double.xmax,
