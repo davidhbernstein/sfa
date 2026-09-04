@@ -36,6 +36,18 @@ A feature release. In brief:
   `c`. Both remain available as peer methods and `calibrate_c()` returns the
   same value for either.
 
+* **`influence_sfa()`**, an influence-function diagnostic for any `"sfareg"`
+  fit made with `keep_objective = TRUE`, after Stead, Wheat and Greene (2023).
+  The standard outlier rules do not transfer to this model -- they ignore the
+  asymmetry of the composed error, so a genuinely inefficient firm reads as an
+  outlier and is discarded. It reports the empirical influence function, a
+  Cook's-distance-shaped case influence, and **two** sensitivities. Compare
+  models on `sensitivity_std`, the self-standardised one: the raw sup-norm
+  depends on the parameterisation, and on a clean sample reads 72.6 for `"NHN"`
+  against 1322.5 for `"tHN"`, which says nothing about robustness. On the
+  standardised scale, contaminating one response takes `"NHN"` from 13.5 to 32.3
+  and `"tHN"` from 13.1 to 17.2.
+
 * **A fifth model-fitting entry point, `lcsfm()`** — the latent class
   stochastic frontier, with `n_class` coexisting technologies.
 

@@ -101,6 +101,30 @@ null was badly mis-sized for the models this package fits -- 63.5 and 18.7
 percent rejection at a nominal 5 percent -- because the published limits are
 stated for restricted specifications the package does not impose.
 
+**Robustness diagnostics.** `sfm(robust = )` already fitted the
+Normal--Half-Normal frontier by maximum Lq-likelihood, the power-Psi criterion
+and minimum density-power divergence, but the tuning parameter had to be
+supplied by hand with no guidance:
+
+* `hscore()` and `hscore_select()` -- the Hyvarinen criterion (Sugasawa and
+  Yonekura 2021) and a coarse-to-fine search over it that includes the
+  maximum-likelihood endpoint, so the criterion may decline robustification.
+  The score is evaluated in logarithms: the natural-scale expression raises the
+  fitted density to the power `c - 2`, so one observation whose density
+  underflows makes it non-finite, and because the surviving candidates are those
+  nearest maximum likelihood the failure biases selection silently.
+* `calibrate_c()` -- the fixed alternative. The influence ratio it inverts is
+  not monotone for the Fisher-consistency-corrected criteria, so all roots are
+  found and reported rather than one being chosen silently.
+* `density_weights()` -- the weight each observation receives, documented with
+  what it cannot detect: it responds to response contamination, not to a
+  mis-recorded regressor.
+* `influence_sfa()` -- the influence function of the fit (Stead, Wheat and
+  Greene 2023). It reports two sensitivities and `?influence_sfa` says which to
+  use: the raw sup-norm depends on the parameterisation and is not comparable
+  between models, while the self-standardised one measures the same influence
+  function in the information metric and is.
+
 New extractor and diagnostic functions: `efficiency()` (Battese-Coelli, JLMS
 and modal predictors, on either scale of the dependent variable),
 `meanefficiency()` (the model-implied `E[exp(-U)]` and supra-percentile means,
