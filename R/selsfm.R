@@ -5,6 +5,8 @@
 selsfm <- function(selection,
                    frontier,
                    data,
+                   model_name = c("greene", "kts"),
+                   n_nodes = 64,
                    Nsim = "auto",
                    sim_type = c("halton", "sobol", "torus", "uniform"),
                    antithetics = FALSE,
@@ -20,6 +22,7 @@ selsfm <- function(selection,
                    verbose = FALSE,
                    rand.psoptim = NULL) {
   call <- match.call()
+  model_name <- match.arg(model_name)
   sim_type <- match.arg(sim_type)
   Start.Time <- Sys.time()
 
@@ -61,6 +64,15 @@ selsfm <- function(selection,
         call. = FALSE
       )
     }
+  }
+
+  ## Kumbhakar, Tsionas and Sipilainen (2009) is a different model, not a
+  ## variant of Greene's, so it gets its own likelihood rather than a branch
+  ## inside this one. See R/selsfm_kts.R.
+  if (identical(model_name, "kts")) {
+    return(.selsfm_kts_fit(selection, frontier, data, n_nodes, inefdec,
+      maxit.bobyqa, maxit.psoptim, maxit.optim, start_val, PSopt, optHessian,
+      Method, verbose, rand.psoptim, call))
   }
 
   ## ---- selection equation, estimated on the FULL sample -------------------
