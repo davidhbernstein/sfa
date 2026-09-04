@@ -8,10 +8,16 @@
 <!-- badges: end -->
 
 **Stochastic frontier analysis in R.** A single, consistent interface to a wide
-range of cross-sectional, panel, zero-inefficiency, two-tier and nonparametric
-stochastic frontier models, with a common formula syntax for modelling the
-variance of each error component and a common `"sfareg"` result object that
-works with the standard R modelling generics.
+range of cross-sectional, panel, latent-class, zero-inefficiency, two-tier,
+sample-selection, endogenous-regressor, copula and nonparametric stochastic
+frontier models, with a common formula syntax for modelling the variance of each
+error component and a common `"sfareg"` result object that works with the
+standard R modelling generics.
+
+Beyond fitting, it provides the tools to *choose* among the fifteen
+cross-sectional inefficiency distributions rather than assume one, and to check
+whether the chosen specification is defensible -- see
+[Model selection and diagnostics](#model-selection-and-diagnostics).
 
 Written by David H. Bernstein, Christopher F. Parmeter and Alexander D. Stead.
 
@@ -67,20 +73,30 @@ fit_p <- psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
               data = pd, individual = "name")
 ```
 
-## The five entry points
+## The nine entry points
 
 | Function | Fits | Estimators |
 |---|---|---|
-| `sfm()` | Cross-sectional frontiers | 14 |
-| `psfm()` | Panel frontiers | 15 |
-| `zsfm()` | Zero-inefficiency (latent-class) frontiers | 2 |
+| `sfm()` | Cross-sectional frontiers | 15 |
+| `psfm()` | Panel frontiers | 21 |
+| `lcsfm()` | Latent-class frontiers | 3 |
+| `zsfm()` | Zero-inefficiency frontiers | 2 |
 | `ttsfm()` | Two-tier frontiers | 3 |
+| `selsfm()` | Sample-selection frontiers | 1 |
+| `ivsfm()` | Frontiers with endogenous regressors | 3 |
+| `copsfm()` | Dependence between the error components | 2 copulas |
 | `npsfm()` | Nonparametric frontiers | 5 |
 
-The first four return an object of class `"sfareg"`. `npsfm()` returns
+All but `npsfm()` return an object of class `"sfareg"`. `npsfm()` returns
 `"npsfareg"` instead — a kernel-estimated frontier has no parameter vector with
 standard errors, so `coef()`, `vcov()` and `logLik()` would have nothing to
 return.
+
+`selsfm()` and `ivsfm()` do not take their equations through the `|` pipes:
+`selsfm()` takes `selection` and `frontier` as separate formulas, and `ivsfm()`
+takes `formula`, `endogenous` and `instruments`. Both **reject** a `|` segment,
+because a pipe already means "variance determinant" everywhere else and reusing
+it would give one character two meanings.
 
 ### `sfm()` — cross-sectional
 
@@ -98,6 +114,7 @@ return.
 | `NW` | Weibull |
 | `tHN` | half normal, with Student-*t* noise |
 | `THT` | half *t*, with Student-*t* noise |
+| `TSL` | truncated skew-Laplace |
 
 `sfm()` also offers `estimator = "cols"` — corrected OLS (Olson, Schmidt and
 Waldman 1980), closed-form and deterministic, for `NHN`, `NE` and `NG` — and
@@ -184,6 +201,45 @@ efficiency alongside the class-conditional predictions.
 normal), and `TTNLS` (nonlinear least squares, no distributional assumption
 beyond the means of the two one-sided components).
 
+### `selsfm()` — sample selection
+
+Greene's (2010) frontier for the case where the units in the sample are there
+for reasons correlated with their inefficiency, so estimating on the selected
+sample alone is biased. Estimated in two steps — probit, then simulated maximum
+likelihood — and so it takes its two equations as separate arguments rather than
+through pipes:
+
+```r
+selsfm(selection = participate ~ z1 + z2,
+       frontier  = y ~ x1 + x2, data = d)
+```
+
+### `ivsfm()` — endogenous regressors
+
+Amsler, Prokhorov and Schmidt (2016): one or more regressors correlated with the
+statistical noise. Three estimators of the same model, not three models —
+`IVLIML` (full-information maximum likelihood), `IVCF` (two-step control
+function) and `C2SLS` (corrected 2SLS):
+
+```r
+ivsfm(y ~ x1 + x2, endogenous = ~ x2, instruments = ~ w1 + w2,
+      data = d, model_name = "IVLIML")
+```
+
+With `uhet` the model becomes that of Amsler, Prokhorov and Schmidt (2017), in
+which the environmental variables entering the inefficiency scale may themselves
+be endogenous.
+
+### `copsfm()` — dependence between `v` and `u`
+
+Drops the independence assumption between the noise and inefficiency components,
+coupling them with a `"gaussian"` or `"fgm"` copula and integrating the
+resulting density by Gauss–Legendre quadrature (`n_nodes`).
+
+```r
+copsfm(y ~ x1 + x2, data = d, copula = "gaussian")
+```
+
 ### `npsfm()` — nonparametric
 
 Estimates the frontier by kernel regression instead of assuming it linear.
@@ -238,6 +294,46 @@ Omitted segments default to `1`, i.e. homoskedastic.
 > parameterises the *variance* rather than the standard deviation. Check which
 > convention applies before interpreting a coefficient on `z`.
 
+## Model selection and diagnostics
+
+The package offers fifteen cross-sectional inefficiency distributions. These are
+the tools for choosing among them, and for asking whether the choice is
+defensible at all.
+
+| Function | Question it answers |
+|---|---|
+| `TIC()`, `vuong()` | Which of two non-nested specifications fits better, without assuming either is correct |
+| `spec_test()`, `spec_test_all()` | Is this *pair* of noise/inefficiency distributions defensible, from OLS residuals alone |
+| `sfma()` | What if the data does not identify one — average over distributions instead of choosing |
+| `lcsfm_homogeneity()` | Does a latent-class fit beat a single technology |
+| `skewness_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
+| `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
+| `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |
+| `efficiency()`, `meanefficiency()`, `efficiency_ci()` | Efficiency predictions, model-implied means, and Horrace–Schmidt intervals |
+| `marginal_effects()` | Effects of the variance determinants on `E[u]` |
+| `simulation_se()` | How much of a simulated-ML standard error is simulation noise |
+| `pcomposed()`, `dcomposed()` | Distribution and density of the composed error |
+| `sfa_diagnostics()` | Convergence and boundary diagnostics for a fit |
+
+```r
+## The score-based diagnostics differentiate the fitted likelihood, so the fit
+## has to have kept it: pass keep_objective = TRUE. TIC(), vuong() and
+## influence_sfa() all need this; the others do not.
+fit_hn <- sfm(y ~ x1 + x2, data = d, model_name = "NHN", keep_objective = TRUE)
+fit_e  <- sfm(y ~ x1 + x2, data = d, model_name = "NE",  keep_objective = TRUE)
+vuong(fit_hn, fit_e)                            # neither assumed correct
+influence_sfa(fit_hn)                           # who is driving this fit
+
+spec_test_all(residuals(lm(y ~ x1 + x2, d)))    # before fitting anything
+sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NTN"))
+```
+
+`spec_test()`, `lcsfm_homogeneity()` and `sfma()` default to a **bootstrap**
+null rather than the published asymptotic one. Their help pages give the
+measured size distortions behind that choice: in two cases the asymptotic limit
+is badly mis-sized for the models this package fits, because it is stated for a
+restricted specification the package does not impose.
+
 ## Working with results
 
 `"sfareg"` objects support the usual generics:
@@ -248,10 +344,12 @@ fitted(fit); residuals(fit); predict(fit, newdata = ...)
 print(fit); summary(fit)
 ```
 
-`fit$out` is the source of truth — a `3 x p` matrix of estimates, standard
-errors and *t*-values. Its column names vary by model: several models report the
-`lambda = sigma_u/sigma_v`, `sigma = sqrt(sigma_u^2 + sigma_v^2)`
-reparameterisation rather than the raw scale parameters.
+`fit$out` is the source of truth — a **`p x 3`** matrix, one **row per
+parameter**, with columns `par`, `st_err` and `t-val`. Index it as
+`fit$out[, "par"]`, never `fit$out["par", ]`. Its **row** names vary by model:
+several report the `lambda = sigma_u/sigma_v`,
+`sigma = sqrt(sigma_u^2 + sigma_v^2)` reparameterisation rather than the raw
+scale parameters, so read the names rather than assuming a position.
 
 `npsfm()` fits are the exception. They carry no `out` matrix and no standard
 errors, so only `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()`
