@@ -7,11 +7,11 @@ by anything below.
 
 ### On the short interval since 1.1.5
 
-1.1.5 was published on 2026-08-23, so `R CMD check --as-cran` raises the
-"Days since last update" note, and I am aware that the policy asks for updates
-to be spaced out. I am submitting this soon anyway because **1.1.5 silently
-returns wrong results for one of its models**, and I would rather that version
-were on CRAN for days than for months.
+1.1.5 was published on 2026-08-23. `R CMD check --as-cran` no longer raises the
+"Days since last update" note, but the interval is still short by the spirit of
+the policy and I want to be explicit about why. I am submitting this soon
+because **1.1.5 silently returns wrong results for one of its models**, and I
+would rather that version were on CRAN for weeks than for months.
 
 `sfm(model_name = "NE")` and `"NGE"` in 1.1.5 can return a **positive**
 log-likelihood with `sigma_u` driven to zero, as an ordinary fitted object with
@@ -239,33 +239,47 @@ where Uwe Ligges asked for it.
 ## R CMD check results
 
 `R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 26.5:
-**0 errors | 0 warnings | 3 notes.**
+**0 errors | 0 warnings | 2 notes**, both of which are properties of the check
+machine rather than of the package.
 
-1. `checking CRAN incoming feasibility ... NOTE`, reporting the days since
-   1.1.5. This is the point addressed at the top of this file.
+1. `checking CRAN incoming feasibility ... NOTE` --- reports the maintainer
+   address, and that the package has a `VignetteBuilder` field but no prebuilt
+   vignette index. The second half is an artefact of checking with
+   `--no-build-vignettes`: pandoc is not installed on this machine, so the
+   vignette cannot be built here. It builds on all five GitHub Actions
+   platforms and on win-builder.
 
-2. `checking examples ... NOTE`, listing five examples over the 5-second
-   guideline: `simulation_se` (~16 s), `zsfm` (9.9 s), `PL80_MVTN` (7.8 s),
-   `sfa_diagnostics` (5.5 s) and `psfm` (5.0 s). `simulation_se()` estimates
-   how much of a standard error is simulation noise by REFITTING the model K
-   times with independent randomizations, so its example necessarily costs
-   K + 1 simulated-ML fits; it was cut from 46 s by halving the sample and
-   using the smallest K that still shows a spread. All four are inside `\donttest{}`; they fit models by
-   simulated maximum likelihood over Halton draws, which is what costs the
-   time. The `psfm` example was reduced from 20.4 s for this release, by
-   shrinking its panel to 60 firms over 6 periods and passing
-   `halton_num = 50` -- the same treatment the vignette received for 1.1.5.
-   It is close to the floor: the `TRE_Z` fit it demonstrates becomes unstable
-   below about 60 firms.
+   The "Days since last update" note is **not** raised. It was when this file
+   was first written; 1.1.5 is now twelve days old.
 
-3. `checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
-   recent enough and that package `V8` is unavailable, so those two sub-checks
-   are skipped rather than failed. This is a property of the check machine
-   rather than the package.
+2. `checking top-level files ... NOTE` --- `README.md` and `NEWS.md` cannot be
+   checked without pandoc. Same cause as above.
 
-A fourth note, `checking for future file timestamps ... NOTE` / `unable to
-verify current time`, appears intermittently here when the clock-check web
-service is unreachable. It is also a property of the machine.
+Two `WARNING`s also appear locally, both saying that `inst/doc` does not exist
+and that `intro_to_psfm.Rmd` has no rendered output. Both are the same missing
+pandoc. They do not appear where the vignette can be built.
+
+`checking examples ... OK` and `checking examples with --run-donttest ...
+[292s/288s] OK`. The five slow examples flagged for earlier releases ---
+`simulation_se` (~16 s), `zsfm` (9.9 s), `PL80_MVTN` (7.8 s), `sfa_diagnostics`
+(5.5 s) and `psfm` (5.0 s) --- are all inside `\donttest{}`. They fit models by
+simulated maximum likelihood over Halton draws, which is what costs the time.
+`simulation_se()` estimates how much of a standard error is simulation noise by
+REFITTING the model K times with independent randomizations, so its example
+necessarily costs K + 1 simulated-ML fits; it was cut from 46 s by halving the
+sample and using the smallest K that still shows a spread. The `psfm` example
+was reduced from 20.4 s by shrinking its panel to 60 firms over 6 periods and
+passing `halton_num = 50`, the same treatment the vignette received for 1.1.5.
+It is close to the floor: the `TRE_Z` fit it demonstrates becomes unstable
+below about 60 firms.
+
+Not reproduced locally, and expected on the submission machine:
+`checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
+recent enough and that package `V8` is unavailable, so those two sub-checks are
+skipped rather than failed; and `checking for future file timestamps ... NOTE`
+when the clock-check web service is unreachable. Both are properties of the
+machine. The check above was run with `--no-manual`, so the first did not
+arise.
 
 ## Notes for the reviewer
 

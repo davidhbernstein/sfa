@@ -1,6 +1,6 @@
 Package: sfa
 Version: 1.2.0
-Date: 2026-09-02
+Date: 2026-09-04
 Title: Stochastic Frontier Analysis
 Type: Package
 Authors@R: c(person("David", "Bernstein",

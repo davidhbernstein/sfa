@@ -36,15 +36,22 @@ test_that("seeding never makes the fit worse", {
   skip_on_cran()
   ## "Never worse" is the only property of start_from that holds everywhere, so
   ## it is the only one asserted. The SIZE of any rescue does not travel: over
-  ## seeds 1-12 on this machine, ten give an identical optimum either way, seed
-  ## 4 gains 176.70 log-likelihood points, and seeds 7 and 10 make the UNSEEDED
-  ## NG fit fail outright in optim (seeding rescues 7, not 10). On the CI
+  ## seeds 1-40 on this machine, thirty-nine give an indistinguishable optimum
+  ## either way and seed 4 gains 176.70 log-likelihood points. On the CI
   ## platforms seed 4 converges to the same optimum from both starts. Asserting
   ## the gain would pin a BLAS/optimizer path rather than the feature.
   ##
-  ## A plain fit that errors counts as "seeding is no worse" rather than as a
-  ## test failure -- that failure is NG's own start-value fragility, tracked
-  ## separately, and it is exactly the situation start_from exists to escape.
+  ## Re-derived 2026-09-04. An earlier version of this comment said seeds 7 and
+  ## 10 made the UNSEEDED fit fail outright in optim. That is no longer true:
+  ## the I12 guard in opts.R catches a non-finite third-stage objective and
+  ## falls back, and all forty seeds now converge from both starts. What
+  ## remains is the quiet one -- seed 4 converging to a much worse optimum with
+  ## nothing in the returned object to flag it.
+  ##
+  ## The error-tolerating branch below is KEPT even though nothing currently
+  ## triggers it: it exists so that NG's start-value fragility cannot be misread
+  ## as a start_from defect on some other platform, and that reason has not
+  ## expired just because this machine no longer reproduces the failure.
   ll <- function(e) if (inherits(e, "error")) NA_real_ else -e$opt$value
   for (s in c(1, 2, 4)) {
     d <- sf_data(s)
