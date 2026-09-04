@@ -37,9 +37,9 @@ Two further corrections in the same release: `"NGE"` aborted outright on about
 **used**, which made `BIC()` wrong for any fit on data containing a missing
 value.
 
-I would rather 1.1.5 were the current version for weeks than for months. If you
-would prefer that I hold the new features and submit only these corrections, or
-that I wait, I am happy to do either -- please just say which.
+I would rather 1.1.5 were the current version for weeks than for months, which
+is why the corrections and the new features are submitted together rather than
+the corrections alone.
 
 ### No intentional API-breaking changes in this version
 
