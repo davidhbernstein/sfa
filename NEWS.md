@@ -2,6 +2,40 @@
 
 A feature release. In brief:
 
+* **Robust estimation gains its missing half.** `sfm(robust = )` already fitted
+  the Normal--Half-Normal frontier by maximum \eqn{L_q}-likelihood, the power-Psi
+  criterion and minimum density-power divergence, but the tuning parameter had
+  to be supplied by hand with no guidance and no diagnostic. Four new functions
+  close that, from Bernstein, Parmeter and Wright (2026):
+
+  * `hscore_select()` chooses the tuning parameter by minimising the Hyvarinen
+    score (Sugasawa and Yonekura, 2021) over a coarse-to-fine grid that includes
+    the maximum-likelihood endpoint, so the criterion is free to decline
+    robustification. It guards two silent failure modes: candidates lost to
+    numerical overflow, and warm-start capture in the degenerate
+    `sigma_u -> 0` basin.
+  * `hscore()` evaluates the criterion, in logarithms. The natural-scale
+    expression raises the fitted density to the power `c - 2`, so one
+    observation whose density underflows makes the score non-finite; because the
+    surviving candidates are those closest to maximum likelihood, the failure
+    biases selection toward too little robustness without any warning.
+    `stable = FALSE` reproduces the naive evaluation for comparison.
+  * `calibrate_c()` gives the fixed alternative: the tuning value at which a
+    residual three scale units out retains a stated share of its clean-data
+    influence. The influence ratio is **not** monotone for the
+    Fisher-consistency-corrected criteria -- Psi and MDPD cross the target twice
+    -- so every root is found and reported in a `"roots"` attribute rather than
+    resolved silently.
+  * `density_weights()` returns the per-observation weight the estimator
+    applies, documented with what it can and cannot detect: it responds to
+    response contamination and not to a mis-recorded regressor, which can be
+    highly influential and still receive a weight near one.
+
+  The power-Psi and MDPD objectives satisfy `obj_MDPD = (1 + c) * obj_Psi`
+  identically, so they share a maximiser and are the same estimator at a common
+  `c`. Both remain available as peer methods and `calibrate_c()` returns the
+  same value for either.
+
 * **A fifth model-fitting entry point, `lcsfm()`** — the latent class
   stochastic frontier, with `n_class` coexisting technologies.
 

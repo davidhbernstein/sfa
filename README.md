@@ -104,6 +104,20 @@ Waldman 1980), closed-form and deterministic, for `NHN`, `NE` and `NG` — and
 robust divergence-based alternatives to MLE via `robust = "mlqe" | "psi" | "mdpd"`
 for `NHN`.
 
+The tuning parameter of those robust criteria does not have to be guessed:
+`hscore_select()` chooses it by minimising the Hyvarinen score, `calibrate_c()`
+gives a fixed weight-matching alternative, and `density_weights()` shows what
+the estimator did to each observation. `influence_sfa()` reports the influence
+function of any fit — which observations move it, and whether the specification
+lets any single one of them move it without bound.
+
+```r
+fit <- sfm(y ~ x1 + x2, data = d, model_name = "NHN")
+sel <- hscore_select(fit, method = "mlqe")          # data-driven
+calibrate_c(sigma_v = 0.3, sigma_u = 0.6)           # or fixed
+sfm(y ~ x1 + x2, data = d, robust = "mlqe", c_mlqe = sel$c)
+```
+
 Any of `NHN`, `NE` and `NTN` can additionally take covariates in more than one
 error component, as named formulas rather than further pipe segments:
 
