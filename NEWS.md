@@ -31,6 +31,42 @@ A feature release. In brief:
   not. `TTNLS` separately computed each of its two bivariate terms twice; those
   are now computed once.
 
+* **`selsfm()` gains a second model, `model_name = "kts"`**: Kumbhakar, Tsionas
+  and Sipilainen (2009), joint estimation of technology choice and technical
+  efficiency. Not a variant of Greene (2010), which this entry point already
+  fitted, but a different model. Greene has one frontier observed only for the
+  selected, with selection correlated with the *noise*. Here both technologies
+  are observed, each with its own frontier and its own two scales, and the
+  choice depends on **inefficiency itself** -- `u` lowers output through the
+  frontier and shifts the adoption decision through the choice equation.
+  Neither two-step order works, which is the paper's own argument for
+  single-step maximum likelihood: the choice equation cannot be a probit
+  because `u` is unobserved, and fitting the frontiers first ignores the
+  endogeneity of the choice. Because `u`'s distribution depends on the regime
+  while the regime's probability depends on `u`, the marginal density of `u` is
+  a mixture of the two half-normals and the observation's density is the same
+  mixture of two one-dimensional integrals. `n_nodes` controls the quadrature.
+
+* **`copsfm()` goes from two copula families to fifteen**: Frank, Clayton,
+  Gumbel and Joe join Gaussian and FGM, each of the last three with 90/180/270
+  rotations, since Clayton, Gumbel and Joe carry only positive dependence and
+  nothing rules out a negative association between noise and inefficiency.
+  Every density is verified against the second mixed partial of its own CDF, it
+  integrates to 1 over the unit square, and it is exactly 1 at the independence
+  parameter.
+
+  **`copsfm()` now warns when you choose a family that does not recover its own
+  dependence parameter**, and most of them do not. Fitting each family to 25
+  samples generated from itself at n = 400, the share of fits returning the
+  independence boundary was 0% for Frank and Clayton but 36% for Gumbel, 40%
+  for Joe, 56% for Clayton rotated 270 and 60% for Gumbel rotated 90. On data
+  from a Gumbel copula with Spearman 0.685 at n = 2000, *every* family
+  including the true one returns the boundary and their log-likelihoods differ
+  by less than 0.04: the likelihood is close to flat in the dependence
+  parameter. That is a property of the model, not of the implementation. The
+  warning quotes the measured rate; the rotations that were not measured say
+  so. Prefer `"frank"` or `"clayton"`.
+
 * **The `sigma_u -> 0` repair listed further down opened a second catastrophic
   cancellation, at `sigma_v -> 0`, which is also fixed here.** To be clear about
   the scope, since it affects whether anyone need re-check old results: this

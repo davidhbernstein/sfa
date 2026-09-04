@@ -101,6 +101,21 @@ distortions that led to that choice -- in two cases the asymptotic null was
 badly mis-sized for the models this package fits, because the published limits
 are stated for restricted specifications the package does not impose.
 
+**A second sample-selection model.** `selsfm(model_name = "kts")` fits Kumbhakar,
+Tsionas and Sipilainen (2009): two technologies, each with its own frontier and
+scales, where the technology choice depends on inefficiency itself rather than
+on the noise. Estimated by single-step maximum likelihood, because neither
+two-step order is available -- the choice equation cannot be a probit when the
+inefficiency entering it is unobserved.
+
+**More copula families.** `copsfm()` offers fifteen where it offered two: Frank,
+Clayton, Gumbel and Joe with rotations, alongside Gaussian and FGM. Each density
+is checked against the second mixed partial of its own CDF. Most of them do not
+recover their dependence parameter -- 36 to 60 percent of fits return the
+independence boundary on data generated from that same family -- and `copsfm()`
+warns, quoting the measured rate, rather than leaving a user to infer it from an
+implausible estimate. `?copsfm` gives the table.
+
 **Robustness diagnostics** for the divergence estimators `sfm()` already
 offered: `hscore()`/`hscore_select()` and `calibrate_c()` to choose the tuning
 parameter rather than supply it by hand, `density_weights()` for the weight each
