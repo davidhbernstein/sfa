@@ -2,10 +2,16 @@
 
 A feature release. In brief:
 
-* **`sfm(model_name = "NE")` had a second catastrophic cancellation, at
-  `sigma_v -> 0`, and it could return a silently wrong fit.** The
-  `sigma_u -> 0` cancellation fixed earlier in this release is repaired by
-  `.log_phi_tilt()`, which returns `log Phi(z) + z^2/2`. For an observation
+* **The `sigma_u -> 0` repair listed further down opened a second catastrophic
+  cancellation, at `sigma_v -> 0`, which is also fixed here.** To be clear about
+  the scope, since it affects whether anyone need re-check old results: this
+  defect was introduced by that repair and existed only in this release's own
+  development. **No published version of the package has it** -- 1.1.5 and
+  earlier have the `sigma_u` defect instead, and `.log_phi_tilt()` does not
+  exist in them. It is recorded because the mechanism is worth knowing and
+  because the fix changes NE's numerics.
+
+  That repair works through `.log_phi_tilt()`, which returns `log Phi(z) + z^2/2`. For an observation
   with `eps < 0` and `sigma_v` small, `z` goes large *positive*, `log Phi(z)`
   is ~0, and so the returned value is essentially `z^2/2` -- which the NE
   branch then subtracted `eps^2/(2 sigma_v^2)` from. At `sigma_v = 1e-8` both

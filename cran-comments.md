@@ -19,13 +19,18 @@ opposite signs as `sigma_u -> 0`, and at the scales the optimiser visits their
 sum is a catastrophic cancellation returning rounding noise -- which the
 optimiser then maximises by running `sigma_u` to its bound. Across a 12-cell
 design at 1,500 replications the rate was 0.74%, reaching 4.4% in the worst
-cell. 1.2.0 performs that cancellation analytically instead, which takes the
-rate of **that** failure to zero over 2,200 fits. It is a fix for the
-cancellation specifically and I do not want to overstate it: `"NE"` has a
-separate, still-open weakness at the opposite end of the parameter space, where
-a 2-4% tail of fits lands far from the truth and does not shrink with the
-sample. The two are different failures in different regions, and the second is
-not addressed here.
+cell. 1.2.0 performs that cancellation analytically instead.
+
+Repairing it at one boundary opened the mirror image at the other, in this
+release's own development rather than in anything published: the closed form
+returns `log Phi(z) + z^2/2`, and for `eps < 0` with `sigma_v -> 0` the caller
+then subtracted a term of the same magnitude, ~5e15, where consecutive doubles
+are about 1 apart. That is fixed here too, by doing the second subtraction
+analytically as well. Both were found by the same root-n convergence study, and
+`"NE"` now passes it on the mean basis at 1000 replications per sample size
+(slopes -1.02 to -1.04 against a target of -1, every R-squared at least 0.989,
+no failures in 5000 fits) where before it did not. `NEWS.md` has the
+derivations.
 
 Two further corrections in the same release: `"NGE"` aborted outright on about
 7% of small samples, and `nobs()` returned rows **supplied** rather than rows
