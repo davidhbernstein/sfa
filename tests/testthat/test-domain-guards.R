@@ -13,10 +13,20 @@ test_that("no likelihood branch returns .Machine$double.xmax as its penalty", {
   ## under R CMD check the package is installed and R/ is gone, so this skips.
   ## readLines() on a missing path ERRORS rather than returning empty, so the
   ## existence check has to come first.
-  cand <- c("../../R/sfm.R", "../../../R/sfm.R", "R/sfm.R")
-  src_file <- cand[file.exists(cand)]
-  skip_if(!length(src_file), "sfm.R source not reachable (installed package)")
-  src <- readLines(src_file[1], warn = FALSE)
+  ## Every file carrying a likelihood closure, not just sfm.R. Checking only
+  ## sfm.R is how ttsfm.R kept SEVEN of these until 2026-09-04: TTNE, TTHN and
+  ## TTNLS each returned xmax, and TTHN's fits were failing with optim()'s
+  ## ABNORMAL_TERMINATION_IN_LNSRCH -- the same non-finite-gradient mechanism
+  ## this test exists to prevent, in a file it never read.
+  want <- c("sfm.R", "ttsfm.R", "zsfm.R", "lcsfm.R", "psfm.R", "selsfm.R",
+    "ivsfm.R", "copsfm.R")
+  roots <- c("../../R", "../../../R", "R")
+  root <- roots[dir.exists(roots)]
+  skip_if(!length(root), "R/ source not reachable (installed package)")
+  files <- file.path(root[1], want)
+  files <- files[file.exists(files)]
+  skip_if(!length(files), "no likelihood sources found")
+  src <- unlist(lapply(files, readLines, warn = FALSE))
   ## `return(.Machine$double.xmax)` is the exact construct that overflows
   ## optim()'s finite-difference gradient.
   bad <- grep("return\\(\\.Machine\\$double\\.xmax\\)", src, value = TRUE)

@@ -1,3 +1,50 @@
+## A large FINITE penalty for an unusable parameter draw, NOT
+## .Machine$double.xmax. optim() differences the objective to get its gradient,
+## and differencing 1.8e308 overflows to a non-finite value -- which does not
+## steer the search away, it aborts the fit. sfm.R was converted to a finite
+## penalty for exactly this reason after NGE died on 3 of 45 fits at N = 150;
+## ttsfm.R was not, and its guard test only ever grepped sfm.R. See
+## notes/code_history/ttsfm.md.
+.TT_PENALTY <- 1e12
+
+## Phi2(x, y; rho) at n points, without a per-observation loop.
+##
+## mnormt::pmnorm() vectorises over the ROWS of x for one varcov, but not over
+## varcov, so the obvious mapply() costs one special-function call per
+## observation: 2n per TTHN likelihood evaluation, and with a NUMERICAL gradient
+## that is 2n(2p+1) per optimiser iteration. rho enters only through sigma_u and
+## sigma_w, so with homoskedastic u and w -- the default, and the whole
+## convergence design -- it is one number repeated n times and the entire vector
+## costs a single call. Heteroskedastic z is handled by grouping on the distinct
+## values of rho, which is never worse than the loop it replaces.
+##
+## Verified against the per-observation form: identical to the last bit.
+.tt_biv <- function(xvec, yvec, rhovec) {
+  n <- max(length(xvec), length(yvec), length(rhovec))
+  xvec <- rep_len(xvec, n)
+  yvec <- rep_len(yvec, n)
+  rhovec <- rep_len(rhovec, n)
+  ru <- unique(rhovec)
+  ## Grouping only pays when the groups are large. With rho genuinely varying
+  ## per observation each group is one row, and a 1-row matrix call costs MORE
+  ## than the plain vector call -- measured at 0.60x, i.e. slower than the loop
+  ## it replaced. So fall back to that loop when there is nothing to group.
+  if (length(ru) > 0.5 * n) {
+    return(mapply(function(xx, yy, rr) {
+      mnormt::pmnorm(c(xx, yy), mean = c(0, 0),
+        varcov = matrix(c(1, rr, rr, 1), 2, 2))
+    }, xvec, yvec, rhovec))
+  }
+  out <- numeric(n)
+  for (r in ru) {
+    i <- which(rhovec == r)
+    out[i] <- mnormt::pmnorm(cbind(xvec[i], yvec[i]), mean = c(0, 0),
+      varcov = matrix(c(1, r, r, 1), 2, 2)
+    )
+  }
+  out
+}
+
 ttsfm <- function(formula,
                   model_name = c("TTNE", "TTHN", "TTNLS"),
                   data,
@@ -161,10 +208,10 @@ ttsfm <- function(formula,
       ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize
       ## by default, see opts.R -- none of them flip the sign).
       if (any(is.na(ll))) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
       if (is.null(ll)) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
 
       ll[ll == -Inf] <- -sqrt(.Machine$double.xmax / length(ll))
@@ -402,12 +449,9 @@ ttsfm <- function(formula,
       x1 <- e / omega1
       x2 <- e / omega2
 
-      ## Bivariate standard normal CDF Phi2(x, 0; rho).
-      biv_cdf <- function(xvec, rhovec) {
-        mapply(function(xx, rr) {
-          mnormt::pmnorm(c(xx, 0), mean = c(0, 0), varcov = matrix(c(1, rr, rr, 1), 2, 2))
-        }, xvec, rhovec)
-      }
+      ## Bivariate standard normal CDF Phi2(x, 0; rho); see .tt_biv() above for
+      ## why this is not a per-observation loop.
+      biv_cdf <- function(xvec, rhovec) .tt_biv(xvec, 0, rhovec)
 
       ## Defensive tryCatch: a pathological parameter draw during optimization
       ## (e.g.
@@ -416,7 +460,7 @@ ttsfm <- function(formula,
         error = function(e) NULL
       ))
       if (is.null(D)) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
       D <- pmax(D, .Machine$double.xmin)
 
@@ -425,10 +469,10 @@ ttsfm <- function(formula,
       ## Same minimizer-sign convention as the TTNE branch above: return the
       ## NEGATIVE summed log-likelihood (bobyqa/psoptim/optim all minimize fn).
       if (any(is.na(ll))) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
       if (is.null(ll)) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
 
       ll[ll == -Inf] <- -sqrt(.Machine$double.xmax / length(ll))
@@ -574,21 +618,19 @@ ttsfm <- function(formula,
       ## General bivariate standard normal CDF Phi2(x, y; rho).
       .biv2 <- function(xvec, yvec, rhovec) {
         n <- max(length(xvec), length(yvec), length(rhovec))
-        xvec <- rep_len(xvec, n)
-        yvec <- rep_len(yvec, n)
-        rhovec <- rep_len(rhovec, n)
-        out <- suppressWarnings(tryCatch(
-          mapply(function(xx, yy, rr) {
-            mnormt::pmnorm(c(xx, yy), mean = c(0, 0), varcov = matrix(c(1, rr, rr, 1), 2, 2))
-          }, xvec, yvec, rhovec),
+        suppressWarnings(tryCatch(.tt_biv(xvec, yvec, rhovec),
           error = function(e) rep(NA_real_, n)
         ))
-        out
       }
 
-      Di <- .biv2(ep.hat / omega1, 0, rho1) - .biv2(ep.hat / omega2, 0, rho2)
-      F1i <- 2 * .biv2(ep.hat / omega1, 0, rho1)
-      F2i <- 2 * .biv2(ep.hat / omega2, 0, rho2)
+      ## Each of these was being computed twice -- Di differenced the same two
+      ## terms F1i and F2i are built from -- so the branch paid for six passes
+      ## over the data where two suffice.
+      .b1 <- .biv2(ep.hat / omega1, 0, rho1)
+      .b2 <- .biv2(ep.hat / omega2, 0, rho2)
+      Di <- .b1 - .b2
+      F1i <- 2 * .b1
+      F2i <- 2 * .b2
 
       s1 <- sqrt(sig.v^2 + sig.w^2)
       s2 <- sqrt(sig.v^2 + sig.u^2)
@@ -649,10 +691,10 @@ ttsfm <- function(formula,
       ss <- e^2
 
       if (any(is.na(ss))) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
       if (is.null(ss)) {
-        return(.Machine$double.xmax)
+        return(.TT_PENALTY)
       }
 
       ss[is.infinite(ss)] <- sqrt(.Machine$double.xmax / length(ss))
