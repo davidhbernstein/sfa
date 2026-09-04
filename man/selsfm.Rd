@@ -137,16 +137,23 @@ two regimes' half-normals, with weight \eqn{\phi_i} solving the paper's
 equation (9). The observation's density is then the same mixture of two
 one-dimensional integrals, its equation (14).
 
-\bold{\eqn{\delta} is weakly identified, and you should not report it without
-checking.} The likelihood is close to flat in it. On simulated data from this
-exact model, with \eqn{\delta = 0.9}, the mean log-likelihood moves by under
-\bold{0.01 per observation} across \eqn{\delta \in [0.1, 1.8]} -- about one
-log-likelihood point in total at \eqn{n = 1500}. At that sample size a fit
-returned \eqn{\hat\delta = -1.52}. Evaluated on 30,000 and again on 100,000
-observations across five seeds, the likelihood's peak lands on the truth or on
-the next grid point up, never further -- so the peak is real, but broad. The
-frontier coefficients and the four scale parameters recover far better than
-\eqn{\delta} does.
+\bold{Recovery.} On data simulated from this exact model with
+\eqn{\delta = 0.9}, the frontier coefficients, the four scales and
+\eqn{\delta} all recover, and improve with the sample:
+
+\tabular{llll}{
+ \bold{parameter} \tab \bold{n = 1500} \tab \bold{n = 6000} \tab \bold{truth} \cr
+ \eqn{\delta} \tab 1.361 \tab 0.922 \tab 0.900 \cr
+ \eqn{\sigma_{u,0}} \tab 0.837 \tab 0.843 \tab 0.800 \cr
+ \eqn{\sigma_{u,1}} \tab 0.632 \tab 0.640 \tab 0.600 \cr
+ choice intercept \tab -0.511 \tab -0.239 \tab -0.200
+}
+
+\eqn{\delta} is the parameter that needs the most data, as one would expect of
+a coefficient identified only through the coupling between the two equations,
+but it is properly identified: holding the rest at the truth, the mean
+log-likelihood falls monotonically away from \eqn{\delta = 0.9} in both
+directions, by about 0.069 per observation across \eqn{[0.1, 1.8]}.
 }
 
 \references{

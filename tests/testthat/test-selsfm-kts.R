@@ -73,12 +73,14 @@ test_that("the simulator and the likelihood describe the same model", {
   expect_equal(mean(d$I), mean(phi), tolerance = 0.02)
 })
 
-test_that("the likelihood peaks at the truth, but only to within a grid step", {
+test_that("the true delta maximises the likelihood, and sharply", {
   skip_on_cran()
-  ## Over the parameter the model exists for. Asserting the argmax lands
-  ## EXACTLY on the truth would be a test tuned to a seed: measured over five
-  ## seeds at n = 30,000 and again at n = 100,000, the argmax alternates
-  ## between 0.9 and the next grid point up. The peak is real but broad.
+  ## The check that would have caught the shape bug this file was first written
+  ## with. Under that bug the choice probability was evaluated at ONE
+  ## quadrature node, so the integral had no delta-dependence at all and the
+  ## surface was flat to 0.0007 per observation; the argmax then wandered
+  ## between grid points and looked like weak identification. It is not weak:
+  ## corrected, the spread is ~0.069 per observation, a hundredfold larger.
   d <- kts_sim(30000, 7)
   X <- cbind(1, d$x); Z <- cbind(1, d$z)
   nd <- sfa:::.kts_nodes(150L)
@@ -88,16 +90,28 @@ test_that("the likelihood peaks at the truth, but only to within a grid step", {
   }
   grid <- c(0.1, 0.5, 0.9, 1.3, 1.8)          # truth is the third
   v <- vapply(grid, mean_ll, numeric(1))
-  expect_lte(abs(which.max(v) - 3L), 1L)
-  ## The far-from-truth values are ruled out, which is what makes the peak real
-  ## rather than the surface being flat everywhere.
-  expect_gt(v[which.max(v)], v[1])
-  expect_gt(v[which.max(v)], v[5])
+  expect_identical(which.max(v), 3L)
+  ## Strictly decreasing away from the truth in both directions.
+  expect_true(all(diff(v[1:3]) > 0))
+  expect_true(all(diff(v[3:5]) < 0))
+  ## And the surface has real curvature, which is what makes delta estimable.
+  expect_gt(max(v) - min(v), 0.03)
+})
 
-  ## And the reason no fit at an ordinary sample size recovers delta: across
-  ## that whole range the mean log-likelihood moves by under 0.01 per
-  ## observation -- about one log-likelihood point in total at n = 1500.
-  expect_lt(max(v) - min(v), 0.01)
+test_that("the selection factor varies across the quadrature grid", {
+  ## A direct guard on the bug itself, independent of any fit. If the choice
+  ## probability is constant in u then delta cannot be identified through the
+  ## integral, and the model reduces to one without a dual role.
+  d <- kts_sim(200, 2)
+  X <- cbind(1, d$x); Z <- cbind(1, d$z)
+  nd <- sfa:::.kts_nodes(24L)
+  th <- kts_theta()
+  ## Two deltas that differ only in the coupling must give different densities.
+  th_a <- th; th_a[length(th_a)] <- 0
+  th_b <- th; th_b[length(th_b)] <- 2
+  la <- sfa:::.kts_loglik(th_a, d$y, X, X, Z, d$I, nd)
+  lb <- sfa:::.kts_loglik(th_b, d$y, X, X, Z, d$I, nd)
+  expect_gt(mean(abs(la - lb)), 1e-3)
 })
 
 test_that("selsfm(model_name = 'kts') returns a coherent fit", {

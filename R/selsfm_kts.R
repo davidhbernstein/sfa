@@ -74,10 +74,23 @@
   ## The frontier residual uses the regime's OWN coefficients and scale.
   mu <- ifelse(I == 1, as.numeric(X1 %*% b1), as.numeric(X0 %*% b0))
   sv <- ifelse(I == 1, sv1, sv0)
+  ## NOT ifelse(I == 1, FF$hi, FF$lo). ifelse() returns the shape of its TEST,
+  ## so a length-n test against these n x q matrices silently collapses to the
+  ## FIRST COLUMN -- the choice probability would then be evaluated at one
+  ## quadrature node instead of varying with u, which removes the coupling
+  ## between u and the technology decision that this model is entirely about.
+  ## The likelihood still integrated to 1 with that bug, because the selection
+  ## factor became a constant in u and the two regimes still summed to one, so
+  ## the properness check could not catch it. What caught it was comparing the
+  ## fitted parameters against the truth on FRESH data.
+  sel_rows <- function(FF) {
+    m <- FF$hi
+    if (any(I != 1)) m[I != 1, ] <- FF$lo[I != 1, , drop = FALSE]
+    m
+  }
   Jof <- function(uu, FF) {
     e <- (y - (mu - S * uu)) / sv
-    lg <- -0.5 * e^2 - log(sv) - .SFA_CONSTANTS$LOG_SQRT_2PI +
-      ifelse(I == 1, FF$hi, FF$lo)
+    lg <- -0.5 * e^2 - log(sv) - .SFA_CONSTANTS$LOG_SQRT_2PI + sel_rows(FF)
     as.numeric(exp(lg) %*% nd$w)
   }
   J0 <- Jof(u0, F0)
