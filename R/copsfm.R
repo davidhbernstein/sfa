@@ -49,28 +49,116 @@
       v <- 1 + th * (1 - 2 * w1) * (1 - 2 * w2)
       ifelse(v > 0, log(v), NA_real_)
     },
-    ## NOTE: Frank, Clayton and Gumbel are deliberately ABSENT. Each is a
-    ## one-line density in a reference, and a one-line density transcribed
-    ## without a source to check it against is exactly how a wrong likelihood
-    ## ships looking right. Adding one means: write it, verify it integrates to
-    ## 1 over the unit square, and verify it returns 1 at independence -- the
-    ## two checks the families below pass in test-copsfm.R.
+    ## Frank: the only other one-parameter family that spans BOTH signs of
+    ## dependence over the full range. theta and (1 - e^-theta) always share a
+    ## sign, so their product is positive and can be logged directly; the
+    ## independence limit theta -> 0 is taken explicitly because the ratio is
+    ## 0/0 there.
+    frank = {
+      th <- par
+      if (!is.finite(th)) return(rep(NA_real_, length(w1)))
+      if (abs(th) < 1e-8) return(rep(0, length(w1)))
+      em <- -expm1(-th)                      # 1 - exp(-th), signed like th
+      D <- em - (-expm1(-th * w1)) * (-expm1(-th * w2))
+      ok <- is.finite(D) & D != 0
+      out <- rep(NA_real_, length(w1))
+      out[ok] <- log(th * em) - th * (w1[ok] + w2[ok]) - 2 * log(abs(D[ok]))
+      out
+    },
+    ## Clayton: lower-tail dependence, theta > 0, independence as theta -> 0.
+    clayton = {
+      th <- par
+      if (!is.finite(th) || th <= 0) {
+        return(if (isTRUE(all.equal(th, 0))) rep(0, length(w1)) else rep(NA_real_, length(w1)))
+      }
+      z <- w1^(-th) + w2^(-th) - 1
+      ok <- is.finite(z) & z > 0
+      out <- rep(NA_real_, length(w1))
+      out[ok] <- log1p(th) - (1 + th) * (log(w1[ok]) + log(w2[ok])) -
+        (2 + 1 / th) * log(z[ok])
+      out
+    },
+    ## Gumbel: upper-tail dependence, theta >= 1, independence at theta = 1.
+    gumbel = {
+      th <- par
+      if (!is.finite(th) || th < 1) return(rep(NA_real_, length(w1)))
+      if (abs(th - 1) < 1e-12) return(rep(0, length(w1)))
+      x <- -log(w1); y <- -log(w2)
+      A <- (x^th + y^th)^(1 / th)
+      ok <- is.finite(A) & A > 0 & x > 0 & y > 0
+      out <- rep(NA_real_, length(w1))
+      out[ok] <- -A[ok] + (th - 1) * (log(x[ok]) + log(y[ok])) +
+        (1 - 2 * th) * log(A[ok]) + log(A[ok] + th - 1) -
+        log(w1[ok]) - log(w2[ok])
+      out
+    },
+    ## Joe: upper-tail dependence, heavier than Gumbel; theta >= 1.
+    joe = {
+      th <- par
+      if (!is.finite(th) || th < 1) return(rep(NA_real_, length(w1)))
+      if (abs(th - 1) < 1e-12) return(rep(0, length(w1)))
+      a <- (1 - w1)^th; b <- (1 - w2)^th
+      z <- a + b - a * b
+      ok <- is.finite(z) & z > 0
+      out <- rep(NA_real_, length(w1))
+      out[ok] <- (1 / th - 2) * log(z[ok]) +
+        (th - 1) * (log1p(-w1[ok]) + log1p(-w2[ok])) +
+        log(th - 1 + z[ok])
+      out
+    },
     NA_real_
   )
 }
 
+## Rotations. Clayton, Gumbel and Joe carry only POSITIVE dependence, which is
+## a real restriction here: nothing rules out a negative association between
+## noise and inefficiency, and a family that cannot express one will report the
+## independence boundary instead of a negative estimate. The 90 and 270 degree
+## rotations are exact reflections of the density, so they need no new algebra:
+##   c_90(u,v)  = c(1-u, v)      c_180(u,v) = c(1-u, 1-v)      c_270 = c(u, 1-v)
+.COP_ROT <- c(gaussian = NA, fgm = NA, frank = NA, independent = NA,
+  clayton = 0, gumbel = 0, joe = 0,
+  clayton90 = 90, clayton180 = 180, clayton270 = 270,
+  gumbel90 = 90, gumbel180 = 180, gumbel270 = 270,
+  joe90 = 90, joe180 = 180, joe270 = 270)
+
+.cop_base <- function(family) sub("(90|180|270)$", "", family)
+
+.cop_logc_rot <- function(w1, w2, par, family) {
+  rot <- .COP_ROT[[family]]
+  base <- .cop_base(family)
+  if (is.null(rot) || is.na(rot) || rot == 0) return(.cop_logc(w1, w2, par, base))
+  if (rot == 90) return(.cop_logc(1 - w1, w2, par, base))
+  if (rot == 180) return(.cop_logc(1 - w1, 1 - w2, par, base))
+  .cop_logc(w1, 1 - w2, par, base)
+}
+
 ## Independence value of each family's parameter, and its admissible range.
 .cop_spec <- function(family) {
-  switch(family,
+  ## Upper limits are where the density stops being computable in double
+  ## precision, not where the family stops being defined: Clayton at theta = 28
+  ## already has a Kendall tau of 0.93, and past that u^-theta overflows.
+  ## Independence sits ON the lower bound for Clayton/Gumbel/Joe, so par0 is set
+  ## just inside it -- starting the optimiser exactly at a bound is how a search
+  ## reports the boundary back as an estimate.
+  base <- .cop_base(family)
+  switch(base,
     gaussian = list(par0 = 0, lo = -0.95, hi = 0.95, name = "rho"),
     fgm      = list(par0 = 0, lo = -0.99, hi = 0.99, name = "theta"),
+    frank    = list(par0 = 1e-4, lo = -35, hi = 35, name = "theta"),
+    clayton  = list(par0 = 0.05, lo = 1e-6, hi = 28, name = "theta"),
+    gumbel   = list(par0 = 1.0001, lo = 1, hi = 17, name = "theta"),
+    joe      = list(par0 = 1.0001, lo = 1, hi = 30, name = "theta"),
     list(par0 = 0, lo = -0.95, hi = 0.95, name = "par")
   )
 }
 
 copsfm <- function(formula,
                    data,
-                   copula = c("gaussian", "fgm"),
+                   copula = c("gaussian", "fgm", "frank",
+                              "clayton", "clayton90", "clayton180", "clayton270",
+                              "gumbel", "gumbel90", "gumbel180", "gumbel270",
+                              "joe", "joe90", "joe180", "joe270"),
                    inefdec = TRUE,
                    n_nodes = 128,
                    maxit.bobyqa = 10000,
@@ -149,7 +237,7 @@ copsfm <- function(formula,
       ## Marginal CDFs, clamped off the endpoints: qnorm(0) is -Inf.
       w1 <- pmin(pmax(stats::pnorm(V / sv), 1e-12), 1 - 1e-12)
       w2 <- pmin(pmax(2 * stats::pnorm(U / su) - 1, 1e-12), 1 - 1e-12)
-      lc <- .cop_logc(as.numeric(w1), as.numeric(w2), cpar, copula)
+      lc <- .cop_logc_rot(as.numeric(w1), as.numeric(w2), cpar, copula)
       if (any(!is.finite(lc))) return(rep(NA_real_, length(eps)))
       lg <- lg + matrix(lc, nrow = nrow(lg))
     }
@@ -240,7 +328,7 @@ copsfm <- function(formula,
   lg <- stats::dnorm(V, 0, sv, log = TRUE) + log(2) + stats::dnorm(Um, 0, su, log = TRUE)
   w1 <- pmin(pmax(stats::pnorm(V / sv), 1e-12), 1 - 1e-12)
   w2 <- pmin(pmax(2 * stats::pnorm(Um / su) - 1, 1e-12), 1 - 1e-12)
-  lg <- lg + matrix(.cop_logc(as.numeric(w1), as.numeric(w2), th[i_c], copula), nrow = n)
+  lg <- lg + matrix(.cop_logc_rot(as.numeric(w1), as.numeric(w2), th[i_c], copula), nrow = n)
   lg <- sweep(lg, 2, log(wt) + log(jac), "+")
   wts <- exp(lg - .log_row_sum_exp(lg))
   jlms <- as.numeric(rowSums(wts * Um))

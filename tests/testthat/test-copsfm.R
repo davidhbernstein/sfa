@@ -88,5 +88,106 @@ test_that("copsfm rejects malformed calls", {
   expect_error(copsfm(y ~ x1 + x2, data = as.matrix(d)), "must be a data.frame")
   expect_error(copsfm(y ~ x1 + x2, data = d, inefdec = NA), "must be TRUE or FALSE")
   expect_error(copsfm(y ~ x1 + x2, data = d, n_nodes = 4), ">= 16")
-  expect_error(copsfm(y ~ x1 + x2, data = d, copula = "clayton"))
+  ## "clayton" used to belong here, as a family deliberately not implemented.
+  ## It is implemented now, so the guard moves to one that still is not: the
+  ## point is that an unrecognised family is refused, not that this particular
+  ## one is missing.
+  expect_error(copsfm(y ~ x1 + x2, data = d, copula = "bb1"))
+  expect_error(copsfm(y ~ x1 + x2, data = d, copula = "tawn"))
+})
+
+## ---------------------------------------------------------------------------
+## Frank, Clayton, Gumbel, Joe and the rotations (added 2026-09-04)
+## ---------------------------------------------------------------------------
+##
+## The families the header of .cop_logc() used to list as deliberately absent.
+## They are admitted now because each is checked against something OTHER than
+## itself: its own CDF. A density that integrates to 1 can still be the wrong
+## density; a density that equals the second mixed partial of the right CDF at
+## forty points cannot be.
+
+test_that("each new density IS the second mixed partial of its own CDF", {
+  CDF <- list(
+    frank = function(u, v, th)
+      -1 / th * log1p(expm1(-th * u) * expm1(-th * v) / expm1(-th)),
+    clayton = function(u, v, th) (u^(-th) + v^(-th) - 1)^(-1 / th),
+    gumbel = function(u, v, th) exp(-(((-log(u))^th + (-log(v))^th)^(1 / th))),
+    joe = function(u, v, th)
+      1 - ((1 - u)^th + (1 - v)^th - (1 - u)^th * (1 - v)^th)^(1 / th)
+  )
+  num <- function(f, u, v, th, h = 1e-5) {
+    (f(u + h, v + h, th) - f(u + h, v - h, th) -
+       f(u - h, v + h, th) + f(u - h, v - h, th)) / (4 * h^2)
+  }
+  pars <- list(frank = c(-8, -2, 2, 8), clayton = c(0.3, 1, 3, 8),
+    gumbel = c(1.3, 2, 4), joe = c(1.3, 2, 5))
+  g <- expand.grid(u = seq(0.1, 0.9, by = 0.2), v = seq(0.1, 0.9, by = 0.2))
+  for (fam in names(CDF)) {
+    for (th in pars[[fam]]) {
+      a <- exp(.cop_logc(g$u, g$v, th, fam))
+      b <- mapply(function(u, v) num(CDF[[fam]], u, v, th), g$u, g$v)
+      expect_equal(a, b, tolerance = 1e-4, info = paste(fam, th))
+    }
+  }
+})
+
+test_that("the new densities integrate to 1 and are 1 at independence", {
+  gl <- .gauss_legendre_01(120L)
+  G <- expand.grid(a = gl$nodes, b = gl$nodes)
+  W <- as.vector(outer(gl$weights, gl$weights))
+  pars <- list(frank = c(-8, -2, 2, 8), clayton = c(0.3, 1), gumbel = c(1.3, 2),
+    joe = c(1.3, 2))
+  for (fam in names(pars)) {
+    for (p in pars[[fam]]) {
+      I <- sum(W * exp(.cop_logc(G$a, G$b, p, fam)))
+      ## Looser than the Gaussian/FGM tolerance ON PURPOSE: these densities
+      ## concentrate in a corner, and what is left is quadrature error rather
+      ## than density error -- which is why the mixed-partial test above, and
+      ## not this one, is the check that would catch a wrong formula.
+      expect_equal(I, 1, tolerance = 5e-3, info = paste(fam, p))
+    }
+  }
+  ind <- c(frank = 0, clayton = 0, gumbel = 1, joe = 1)
+  for (fam in names(ind)) {
+    expect_equal(max(abs(.cop_logc(G$a, G$b, ind[[fam]], fam))), 0, info = fam)
+  }
+})
+
+test_that("rotations reverse the sign of dependence, which is why they exist", {
+  ## Clayton, Gumbel and Joe carry only POSITIVE dependence. Nothing rules out
+  ## a negative association between noise and inefficiency, so without the
+  ## rotations those families could only ever report the independence boundary
+  ## against negatively dependent data.
+  set.seed(1)
+  n <- 1e5
+  u <- runif(n); v <- runif(n)
+  rho_s <- function(fam, th) {
+    w <- exp(.cop_logc_rot(u, v, th, fam))
+    w[!is.finite(w)] <- 0
+    12 * sum(w * (u - 0.5) * (v - 0.5)) / sum(w)
+  }
+  for (base in c("clayton", "gumbel", "joe")) {
+    th <- if (base == "clayton") 3 else 2.5
+    pos <- rho_s(base, th)
+    expect_gt(pos, 0.3)
+    expect_lt(rho_s(paste0(base, "90"), th), -0.3)
+    expect_lt(rho_s(paste0(base, "270"), th), -0.3)
+    ## The survival rotation preserves the sign rather than flipping it.
+    expect_gt(rho_s(paste0(base, "180"), th), 0.3)
+  }
+})
+
+test_that("every advertised family actually fits", {
+  skip_on_cran()
+  d <- cop_gen(seed = 4, n = 250, rho = 0.3)
+  fams <- eval(formals(copsfm)$copula)
+  for (fam in fams) {
+    f <- suppressWarnings(copsfm(y ~ x1 + x2, data = d, copula = fam,
+      n_nodes = 32))
+    expect_s3_class(f, "sfareg")
+    expect_true(is.finite(as.numeric(logLik(f))), info = fam)
+    sp <- sfa:::.cop_spec(fam)
+    expect_gte(f$copula_par, sp$lo)
+    expect_lte(f$copula_par, sp$hi)
+  }
 })

@@ -7,7 +7,11 @@ inefficiency \eqn{u} are \emph{dependent}, with the dependence carried by a
 copula. Every other model in the package assumes independence.
 }
 \usage{
-copsfm(formula, data, copula = c("gaussian", "fgm"), inefdec = TRUE,
+copsfm(formula, data,
+       copula = c("gaussian", "fgm", "frank",
+                  "clayton", "clayton90", "clayton180", "clayton270",
+                  "gumbel", "gumbel90", "gumbel180", "gumbel270",
+                  "joe", "joe90", "joe180", "joe270"), inefdec = TRUE,
        n_nodes = 128, maxit.bobyqa = 10000, maxit.psoptim = 1000,
        maxit.optim = 1000, start_val = FALSE, PSopt = FALSE,
        optHessian = TRUE, Method = "L-BFGS-B", verbose = FALSE,
@@ -18,9 +22,25 @@ copsfm(formula, data, copula = c("gaussian", "fgm"), inefdec = TRUE,
   \code{|} segment is an error: variance determinants are not yet supported
   alongside a copula.}
 \item{data}{A \code{data.frame}.}
-\item{copula}{\code{"gaussian"} (parameter \code{rho}) or \code{"fgm"}
-  (Farlie--Gumbel--Morgenstern, parameter \code{theta}). Both reduce to
-  independence at 0.}
+\item{copula}{The dependence family. See \sQuote{Choosing a family} below.
+
+  \tabular{llll}{
+   \bold{family} \tab \bold{parameter} \tab \bold{independence at} \tab \bold{dependence it can express} \cr
+   \code{"gaussian"} \tab \eqn{\rho \in (-1,1)} \tab 0 \tab both signs, no tail dependence \cr
+   \code{"fgm"} \tab \eqn{\theta \in [-1,1]} \tab 0 \tab both signs but \bold{weak}: Spearman \eqn{\rho = \theta/3} \cr
+   \code{"frank"} \tab \eqn{\theta \in \mathbb{R}} \tab 0 \tab both signs, full range, no tail dependence \cr
+   \code{"clayton"} \tab \eqn{\theta > 0} \tab \eqn{\theta \to 0} \tab positive, \bold{lower}-tail dependence \cr
+   \code{"gumbel"} \tab \eqn{\theta \ge 1} \tab 1 \tab positive, \bold{upper}-tail dependence \cr
+   \code{"joe"} \tab \eqn{\theta \ge 1} \tab 1 \tab positive, heavier upper tail than Gumbel
+  }
+
+  Clayton, Gumbel and Joe carry \emph{only positive} dependence, which is a
+  real restriction: nothing rules out a negative association between noise and
+  inefficiency, and against negatively dependent data those families can only
+  report the independence boundary. The \code{90} and \code{270} suffixes are
+  the rotations that reverse the sign, and \code{180} is the survival copula,
+  which preserves it. So \code{"clayton270"} gives lower-tail dependence with a
+  negative association.}
 \item{inefdec}{\code{TRUE} for a production frontier, \code{FALSE} for cost.}
 \item{n_nodes}{Gauss--Legendre nodes for the integral over \eqn{u}.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim, start_val, PSopt, optHessian,
@@ -45,6 +65,24 @@ looks adequate and is not: 1e-5 per observation is 0.02 in a log-likelihood over
 
 \bold{The dependence parameter needs a large sample. This is the thing to know
 before using it.} The frontier slopes behave normally, but \eqn{\rho} does not.
+\bold{Choosing a family, and a warning about doing so.} The families differ in
+two things that matter: whether they admit negative dependence, and where they
+concentrate it. Gaussian and Frank spread association evenly and have no tail
+dependence; Clayton concentrates it in the lower tail and Gumbel and Joe in the
+upper; FGM can only express weak association at all.
+
+Against that, weigh what the next paragraphs establish: the dependence
+parameter is estimated very imprecisely. On a Gaussian design at
+\eqn{n = 600} its sampling standard deviation is 0.385 against a truth of 0.5.
+Offering fifteen families does not make that better, and it makes one thing
+worse -- with fifteen candidates, some family will attain the highest
+likelihood on independent data by chance. On a sample generated with
+\emph{independent} \eqn{v} and \eqn{u}, the fitted log-likelihoods across
+families span only about 0.8, and the best of them reports \eqn{\theta = 1.83}
+for Gumbel. Treat a family comparison as descriptive, not as evidence of a
+dependence structure, and prefer a family chosen for a reason to one chosen by
+its likelihood.
+
 On a Gaussian-copula design with true \eqn{\rho = 0.6}, \eqn{\sigma_U = 1},
 \eqn{\sigma_V = 0.4}:
 

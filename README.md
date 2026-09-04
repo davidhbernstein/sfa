@@ -84,7 +84,7 @@ fit_p <- psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
 | `ttsfm()` | Two-tier frontiers | 3 |
 | `selsfm()` | Sample-selection frontiers | 1 |
 | `ivsfm()` | Frontiers with endogenous regressors | 3 |
-| `copsfm()` | Dependence between the error components | 2 copulas |
+| `copsfm()` | Dependence between the error components | 6 copula families, 15 with rotations |
 | `npsfm()` | Nonparametric frontiers | 5 |
 
 All but `npsfm()` return an object of class `"sfareg"`. `npsfm()` returns
@@ -232,13 +232,55 @@ be endogenous.
 
 ### `copsfm()` — dependence between `v` and `u`
 
-Drops the independence assumption between the noise and inefficiency components,
-coupling them with a `"gaussian"` or `"fgm"` copula and integrating the
-resulting density by Gauss–Legendre quadrature (`n_nodes`).
+Drops the independence assumption between the noise and inefficiency
+components, coupling them with a copula and integrating the resulting density by
+Gauss–Legendre quadrature (`n_nodes`).
 
 ```r
-copsfm(y ~ x1 + x2, data = d, copula = "gaussian")
+copsfm(y ~ x1 + x2, data = d, copula = "frank")
 ```
+
+| `copula` | parameter | independence at | dependence it can express |
+|---|---|---|---|
+| `"gaussian"` | `rho` in (−1, 1) | 0 | both signs, no tail dependence |
+| `"fgm"` | `theta` in [−1, 1] | 0 | both signs, but weak — Spearman `rho` = `theta`/3 |
+| `"frank"` | `theta` real | 0 | both signs, full range, no tail dependence |
+| `"clayton"` | `theta` > 0 | 0 | positive, **lower**-tail dependence |
+| `"gumbel"` | `theta` >= 1 | 1 | positive, **upper**-tail dependence |
+| `"joe"` | `theta` >= 1 | 1 | positive, heavier upper tail than Gumbel |
+
+Clayton, Gumbel and Joe carry *only positive* dependence. Nothing rules out a
+negative association between noise and inefficiency, so each also has `90` and
+`270` rotations that reverse the sign (`"clayton270"`), and `180`, the survival
+copula, which preserves it.
+
+**Which of these actually work, measured rather than assumed.** Every density
+here is verified three ways — it equals the second mixed partial of its own CDF,
+it integrates to 1 over the unit square, and it is exactly 1 at the independence
+parameter. That establishes the *densities* are right. It does not establish
+that the dependence parameter is *recoverable*, and for most of them it is not.
+Fitting each family to 25 samples generated from itself at n = 400:
+
+| family | recovers its own `theta`? | collapsed to the independence bound |
+|---|---|---|
+| `frank` | yes (5.43 against a truth of 5) | **0%** |
+| `clayton` | yes (2.24 against 2) | **0%** |
+| `gaussian`, `fgm` | yes | 0% |
+| `gumbel` | no | **36%** |
+| `joe` | no | **40%** |
+| `clayton270` | no | **56%** |
+| `gumbel90` | no | **60%** |
+
+On data generated from a Gumbel copula with Spearman `rho` = 0.685 at n = 2000,
+*every* family — including the true one — returns the independence boundary, and
+their log-likelihoods differ by less than 0.04. The likelihood is flat in the
+dependence parameter. This is a property of the model, not of the code.
+
+**So: prefer `"frank"` or `"clayton"`, and treat the others as exploratory.**
+More generally, the dependence parameter is estimated imprecisely even when it
+is recoverable — on a Gaussian design at n = 600 its sampling standard deviation
+is 0.385 against a truth of 0.5 — so a comparison across families is descriptive
+rather than evidence for a dependence structure.
 
 ### `npsfm()` — nonparametric
 
