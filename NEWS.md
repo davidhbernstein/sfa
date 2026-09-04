@@ -2,6 +2,35 @@
 
 A feature release. In brief:
 
+* **`ttsfm()` returned an infinite penalty on unusable parameter draws, in
+  seven places.** `TTNE`, `TTHN` and `TTNLS` each returned
+  `.Machine$double.xmax` when a draw produced non-finite contributions. That is
+  the construct `sfm()` was converted away from earlier in this release after
+  `"NGE"` died on 3 of 45 fits: `optim()` differences the objective to get its
+  gradient, and differencing 1.8e308 overflows to a non-finite value, which does
+  not steer the search away -- it aborts the fit. `TTHN` was failing at
+  \eqn{n = 400} with `ABNORMAL_TERMINATION_IN_LNSRCH`, which is what L-BFGS-B
+  does when handed gradient information it cannot use. All seven now return a
+  finite penalty.
+
+  The regression test that exists to catch exactly this construct only ever read
+  `sfm.R`, which is how `ttsfm.R` kept all seven for as long as the test
+  existed. It now reads every file carrying a likelihood closure.
+
+* **`ttsfm()` no longer calls the bivariate normal CDF once per observation.**
+  The `TTHN` density was evaluated with `mapply()` over observations, so one
+  `mnormt::pmnorm()` call per observation, twice per likelihood evaluation --
+  and with a numerically differenced gradient, \eqn{2n(2p+1)} calls per
+  optimiser iteration. The correlation argument varies only through
+  \eqn{\sigma_u} and \eqn{\sigma_w}, so under homoskedasticity it is one value
+  repeated and the whole vector is a single call. Grouped accordingly, with a
+  fallback to the per-observation form when the correlation genuinely varies
+  per observation -- there, grouping is *slower*, measured at 0.60x. Results are
+  bit-identical to the previous form. The gain is about 1.4x, not more:
+  `pmnorm()` still loops internally, so the call count falls but the work does
+  not. `TTNLS` separately computed each of its two bivariate terms twice; those
+  are now computed once.
+
 * **The `sigma_u -> 0` repair listed further down opened a second catastrophic
   cancellation, at `sigma_v -> 0`, which is also fixed here.** To be clear about
   the scope, since it affects whether anyone need re-check old results: this
