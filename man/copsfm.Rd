@@ -65,6 +65,33 @@ looks adequate and is not: 1e-5 per observation is 0.02 in a log-likelihood over
 
 \bold{The dependence parameter needs a large sample. This is the thing to know
 before using it.} The frontier slopes behave normally, but \eqn{\rho} does not.
+\bold{Most of these families do not recover their own dependence parameter, and
+\code{copsfm} warns when you pick one.} A correct density does not imply an
+estimable parameter. Measured on 25 samples per family, generated from that
+family at \eqn{n = 400} and refitted with it:
+
+\tabular{lll}{
+ \bold{family} \tab \bold{mean estimate (truth)} \tab \bold{fits on the independence bound} \cr
+ \code{"frank"} \tab 5.43 (5) \tab \bold{0\%} \cr
+ \code{"clayton"} \tab 2.24 (2) \tab \bold{0\%} \cr
+ \code{"gumbel"} \tab 1.29 (2) \tab 36\% \cr
+ \code{"joe"} \tab 1.52 (2) \tab 40\% \cr
+ \code{"clayton270"} \tab 0.23 (2) \tab 56\% \cr
+ \code{"gumbel90"} \tab 1.26 (2) \tab 60\%
+}
+
+On data generated from a Gumbel copula with Spearman \eqn{\rho = 0.685} at
+\eqn{n = 2000}, \emph{every} family -- including the true one -- returns the
+independence boundary, and their log-likelihoods differ by less than 0.04. The
+likelihood is close to flat in the dependence parameter. This is a property of
+the model rather than of the implementation: each density is checked against the
+second mixed partial of its own CDF, and each sampler against the family\'s
+theoretical Spearman correlation. The remaining rotations were not measured, and
+warn that they were not, rather than implying either outcome.
+
+\bold{Prefer \code{"frank"} or \code{"clayton"}}, and treat an estimate from any
+other family as exploratory.
+
 \bold{Choosing a family, and a warning about doing so.} The families differ in
 two things that matter: whether they admit negative dependence, and where they
 concentrate it. Gaussian and Frank spread association evenly and have no tail

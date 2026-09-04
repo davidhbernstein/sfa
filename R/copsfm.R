@@ -153,6 +153,44 @@
   )
 }
 
+## Which families have been shown to recover their own dependence parameter.
+##
+## Measured 2026-09-04: 25 samples per family generated FROM that family at
+## n = 400, refitted with it, counting how often the estimate came back on the
+## independence boundary. A correct density does not imply a recoverable
+## parameter, and for most of these families it is not recoverable: on Gumbel
+## data with Spearman 0.685 at n = 2000, every family INCLUDING the true one
+## returns the boundary and their log-likelihoods differ by less than 0.04.
+## The likelihood is flat in the dependence parameter. That is the model, not
+## the code -- each density is verified against the second mixed partial of its
+## own CDF in test-copsfm.R.
+.COP_COLLAPSE <- c(gumbel = 36, joe = 40, clayton270 = 56, gumbel90 = 60)
+.COP_VERIFIED <- c("gaussian", "fgm", "frank", "clayton")
+
+.cop_warn_family <- function(family) {
+  if (family %in% .COP_VERIFIED) return(invisible(NULL))
+  ## `[` not `[[`: a name absent from the vector must give NA, not an error.
+  rate <- unname(.COP_COLLAPSE[family])
+  if (!is.na(rate)) {
+    warning("copsfm(copula = \"", family, "\"): this family did not recover its ",
+      "own dependence parameter in testing -- on 25 samples generated from it ",
+      "at n = 400, ", rate, "% of fits returned the independence boundary. The ",
+      "density is correct; the parameter is weakly identified, and the ",
+      "likelihood is close to flat in it. Prefer copula = \"frank\" or ",
+      "\"clayton\", which recovered with no boundary collapses, and treat any ",
+      "estimate from this family as exploratory. See ?copsfm.",
+      call. = FALSE)
+  } else {
+    warning("copsfm(copula = \"", family, "\"): this family's density is ",
+      "verified but its RECOVERY has not been measured. The families that were ",
+      "measured collapsed to the independence boundary on 36-60% of samples ",
+      "generated from themselves, so do not assume this one behaves better. ",
+      "Prefer copula = \"frank\" or \"clayton\". See ?copsfm.",
+      call. = FALSE)
+  }
+  invisible(NULL)
+}
+
 copsfm <- function(formula,
                    data,
                    copula = c("gaussian", "fgm", "frank",
@@ -172,6 +210,7 @@ copsfm <- function(formula,
                    rand.psoptim = NULL) {
   call <- match.call()
   copula <- match.arg(copula)
+  .cop_warn_family(copula)
   Start.Time <- Sys.time()
   cz <- .SFA_CONSTANTS
 

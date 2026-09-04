@@ -277,6 +277,9 @@ their log-likelihoods differ by less than 0.04. The likelihood is flat in the
 dependence parameter. This is a property of the model, not of the code.
 
 **So: prefer `"frank"` or `"clayton"`, and treat the others as exploratory.**
+`copsfm()` warns when you select a family that did not recover, quoting its
+measured collapse rate; the rotations that were never measured warn that they
+were not, rather than implying either outcome.
 More generally, the dependence parameter is estimated imprecisely even when it
 is recoverable — on a Gaussian design at n = 600 its sampling standard deviation
 is 0.385 against a truth of 0.5 — so a comparison across families is descriptive

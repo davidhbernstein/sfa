@@ -191,3 +191,33 @@ test_that("every advertised family actually fits", {
     expect_lte(f$copula_par, sp$hi)
   }
 })
+
+test_that("families that do not recover their parameter warn, and the others do not", {
+  skip_on_cran()
+  d <- cop_gen(seed = 5, n = 150, rho = 0.3)
+  fit <- function(fam) copsfm(y ~ x1 + x2, data = d, copula = fam, n_nodes = 32)
+
+  ## Verified to recover: silent. Asserted with expect_silent-style intent but
+  ## via the message text, because copsfm() can emit unrelated optimiser
+  ## warnings at small n_nodes and those are not what this test is about.
+  for (fam in c("gaussian", "fgm", "frank")) {
+    w <- tryCatch({ suppressMessages(fit(fam)); NA_character_ },
+      warning = function(x) conditionMessage(x))
+    expect_false(isTRUE(grepl("did not recover|has not been measured", w)), info = fam)
+  }
+
+  ## Measured to collapse: the warning names the measured rate, so the user is
+  ## told how bad it is rather than merely that something is wrong.
+  expect_warning(fit("gumbel"), "did not recover.*36%")
+  expect_warning(fit("joe"), "did not recover.*40%")
+  expect_warning(fit("clayton270"), "did not recover.*56%")
+  expect_warning(fit("gumbel90"), "did not recover.*60%")
+
+  ## Not measured: says so, rather than implying either result.
+  expect_warning(fit("joe180"), "has not been measured")
+  expect_warning(fit("clayton90"), "has not been measured")
+
+  ## A missing name must give NA, not an error -- `[[` on a named vector throws.
+  expect_true(is.na(unname(sfa:::.COP_COLLAPSE["gumbel270"])))
+  expect_silent(sfa:::.cop_warn_family("frank"))
+})
