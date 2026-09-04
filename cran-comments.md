@@ -5,229 +5,121 @@ This is an update to `sfa`, from the current CRAN version 1.1.5 to 1.2.0.
 There are **no reverse dependencies on CRAN**, so no other package is affected
 by anything below.
 
-### On the short interval since 1.1.5
+### Why now, so soon after 1.1.5
 
 1.1.5 was published on 2026-08-23. `R CMD check --as-cran` no longer raises the
 "Days since last update" note, but the interval is still short by the spirit of
-the policy and I want to be explicit about why. I am submitting this soon
-because **1.1.5 silently returns wrong results for one of its models**, and I
-would rather that version were on CRAN for weeks than for months.
+the policy and I want to be explicit about the reason.
 
-`sfm(model_name = "NE")` and `"NGE"` in 1.1.5 can return a **positive**
-log-likelihood with `sigma_u` driven to zero, as an ordinary fitted object with
-no error and no warning. `log Phi(z)` and an exponential tilt both diverge like
-`z^2/2` with opposite signs as `sigma_u -> 0`, and at the scales the optimiser
-visits their sum is catastrophic cancellation returning rounding noise — which
-the optimiser then maximises by running `sigma_u` to its bound. Two examples
-from a scan of 150 samples: `sigma_v = 587.4`, `sigma_u = 0`,
-`logLik = +468992`; and `sigma_v = 3.4e15`, `logLik = +7.9e30`. Across a
-12-cell design at 1,500 replications the rate was 0.74%, reaching 4.4% at
-`lambda = 0.5`, `n = 100`.
+**1.1.5 can silently return wrong results for two of its models.**
+`sfm(model_name = "NE")` and `"NGE"` can return a **positive** log-likelihood
+with `sigma_u` driven to zero, as an ordinary fitted object with no error and
+no warning. `log Phi(z)` and an exponential tilt both diverge like `z^2/2` with
+opposite signs as `sigma_u -> 0`, and at the scales the optimiser visits their
+sum is a catastrophic cancellation returning rounding noise -- which the
+optimiser then maximises by running `sigma_u` to its bound. Across a 12-cell
+design at 1,500 replications the rate was 0.74%, reaching 4.4% in the worst
+cell. 1.2.0 performs that cancellation analytically instead, which takes the
+rate of **that** failure to zero over 2,200 fits. It is a fix for the
+cancellation specifically and I do not want to overstate it: `"NE"` has a
+separate, still-open weakness at the opposite end of the parameter space, where
+a 2-4% tail of fits lands far from the truth and does not shrink with the
+sample. The two are different failures in different regions, and the second is
+not addressed here.
 
-1.2.0 does that cancellation analytically instead. The new expression agrees
-with the old one to 8.5e-13 over 75,000 evaluations wherever the old one was
-trustworthy, integrates to 1, and gave no failures in 2,200 fits.
+Two further corrections in the same release: `"NGE"` aborted outright on about
+7% of small samples, and `nobs()` returned rows **supplied** rather than rows
+**used**, which made `BIC()` wrong for any fit on data containing a missing
+value.
 
-The same release also fixes `"NGE"` aborting outright on about 7% of small
-samples, and `nobs()` returning the number of rows supplied rather than the
-number used, which made `BIC()` wrong for any fit on data with a missing value.
+I would rather 1.1.5 were the current version for weeks than for months. If you
+would prefer that I hold the new features and submit only these corrections, or
+that I wait, I am happy to do either -- please just say which.
 
-If you would prefer that I hold the new features and submit only the
-corrections, or that I wait, I am happy to do either — please just say which.
+### No intentional API-breaking changes in this version
 
-### No breaking changes in this version
+Nothing in this release changes the meaning of an existing argument or
+`model_name`. Every addition is a new argument defaulting to the previous
+behaviour, or a new `model_name` value.
 
-Unlike 1.1.5, nothing in this release changes the meaning of an existing
-argument or `model_name`. Every addition below is a new argument defaulting to
-the previous behaviour, or a new `model_name` value.
+Existing calls can nonetheless return **different numbers**, and I would rather
+flag that than have it noticed. Two changes to the simulation draws used by the
+panel estimators move results for existing users:
+
+* `psfm()` gave every firm the **same** simulation draws -- one Halton block
+  was built once and recycled across all firms, so the negative correlation
+  across observations that is half of Halton's advantage was absent and each
+  firm's simulation error was the same realisation. Each firm now gets its own
+  block. Any simulated-ML panel fit changes slightly.
+* `rand.gtre` randomised the draws by a method that removed their point,
+  permuting one Halton column and so randomising the pairing. It now applies a
+  uniform shift modulo 1 (Tuffin 1996), which moves the lattice without
+  disturbing its structure. Results change for anyone who passed `rand.gtre`.
+
+`NEWS.md` gives the measurements behind both.
 
 Two run-time warnings introduced in 1.1.5 -- for `psfm(model_name = "TFE")` and
 `psfm(model_name = "GTRE")`, whose estimators changed in that version -- are
 **retained** rather than removed, even though the one release cycle they were
-promised for has now elapsed. 1.1.5 was the first release since 1.0.4 and is
-only a few days old, so most users upgrading to 1.2.0 will be coming from
-1.0.4 and meeting those changes for the first time.
+promised for has elapsed. 1.1.5 was the first release since 1.0.4 and is only
+two weeks old, so most users upgrading to 1.2.0 will be coming from 1.0.4 and
+meeting those changes for the first time.
 
 ### What is new
 
-Four new model-fitting entry points, each for a model the package could not
-previously express:
+Summarised here; `NEWS.md` has the detail.
 
-* `lcsfm()` -- the latent class stochastic frontier (Greene 2005; Orea and
-  Kumbhakar 2004), with `n_class` coexisting technologies and posterior class
-  probabilities.
-* `selsfm()` -- Greene's (2010) frontier with a correction for sample
-  selection, where the units in the sample are there for reasons correlated
-  with the frontier's own noise. Two-step: probit, then maximum simulated
-  likelihood. Its standard errors are conditional on the first stage and do not
-  carry the Murphy-Topel correction, which `?selsfm` states plainly.
-* `ivsfm()` -- endogenous regressors (Amsler, Prokhorov and Schmidt 2016,
-  2017), with three estimators: full maximum likelihood, a two-step control
-  function, and corrected 2SLS. To our knowledge no other CRAN package corrects
-  for endogeneity in a stochastic frontier.
-* `copsfm()` -- dependence between the noise and the inefficiency through a
-  copula (Smith 2008), relaxing the independence assumption every other model
-  in the package makes. `?copsfm` documents, with the numbers, that the
-  dependence parameter is consistent but needs a large sample; the frontier
-  slopes are unaffected.
+**Four new model-fitting entry points**, each for a model the package could not
+previously express: `lcsfm()` (latent class, Greene 2005; Orea and Kumbhakar
+2004), `selsfm()` (sample selection, Greene 2010), `ivsfm()` (endogenous
+regressors, Amsler, Prokhorov and Schmidt 2016) and `copsfm()` (copula
+dependence between the two error components).
 
-A fifth specification, `lcsfm(model_name = "LCM_CN")`, the contaminated normal
-frontier: every parameter is common across components except the noise scale,
-so the noise has heavier tails without the frontier or the inefficiency varying.
-Its composed density is a closed form -- a mixture of ordinary normal/half
-normal densities sharing one `sigma_u` -- so it costs no extra integration.
+**Five new panel estimators** in `psfm()`, all classical rather than maximum
+likelihood, and none assuming a distribution for the inefficiency term:
+`"CSS"` (Cornwell, Schmidt and Sickles 1990), `"LS"` (Lee and Schmidt 1993),
+`"KSS"` (Kneip, Sickles and Song 2012), and `"SSRE"` / `"SSCRE"`, the
+random-effects and correlated-random-effects members of the Schmidt and Sickles
+(1984) family whose within estimator the package already had as `"SSFE"`. Like
+`"SSFE"`, none is maximum likelihood, so they carry no optimisation object and
+`logLik()`/`AIC()`/`BIC()` return `NA` with a warning rather than a number that
+would not mean what it appears to.
 
-**Model selection and specification testing**, which is the largest addition by
-volume. The package offers fifteen cross-sectional inefficiency distributions
-and previously gave the user nothing but AIC/BIC to choose among them:
+**Model selection and specification testing**, the largest addition by volume.
+The package offers fifteen cross-sectional inefficiency distributions and
+previously gave the user nothing but AIC/BIC to choose among them: `TIC()` and
+`vuong()`, `spec_test()`/`spec_test_all()`, `lcsfm_homogeneity()`, and `sfma()`
+for averaging over distributions rather than selecting one. The last three
+default to a **bootstrap** null rather than the published asymptotic one, and
+`?spec_test`, `?lcsfm_homogeneity` and `?sfma` give the measured size
+distortions that led to that choice -- in two cases the asymptotic null was
+badly mis-sized for the models this package fits, because the published limits
+are stated for restricted specifications the package does not impose.
 
-* `TIC()` and `vuong()` -- Takeuchi's criterion and Vuong's non-nested test
-  (Lai and Huang 2010). Neither assumes any candidate is correctly specified,
-  which is the assumption in doubt when the choice is being made, and most of
-  these distributions are not nested so the ordinary likelihood ratio test has
-  no chi-square limit.
-* `spec_test()` and `spec_test_all()` -- Papadopoulos and Parmeter's (2023)
-  test of a distributional PAIR, computed from OLS residuals before any
-  frontier is fitted. Twelve noise/inefficiency combinations.
-* `lcsfm_homogeneity()` -- a test of a latent class fit against homogeneity.
-* `sfma()` -- model averaging over inefficiency distributions (Parmeter, Wan
-  and Zhang 2019), for when the honest answer is that the data does not
-  identify one.
+**Robustness diagnostics** for the divergence estimators `sfm()` already
+offered: `hscore()`/`hscore_select()` and `calibrate_c()` to choose the tuning
+parameter rather than supply it by hand, `density_weights()` for the weight each
+observation receives, and `influence_sfa()` for the influence function of a fit.
 
-Each of these last three defaults to a bootstrap null rather than the published
-asymptotic one, and `?spec_test`, `?lcsfm_homogeneity` and `?sfma` give the
-measured size distortions that led to that choice. In two cases the asymptotic
-null was badly mis-sized for the models this package fits -- 63.5 and 18.7
-percent rejection at a nominal 5 percent -- because the published limits are
-stated for restricted specifications the package does not impose.
-
-**Robustness diagnostics.** `sfm(robust = )` already fitted the
-Normal--Half-Normal frontier by maximum Lq-likelihood, the power-Psi criterion
-and minimum density-power divergence, but the tuning parameter had to be
-supplied by hand with no guidance:
-
-* `hscore()` and `hscore_select()` -- the Hyvarinen criterion (Sugasawa and
-  Yonekura 2021) and a coarse-to-fine search over it that includes the
-  maximum-likelihood endpoint, so the criterion may decline robustification.
-  The score is evaluated in logarithms: the natural-scale expression raises the
-  fitted density to the power `c - 2`, so one observation whose density
-  underflows makes it non-finite, and because the surviving candidates are those
-  nearest maximum likelihood the failure biases selection silently.
-* `calibrate_c()` -- the fixed alternative. The influence ratio it inverts is
-  not monotone for the Fisher-consistency-corrected criteria, so all roots are
-  found and reported rather than one being chosen silently.
-* `density_weights()` -- the weight each observation receives, documented with
-  what it cannot detect: it responds to response contamination, not to a
-  mis-recorded regressor.
-* `influence_sfa()` -- the influence function of the fit (Stead, Wheat and
-  Greene 2023). It reports two sensitivities and `?influence_sfa` says which to
-  use: the raw sup-norm depends on the parameterisation and is not comparable
-  between models, while the self-standardised one measures the same influence
-  function in the information metric and is.
-
-New extractor and diagnostic functions: `efficiency()` (Battese-Coelli, JLMS
-and modal predictors, on either scale of the dependent variable),
-`meanefficiency()` (the model-implied `E[exp(-U)]` and supra-percentile means,
-in closed form for seven distributions), `simulation_se()`, which reports how
-much of a simulated-ML standard error is simulation noise rather than sampling
-noise, and `pcomposed()`/`dcomposed()`, the distribution and density of the
-composed error (Amsler, Schmidt and Tsay 2019), accurate in the far tail where
-a copula argument needs it.
-
-Further arguments: `psfm(mundlak = )` adds Mundlak adjustment terms for firm
-effects correlated with the regressors (Karagiannis and Kellermann 2019), and
-`lcsfm(penalty_c = )` maximises the modified likelihood the homogeneity test
-requires.
-
-Further arguments to `sfm()`: `weights`/`wscale`, `start_from` (seed a hard
-model from a simpler fitted one, matched by parameter name), `scaling` for the
-Wang and Schmidt (2002) scaling-property model, and `shapehet`, which is
-labelled experimental in `?sfm` because its coefficients do not recover well in
-testing. `vcov(type = "bhhh")` gives an outer-product-of-gradients covariance
-that is defined where the Hessian is not, and `extract()` methods let
-\pkg{texreg} render these fits into tables.
-
-Six new panel estimators, all classical (non-maximum-likelihood) and none
-assuming a distribution for the inefficiency term:
-
-* `model_name = "CSS"` -- Cornwell, Schmidt and Sickles (1990)
-* `model_name = "LS"` -- Lee and Schmidt (1993)
-* `model_name = "KSS"` -- Kneip, Sickles and Song (2012)
-* `model_name = "SSRE"` / `"SSCRE"` -- the random-effects and
-  correlated-random-effects members of the Schmidt and Sickles (1984) family,
-  whose within estimator the package already had as `"SSFE"`
-
-Like the existing `"SSFE"`, none of these is maximum likelihood, so they carry
-no optimisation object and `logLik()`/`AIC()`/`BIC()` return `NA` with a
-warning rather than a number that would not mean what it appears to.
-
-Heteroskedasticity in more than one error component, as named formula
-arguments to `sfm()`:
-
-* `vhet` for the noise scale, `uhet` for the inefficiency scale, `muhet` for
-  the pre-truncation mean -- the last being Battese and Coelli (1995).
-
-Also `z_link` for `sfm()` and `ttsfm()`, `marginal_effects()` for panel fits,
-and `efficiency_ci()` for Horrace and Schmidt (1996) intervals.
-
-### Changes that alter numeric output
-
-Five. Three are corrections to defects; two change the simulation draws used
-by the panel estimators, and are listed here because they move results for
-existing users even though no argument changed meaning.
-
-* `sfm(model_name = "NE")` and `"NGE"` could return a **positive**
-  log-likelihood with `sigma_u` driven to zero. `log Phi(z)` and an
-  exponential tilt both diverge like `z^2/2` with opposite signs as
-  `sigma_u -> 0`, and their sum was catastrophic cancellation returning
-  rounding noise, which the optimiser then maximised. Measured across a
-  12-cell design at 1,500 replications the rate was 0.74%, reaching 4.4% in
-  the worst cell. The cancellation is now done analytically.
-
-* `nobs()` counted rows **supplied** rather than rows **used**, because it
-  re-evaluated the `data` argument of the recorded call while the fitting code
-  drops incomplete cases first. `BIC()` was therefore computed against the
-  wrong `n` for any fit on data containing a missing value.
-
-* `sfm(model_name = "NGE")` aborted outright on about 7% of small samples with
-  "non-finite finite-difference value", because an out-of-domain guard
-  returned `.Machine$double.xmax` and `optim()` differences the objective for
-  its gradient.
-
-* `psfm()` gave **every firm the same simulation draws**. One `R x 2` Halton
-  block was built once and recycled across all `N` firms, in three separate
-  places, so the negative correlation across observations that is half of
-  Halton's advantage (Train 2002, p. 228) was absent, and every firm's
-  simulation error was the same realization and could not average out as `N`
-  grew. Each firm now gets its own contiguous block. Measured on 87 paired
-  replications at N = 50/100/200 with identical seeds, `sigh` improves on 62
-  of 87 (Wilcoxon p = 0.015) and `sigr` on 48 of 87 (p = 0.048), while the
-  frontier slope -- the control, since it is not what the draws integrate
-  over -- is unaffected at 46 of 87 (p = 0.41). Any simulated-ML panel fit
-  changes slightly as a result.
-
-* `rand.gtre` randomized the draws by a method that removed their point. It
-  drew 9999 random permutations of Halton dimension 1 and kept whichever
-  correlated least with dimension 2; permuting one column preserves each
-  margin but randomizes the pairing, leaving joint coverage no better than
-  random. Measured joint discrepancy at `R = 150`: 0.0217 before the shuffle,
-  0.0550 after, against 0.1400 for purely random pairing. It now applies a
-  uniform shift modulo 1 (Tuffin 1996; Train 9.3.4), which moves the lattice
-  without disturbing its structure -- 0.0250 on the same measurement. Results
-  change for anyone who passed `rand.gtre`.
+**Other additions**: heteroskedasticity in more than one error component via
+`vhet`/`uhet`/`muhet`; `z_link` for `sfm()` and `ttsfm()`; `efficiency()`,
+`meanefficiency()`, `efficiency_ci()`, `marginal_effects()`, `simulation_se()`,
+`pcomposed()`/`dcomposed()`; `weights`, `start_from`, `scaling` and an
+experimental `shapehet` on `sfm()`; `vcov(type = "bhhh")`; and `extract()`
+methods for \pkg{texreg}.
 
 ### Dependencies
 
-Unchanged. No package was added to `Imports` or `Suggests` in this version,
-and none was removed.
+Unchanged. No package was added to `Imports` or `Suggests` in this version, and
+none was removed.
 
 ## Vignette build time
 
 Recorded here because it was the blocker on the 1.1.5 submission. The single
 vignette is unchanged in this release and still renders in **13.9 seconds**
-locally. The six new estimators are documented in `?psfm` with runnable
-examples rather than in the vignette, deliberately, to keep the build time
-where Uwe Ligges asked for it.
+locally. The five new panel estimators are documented in `?psfm` with runnable
+examples rather than in the vignette, deliberately, to keep the build time where
+Uwe Ligges asked for it.
 
 ## Test environments
 
@@ -283,9 +175,10 @@ arise.
 
 ## Notes for the reviewer
 
-* `NEWS.md` is long for one version. This release adds six estimators and
-  several arguments, and the entries record the measurements behind the
-  numerical fixes rather than only naming them.
+* `NEWS.md` is long for one version, and deliberately so: this release adds
+  four entry points, five panel estimators and a number of arguments, and the
+  entries record the measurements behind the numerical fixes rather than only
+  naming them. Anything cut from this letter for length is there.
 
 * Tests needing a statistically meaningful sample size are behind
   `skip_on_cran()`, so the suite run during CRAN's checks is limited to fast
@@ -296,8 +189,7 @@ arise.
 * Several examples are wrapped in `\donttest{}` because they fit models by
   simulated maximum likelihood over Halton draws, or by kernel regression with
   bandwidth cross-validation, and take longer than the 5-second guideline.
-  They are checked with `--run-donttest` before submission, and the whole
-  examples stage runs in 46 s.
+  They are checked with `--run-donttest` before submission, which takes 292 s.
 
 * Every example using `PSopt = TRUE` now passes `rand.psoptim`. The
   particle-swarm stage draws from the session RNG, so without a seed the

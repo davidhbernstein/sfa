@@ -574,7 +574,21 @@ behaviour, or a new `model_name` value.
   `-eps^2/(2 sigma_v^2) - log(2 pi)/2 - log(-z) + log1p(-1/z^2 + 3/z^4 - ...)`,
   in which no large intermediate is ever formed. It agrees with the previous
   expression to 8.5e-13 over 75,000 evaluations wherever the previous one was
-  trustworthy, integrates to 1, and takes the failure rate to 0 in 2,200 fits.
+  trustworthy, integrates to 1, and takes **this** failure rate to 0 in 2,200
+  fits.
+
+  To be precise about what that last number does and does not cover: it is the
+  rate of the catastrophic-cancellation failure -- a positive log-likelihood
+  with `sigma_u` at its bound -- and nothing else. It is not a claim that `NE`
+  fits are uniformly well behaved. `convergence/CONVERGENCE_STATUS.md` records
+  a separate and still-open defect at the other end of the parameter space: at
+  `lambda = 3.33` the root-n sweep shows a tail of 2-4% of replications landing
+  far from the truth on some parameter, and unlike the rest it does not shrink
+  with `n`. There the scales are near the truth and the frontier SLOPES break,
+  with `beta1` and `beta2` trading against each other, so it is a different
+  failure from this one and is not addressed by this fix. The two live in
+  different regions -- cancellation bites at LOW lambda, the tail at high -- and
+  the median fit is unaffected in both.
 
 * **`"NGE"` carried the identical defect and is fixed the same way.** Its
   likelihood is a difference of two exponentially tilted Gaussians, both with
