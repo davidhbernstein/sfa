@@ -67,6 +67,26 @@ A feature release. In brief:
   warning quotes the measured rate; the rotations that were not measured say
   so. Prefer `"frank"` or `"clayton"`.
 
+* **`zsfm(model_name = "ZISF")` could be trapped at the boundary where the mass
+  point vanishes, returning a much worse fit without saying so.** Since
+  `P(fully efficient) = exp(-gamma)`, `gamma -> Inf` is the boundary at which
+  the model collapses to an ordinary frontier, and it carries its own local
+  optimum. On the package's convergence design the default start fell into it
+  on roughly **1 replication in 5000**: one fit returned `gamma = 9.93`
+  (`p = 5e-5`) with a log-likelihood **188.7 points below** what a start from
+  anywhere in the interior reaches. Nothing in the returned object flagged it.
+
+  `zsfm()` now tries several starting values for `gamma` and keeps the best
+  attained objective, so it can only improve a fit. The guard applies to
+  `"ZISF"` only: `"ZISF_Z"` has no scalar `gamma` -- its layout is
+  `(sigv, sigu, beta, z-block)` with the mixing parameterised through the `z`
+  coefficients -- so the same perturbation there would move the noise scale.
+
+  Worth knowing if you have compared this model's convergence behaviour before:
+  that single fit inflated its sample size's mean squared error 144-fold and
+  flattened the log-MSE-on-log-n slope for `gamma` to zero, while four of the
+  five sample sizes were textbook (MSE 0.0047, 0.0019, 0.00095, --, 0.00065).
+
 * **The `sigma_u -> 0` repair listed further down opened a second catastrophic
   cancellation, at `sigma_v -> 0`, which is also fixed here.** To be clear about
   the scope, since it affects whether anyone need re-check old results: this

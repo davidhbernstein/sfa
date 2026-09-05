@@ -160,6 +160,49 @@ zsfm <- function(formula,
 
     Start.Time <- start.time()
 
+    ## Multi-start over the mixing parameter, for the same reason NG has one.
+    ##
+    ## P(fully efficient) = exp(-gamma), so gamma -> Inf is the boundary where
+    ## the mass point vanishes and the model collapses to an ordinary frontier.
+    ## That boundary has its own local optimum, and the default start lands in
+    ## its basin on a small fraction of samples: measured on the convergence
+    ## design, 1 replication in 5000 returned gamma = 9.93 (p = 5e-5) where a
+    ## start from anywhere in the interior reached gamma = 0.31 with a
+    ## log-likelihood 188.7 points HIGHER. One such fit was enough to inflate
+    ## that sample size's mean MSE 144-fold and flatten the whole log-MSE-on-
+    ## log-n slope to zero, which is what made gamma read as non-convergent
+    ## when four of the five sample sizes were textbook.
+    ##
+    ## Cheap: the extra starts differ only in gamma, and the objective is
+    ## closed-form. The best attained objective wins, so this can only improve
+    ## the fit -- a start that does worse is discarded.
+    ## ZISF ONLY. ZISF_Z has no scalar gamma: its layout is
+    ## (sigv, sigu, beta, z-coefficients) and the mixing is parameterised
+    ## through the z block at the END, so start_v[1] there is sigma_v and
+    ## perturbing it would move the noise scale rather than the mixture.
+    if (identical(model_name, "ZISF") && isFALSE(is.numeric(start_val))) {
+      .zi_cand <- lapply(c(0.1, 0.3, 0.7, 1.5), function(g) replace(start_v, 1L, g))
+      .zi_cand <- c(list(start_v), .zi_cand)
+      .zi_obj <- vapply(.zi_cand, function(z) {
+        tryCatch({
+          v <- like.fn(z)
+          if (is.finite(v)) v else Inf
+        }, error = function(e) Inf)
+      }, numeric(1))
+      if (any(is.finite(.zi_obj))) {
+        .zi_fits <- Filter(Negate(is.null), lapply(order(.zi_obj)[seq_len(min(3L, sum(is.finite(.zi_obj))))],
+          function(i) {
+            tryCatch(suppressWarnings(stats::optim(.zi_cand[[i]], like.fn,
+              method = "L-BFGS-B", lower = lower_bob,
+              control = list(maxit = 200))), error = function(e) NULL)
+          }))
+        .zi_fits <- Filter(function(o) is.finite(o$value), .zi_fits)
+        if (length(.zi_fits)) {
+          start_v <- .zi_fits[[which.min(vapply(.zi_fits, function(o) o$value, numeric(1)))]]$par
+        }
+      }
+    }
+
     Opt.Bobyqa <- opt.bobyqa(fn = like.fn, start_v = start_v, lower.bobyqa = lower_bob, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
     start_v <- Opt.Bobyqa$start_v
     start_feval <- Opt.Bobyqa$start_feval
