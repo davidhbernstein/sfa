@@ -172,6 +172,18 @@ four-million-draw simulation for all thirteen, and -- the check that matters --
 against each model's own stored log-density, which is what caught that
 Tancredi's `"THT"` is a scale mixture rather than an independent convolution.
 
+**Kim and Schmidt (2008).** `uhet_test()` tests whether inefficiency depends
+on firm characteristics from the two-step procedure applied work already uses,
+with the variance correction that makes it valid: the JLMS predictor is a
+generated dependent variable, so the first-step estimation error enters the
+second-step variance. Where the characteristics are correlated with the
+regressors the uncorrected standard error is 52% too large and the
+uncorrected test's size collapses to zero; the corrected one is calibrated.
+Its help page states plainly that the corrected test is conservative in
+simulation (size 0.024-0.036 against a nominal 0.05) and that this gap against
+the paper's own figure has not been explained -- the naive branch does
+reproduce the paper's figure for the uncorrected test.
+
 **Chen and Wang (2012).** `cw_test()` tests the composed-error distribution
 without evaluating its density or distribution function at all: it compares
 the empirical characteristic function of the centred residuals with the value

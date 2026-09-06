@@ -354,6 +354,7 @@ defensible at all.
 | `gof_test()` | Is the assumed *inefficiency distribution* right, holding normal noise fixed |
 | `cw_test()` | The same question without ever forming the composed density, from OLS residuals |
 | `skewness_test()`, `inefficiency_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
+| `uhet_test()` | Does inefficiency depend on firm characteristics (validly, from a two-step fit) |
 | `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
 | `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |
 | `efficiency()`, `meanefficiency()`, `efficiency_ci()` | Efficiency predictions, model-implied means, and Horrace–Schmidt intervals |

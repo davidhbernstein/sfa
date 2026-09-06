@@ -2,6 +2,37 @@
 
 A feature release. In brief:
 
+* **Kim and Schmidt (2008) two-step test**, `uhet_test()`. The procedure
+  applied work actually runs -- fit the frontier, regress the JLMS predictor
+  on firm characteristics, test the slopes -- is invalid as usually performed,
+  because `u-hat` is a *generated* dependent variable and the first-step
+  estimation error enters the second-step variance. The correction is not
+  distribution-free, so `"NHN"` and `"NE"` are implemented, the two cases the
+  paper works through.
+
+  What it buys: with `z` independent of `x` the corrected and naive tests
+  agree, as the theory requires. With `z` strongly correlated with `x`
+  (rho = 0.9) the naive standard error is **52% too large** at n = 800 and
+  the naive test's size collapses to **0.000** at a nominal 5%, while the
+  corrected standard error matches the true sampling spread to within half a
+  percent (ratio 0.995) and keeps size 0.032.
+
+  **Caveat, stated plainly:** the corrected test is conservative in these
+  simulations. On the paper's own base case it rejects 0.024/0.036/0.028 at
+  N = 200/500/1000 against a nominal 0.05, where the paper reports 0.0495 at
+  N = 200. The *naive* branch does reproduce the paper's figure for the
+  uncorrected test (0.023-0.029 against their 0.0237). The implementation was
+  checked against equations (5)-(13), the first-step scores agree with an
+  analytic half-normal score to 1e-11, `gamma-hat` is unbiased and Gaussian,
+  and an oracle test using the true sampling standard deviation has correct
+  size (0.045) -- so the gap is in the variance estimate, not in `gamma-hat`
+  or the reference distribution, and it has not been closed. Read a rejection
+  as meaningful and a non-rejection as weak evidence.
+
+  Fits on the wrong-skew boundary are refused rather than answered: every
+  `E[u|eps]` is then identical, so there is no estimated inefficiency for `z`
+  to explain, and the information matrix is singular there (Waldman 1982).
+
 * **Chen and Wang (2012) centered-residuals moment test**, `cw_test()`. Unlike
   `gof_test()`, it never evaluates the composed-error density or distribution
   function: it compares the empirical characteristic function of the *centred*
