@@ -352,6 +352,7 @@ defensible at all.
 | `sfma()` | What if the data does not identify one — average over distributions instead of choosing |
 | `lcsfm_homogeneity()` | Does a latent-class fit beat a single technology |
 | `gof_test()` | Is the assumed *inefficiency distribution* right, holding normal noise fixed |
+| `cw_test()` | The same question without ever forming the composed density, from OLS residuals |
 | `skewness_test()`, `inefficiency_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
 | `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
 | `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |

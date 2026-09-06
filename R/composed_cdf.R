@@ -183,33 +183,10 @@ pcomposed_model <- function(q, model_name, par, inefdec = TRUE,
   s <- if (isTRUE(inefdec)) 1 else -1
   sgn <- if (isTRUE(lower.tail)) 1 else -1
 
-  gl <- .gauss_legendre_01(as.integer(n_nodes))
-  tt <- gl$nodes
-  if (is.finite(sp$upper)) {
-    ## Bounded support: map straight onto (0, b). The t/(1-t) map would put
-    ## half its nodes past the edge and meet a kink at u = b, which is exactly
-    ## where Gauss-Legendre stops converging quickly.
-    uu <- sp$upper * tt
-    lw <- log(gl$weights) + log(sp$upper) + sp$ldens(uu)
-  } else {
-    ## u = scale * t/(1-t) carries the scale, so the nodes follow the
-    ## distribution instead of sitting at fixed absolute values.
-    zz <- tt / (1 - tt)
-    uu <- sp$scale * zz
-    lw <- log(gl$weights) + log(sp$scale) - 2 * log1p(-tt) + sp$ldens(uu)
-  }
-  keep <- is.finite(lw)
-  lw <- lw[keep]
-  uu <- uu[keep]
-  if (!length(lw)) {
-    stop("pcomposed_model(): the inefficiency density underflowed at every ",
-      "quadrature node.",
-      call. = FALSE
-    )
-  }
-  ## Renormalise: the quadrature's own total mass, not 1 exactly. This keeps a
-  ## slightly under-resolved density from biasing the CDF upward or downward.
-  ltot <- .logsumexp(lw)
+  nd <- .composed_u_nodes(sp, n_nodes)
+  uu <- nd$u
+  lw <- nd$lw
+  ltot <- nd$ltot
 
   base <- function(qq) {
     vapply(qq, function(qi) {
@@ -379,4 +356,37 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
     return(TRUE) ## sfm()'s own default
   }
   if (is.character(v)) !grepl("cost", v, ignore.case = TRUE) else isTRUE(v)
+}
+
+
+## Quadrature nodes and log-weights for the inefficiency term, given a spec
+## from .composed_u_spec(). Factored out so the composed CDF and the
+## Chen-Wang moment machinery integrate over the SAME nodes.
+.composed_u_nodes <- function(sp, n_nodes = 128) {
+  gl <- .gauss_legendre_01(as.integer(n_nodes))
+  tt <- gl$nodes
+  if (is.finite(sp$upper)) {
+    ## Bounded support: map straight onto (0, b). The t/(1-t) map would put
+    ## half its nodes past the edge and meet a kink at u = b, which is exactly
+    ## where Gauss-Legendre stops converging quickly.
+    uu <- sp$upper * tt
+    lw <- log(gl$weights) + log(sp$upper) + sp$ldens(uu)
+  } else {
+    ## u = scale * t/(1-t) carries the scale, so the nodes follow the
+    ## distribution instead of sitting at fixed absolute values.
+    zz <- tt / (1 - tt)
+    uu <- sp$scale * zz
+    lw <- log(gl$weights) + log(sp$scale) - 2 * log1p(-tt) + sp$ldens(uu)
+  }
+  keep <- is.finite(lw)
+  lw <- lw[keep]
+  uu <- uu[keep]
+  if (!length(lw)) {
+    stop("the inefficiency density underflowed at every quadrature node.",
+      call. = FALSE
+    )
+  }
+  ## Renormalise on the quadrature's own total mass rather than assuming 1, so
+  ## a slightly under-resolved density cannot bias the result either way.
+  list(u = uu, lw = lw, ltot = .logsumexp(lw), w = exp(lw - .logsumexp(lw)))
 }

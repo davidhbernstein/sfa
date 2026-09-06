@@ -2,6 +2,48 @@
 
 A feature release. In brief:
 
+* **Chen and Wang (2012) centered-residuals moment test**, `cw_test()`. Unlike
+  `gof_test()`, it never evaluates the composed-error density or distribution
+  function: it compares the empirical characteristic function of the *centred*
+  residuals with its theoretical value, which follows from the characteristic
+  functions of the two components separately -- in closed form for many pairs
+  whose convolution is not, the normal-gamma model being the standard example.
+
+  Centring is what makes it work. A frontier's intercept is not identified
+  separately from `E[u]`, so the least-squares intercept estimates
+  `alpha - E[u]`; centring cancels it, which is why the test is valid off an
+  ordinary regression rather than requiring maximum likelihood. The variance
+  corrects for both nuisances -- estimating the scales, and the centring
+  itself. Omitting the second understates it and oversizes the test.
+
+  Size at a nominal 5% over 500 replications, half-normal data:
+
+  | test | n | tau=1 | tau=1.5 | tau=2 |
+  |---|---|---|---|---|
+  | cosine | 500 | 0.070 | 0.054 | 0.050 |
+  | cosine | 2000 | 0.046 | 0.044 | 0.050 |
+  | sine | 500 | 0.092 | 0.064 | 0.042 |
+  | sine | 2000 | 0.068 | 0.062 | 0.064 |
+
+  Power against exponential inefficiency at `tau = 1` is 0.231 (n = 500) and
+  0.952 (n = 2000) for the cosine test against 0.108 and 0.706 for the sine
+  test. Both of the authors' conclusions reproduce: the cosine test is the
+  less sensitive to `tau` and the more powerful, so it is the default.
+  **`tau` defaults to a single frequency**: passing several at once gives
+  rejection rates of 0.09-0.15 at a nominal 5%, because the cosine moments at
+  nearby frequencies are near-collinear and the covariance matrix is then
+  near-singular. The authors report the same for their combined `tau`.
+
+  A wrongly signed third moment leaves the moment equations with no admissible
+  solution, and that is an error rather than a number.
+
+* **The Gauss-Legendre rule is now cached.** It depends on nothing but the
+  node count and was rebuilt by an eigendecomposition on every call --
+  hundreds of times per `cw_test()`, since `numDeriv` differences a
+  quadrature-based moment function. Caching also keeps `eigen()` out of forked
+  workers: macOS's threaded BLAS is not fork-safe and `mclapply()` segfaulted
+  inside it before this was added.
+
 * **Goodness-of-fit tests for the assumed inefficiency distribution**,
   `gof_test()`, from Wang, Amsler and Schmidt (2011). The distribution of `u`
   is the assumption in this model least often defended and least often tested,

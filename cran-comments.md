@@ -172,6 +172,16 @@ four-million-draw simulation for all thirteen, and -- the check that matters --
 against each model's own stored log-density, which is what caught that
 Tancredi's `"THT"` is a scale mixture rather than an independent convolution.
 
+**Chen and Wang (2012).** `cw_test()` tests the composed-error distribution
+without evaluating its density or distribution function at all: it compares
+the empirical characteristic function of the centred residuals with the value
+implied by the two components separately. Centring cancels the intercept,
+which is not identified separately from `E[u]`, so the test is valid off an
+ordinary least-squares fit. Size and power replicate the paper's Table 5, and
+`tau` defaults to a single frequency because combining several oversizes the
+test -- a point the authors make and which this package's own measurements
+confirm.
+
 **Coelli (1995).** `inefficiency_test()` tests the hypothesis of no technical
 inefficiency, reporting the one-sided likelihood ratio test, the naive LR test,
 the Wald ratio and the third-moment test together. The two most often reported

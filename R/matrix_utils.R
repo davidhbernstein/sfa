@@ -114,9 +114,23 @@
 
 
 ## Helper: Gauss-Legendre quadrature nodes/weights on (0, 1)
+## Gauss-Legendre nodes and weights on (0, 1), MEMOISED on n.
+##
+## The rule depends on nothing but n, and building it is an eigendecomposition
+## of an n x n matrix -- which numDeriv, differencing a quadrature-based moment
+## function, would otherwise repeat hundreds of times per call. Caching also
+## keeps eigen() out of forked workers: on macOS the threaded BLAS is not
+## fork-safe and mclapply() segfaulted inside eigen() before this was added.
+.GL_CACHE <- new.env(parent = emptyenv())
+
 .gauss_legendre_01 <- function(n = 64L) {
   n <- as.integer(n)
   if (n < 5L) stop("n must be at least 5.", call. = FALSE)
+  key <- as.character(n)
+  hit <- .GL_CACHE[[key]]
+  if (!is.null(hit)) {
+    return(hit)
+  }
   i <- seq_len(n - 1L)
   J <- matrix(0, n, n)
   off <- i / sqrt(4 * i^2 - 1)
@@ -124,10 +138,12 @@
   J[cbind(i + 1L, i)] <- off
   eg <- eigen(J, symmetric = TRUE)
   ord <- order(eg$values)
-  list(
+  out <- list(
     nodes = (eg$values[ord] + 1) / 2,
     weights = eg$vectors[1L, ord]^2
   )
+  assign(key, out, envir = .GL_CACHE)
+  out
 }
 
 
