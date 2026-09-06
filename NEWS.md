@@ -2,6 +2,41 @@
 
 A feature release. In brief:
 
+* **Coelli (1995)'s hypothesis tests, and his COLS standard errors.** New
+  `inefficiency_test()` tests H0: no technical inefficiency, reporting the
+  one-sided LR test, the naive LR test, the Wald ratio and the third-moment
+  test side by side. The point of the paper is that **the two tests most often
+  reported are the two with the wrong size**: H0 puts gamma on the boundary, so
+  the LR statistic follows the Gourieroux-Holly-Monfort mixture
+  `0.5 chi2(0) + 0.5 chi2(1)` (5% critical value 2.71, not 3.84) and the Wald
+  ratio is not asymptotically normal at all. Measured here over 400
+  replications per cell at a nominal 5%, with sigma_u = 0:
+
+  | n | LR one-sided | LR naive | Wald | M3T |
+  |---|---|---|---|---|
+  | 100 | 0.060 | 0.030 | 0.230 | 0.055 |
+  | 400 | 0.055 | 0.033 | 0.217 | 0.045 |
+  | 800 | 0.060 | 0.035 | 0.182 | 0.062 |
+
+  The one-sided LR and third-moment tests hold their size; the naive LR test
+  rejects about half as often as it should; the Wald test rejects three to four
+  times too often and does not improve with n. Under the alternative the
+  one-sided LR test has the better power of the two valid tests at every sample
+  size, which is Coelli's recommendation. `NTN` fits get the two-restriction
+  mixture `0.25/0.5/0.25` over `chi2(0,1,2)`.
+
+* **`cols_sfm()`** estimates the normal-half-normal frontier by corrected OLS
+  and reports the standard errors from Coelli's Appendix 1 (A15-A16) rather
+  than the OLS ones, which are not appropriate for `gamma` and `sigmaSq` --
+  those are non-linear functions of the residual moments, not regression
+  coefficients. Coelli's A13 inversion turned out to be the moment inversion
+  the package already carried as `.gtre_two_step()` (verified equal to 10
+  decimal places), and his A15 variance is the delta method whose GTRE_SEQ2
+  implementation is corrected elsewhere in this release -- **including the
+  factor of 2 on the covariance term, which A15 independently confirms.**
+  A wrong-signed third moment is reported as the Type I failure it is, rather
+  than returned as a silent `sigma_u = 0`.
+
 * **`psfm()` died with "system is exactly singular" when a factor was only
   partly collinear between individuals.** Reported from use: `factor(year)` on
   an unbalanced panel, where the between-individual means of the year dummies
