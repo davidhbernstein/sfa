@@ -257,7 +257,7 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
     q <- .sfa_eps_hat(object, data, parent.frame())
   }
   pcomposed_model(q, object$model_name, object$out[, "par"],
-    inefdec = !identical(object$inefdec, "cost function"), ...
+    inefdec = .sfa_inefdec(object), ...
   )
 }
 
@@ -293,4 +293,90 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
     )
   }
   as.numeric(y - X[, bn, drop = FALSE] %*% cf[bn])
+}
+
+
+## Draw n composed errors from a fitted model. Needed by the parametric
+## bootstrap in gof_test(), which has to generate data from the null exactly as
+## the model states it -- a bootstrap that resampled residuals instead would be
+## testing something else.
+##
+## Returned on the PRODUCTION orientation (eps = v - u); the caller flips it.
+.composed_rgen <- function(n, model_name, par) {
+  g <- function(nm) unname(par[[nm]])
+  ## u first, then the noise, because two models make the noise depend on it.
+  u <- switch(model_name,
+    "NHN" = abs(stats::rnorm(n, 0, .lam_sig_to_u(g("lambda"), g("sigma")))),
+    "NTN" = {
+      su <- .lam_sig_to_u(g("lambda"), g("sigma"))
+      mu <- g("mu")
+      ## Inverse-CDF draw from N(mu, su^2) truncated below at 0: exact, and
+      ## it cannot loop forever the way rejection sampling can when mu << 0.
+      lo <- stats::pnorm(0, mu, su)
+      stats::qnorm(lo + stats::runif(n) * (1 - lo), mu, su)
+    },
+    "NE" = stats::rexp(n, rate = 1 / g("sigu")),
+    "NR" = (g("sigu") / sqrt(2)) * sqrt(stats::rnorm(n)^2 + stats::rnorm(n)^2),
+    "NU" = stats::runif(n, 0, g("theta")),
+    "NGE" = -log1p(-sqrt(stats::runif(n))) * g("sigu"),
+    "NLN" = stats::rlnorm(n, meanlog = g("mu"), sdlog = g("sigu")),
+    "NW" = stats::rweibull(n, shape = g("k"), scale = g("sigu")),
+    "NG" = stats::rgamma(n, shape = g("mu"), scale = g("sigu")),
+    "NNAK" = sqrt(stats::rgamma(n, shape = g("mu"), scale = g("sigu")^2 / g("mu"))),
+    "TSL" = {
+      ## F(u) is closed form; invert it on a grid and interpolate, which is
+      ## cheaper and steadier than n calls to uniroot().
+      s <- g("sigu"); l <- g("lambda")
+      Fu <- function(x) {
+        ((1 + l) / (2 * l + 1)) *
+          (2 * (1 - exp(-x / s)) - (1 - exp(-(1 + l) * x / s)) / (1 + l))
+      }
+      grid <- seq(0, s * 60, length.out = 20001)
+      Fg <- Fu(grid)
+      ## Drop the saturated tail: beyond it F is 1 to machine precision and the
+      ## repeated values make approx() collapse ties and warn.
+      keep <- !duplicated(Fg) & Fg < 1 - 1e-12
+      keep[1] <- TRUE
+      stats::approx(Fg[keep], grid[keep], xout = stats::runif(n), rule = 2)$y
+    },
+    "THT" = abs(stats::rnorm(n, 0, g("sigu"))),
+    "tHN" = abs(stats::rnorm(n, 0, g("sigu"))),
+    stop(".composed_rgen(): no sampler for model_name = ", dQuote(model_name),
+      ".", call. = FALSE)
+  )
+  sp <- .composed_u_spec(model_name, par)
+  sv <- sp$noise$sigma_v
+  eps <- if (identical(sp$noise$type, "t")) {
+    sv * stats::rt(n, df = sp$noise$df) - u
+  } else {
+    stats::rnorm(n, 0, sv) - u
+  }
+  if (!is.null(sp$mix_df)) {
+    ## THT: v and u share ONE chi-square scale factor. Dividing the already
+    ## formed difference is what makes it skew-t rather than a convolution.
+    eps <- eps / sqrt(stats::rgamma(n, shape = sp$mix_df / 2, rate = sp$mix_df / 2))
+  }
+  eps
+}
+
+
+## Was this fitted as a production or a cost frontier? sfm() takes inefdec as
+## TRUE/FALSE and does NOT store it on the fit, so it is recovered from the
+## recorded call. psfm() uses the string "cost function" for the same idea, so
+## both spellings are accepted rather than assuming one convention holds
+## everywhere.
+.sfa_inefdec <- function(object) {
+  if (!is.null(object$inefdec)) {
+    if (is.character(object$inefdec)) {
+      return(!grepl("cost", object$inefdec, ignore.case = TRUE))
+    }
+    if (is.logical(object$inefdec) && length(object$inefdec) == 1L) {
+      return(isTRUE(object$inefdec))
+    }
+  }
+  v <- tryCatch(eval(object$call$inefdec), error = function(e) NULL)
+  if (is.null(v)) {
+    return(TRUE) ## sfm()'s own default
+  }
+  if (is.character(v)) !grepl("cost", v, ignore.case = TRUE) else isTRUE(v)
 }

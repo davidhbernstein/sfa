@@ -41,6 +41,27 @@ I would rather 1.1.5 were the current version for weeks than for months, which
 is why the corrections and the new features are submitted together rather than
 the corrections alone.
 
+### A second correction, found in use after 1.1.5
+
+`psfm()` could fail outright on a perfectly ordinary specification. On an
+unbalanced panel with `factor(year)` among the regressors -- year dummies in a
+panel, about as common as specifications get -- the between-individual design
+that `plm`'s error-components step inverts is rank deficient, and estimation
+died inside `plm::ercomp()` with
+
+    Lapack routine dgesv: system is exactly singular
+
+1.1.5 added a guard for exactly this, and the guard **detected the problem and
+then did nothing**: it could only express its remedy by dropping whole formula
+*terms*, and when 11 of `factor(year)`'s 24 columns are the offending ones,
+there is no term to drop that does not also discard the 13 identified columns.
+So it warned accurately and passed the same singular design to `plm`. The
+remedy now works at column granularity. The guard was a no-op for every
+partly-collinear factor, which is the common case; a wholly collinear term was
+the only shape it could ever handle.
+
+Reported by a user fitting a 2000-2024 cost frontier, not found internally.
+
 ### No intentional API-breaking changes in this version
 
 Nothing in this release changes the meaning of an existing argument or
@@ -62,6 +83,19 @@ panel estimators move results for existing users:
   disturbing its structure. Results change for anyone who passed `rand.gtre`.
 
 `NEWS.md` gives the measurements behind both.
+
+One **new warning** fires on every call rather than in an edge case:
+`psfm(model_name = "GTRE_SEQ1")` and `"GTRE_SEQ2"` now state that they are
+large-T estimators and are not consistent for fixed T. This is a diagnosis, not
+a change of estimator -- both compute exactly what they computed before. Both
+hand `plm`'s random-effects output to a second stage that treats it as draws
+from the latent composite errors, when `alpha_hat` is a shrunken BLUP and
+`eps_hat` a quasi-demeaned residual; the resulting attenuation does not vanish
+as N grows with T fixed, so they converge to the wrong constants. Feeding the
+same two second stages the latent draws recovers the truth at the root-n rate,
+which locates the fault in the shared first stage. `?psfm` carries the algebra
+and the measured sizes of the bias.
+
 
 Two run-time warnings introduced in 1.1.5 -- for `psfm(model_name = "TFE")` and
 `psfm(model_name = "GTRE")`, whose estimators changed in that version -- are
@@ -115,6 +149,40 @@ recover their dependence parameter -- 36 to 60 percent of fits return the
 independence boundary on data generated from that same family -- and `copsfm()`
 warns, quoting the measured rate, rather than leaving a user to infer it from an
 implausible estimate. `?copsfm` gives the table.
+
+**Testing the distributional assumptions themselves.** `gof_test()` implements
+Wang, Amsler and Schmidt (2011): holding the normality of the noise fixed, the
+assumed inefficiency distribution implies a distribution for the composed
+error, so a Kolmogorov-Smirnov or Pearson chi-square test of that is a test of
+the inefficiency assumption. Both default to the paper's parametric bootstrap,
+which copies the estimation step -- every replication refits and forms its own
+residuals -- because evaluating either statistic at an estimate changes its
+null distribution. Measured over 200 replications the two hold their size and
+the KS test dominates the chi-square test at every sample size, which is the
+paper's own conclusion; `?gof_test` gives the table. There is deliberately no
+asymptotic KS p-value: with parameters estimated the Kolmogorov distribution
+does not apply, Bai's (2003) correction is not implemented, and `NA` is
+returned rather than a number that would look valid.
+
+This needed a **composed-error CDF for every model**, `pcomposed_model()` and
+`composed_cdf()`, where `pcomposed()` covered the half-normal alone. All
+thirteen cross-sectional models are supported. It is verified against
+`pcomposed()` to 3.5e-15 relative for the half-normal, against a
+four-million-draw simulation for all thirteen, and -- the check that matters --
+against each model's own stored log-density, which is what caught that
+Tancredi's `"THT"` is a scale mixture rather than an independent convolution.
+
+**Coelli (1995).** `inefficiency_test()` tests the hypothesis of no technical
+inefficiency, reporting the one-sided likelihood ratio test, the naive LR test,
+the Wald ratio and the third-moment test together. The two most often reported
+in applied work are the two with the wrong size, because the null puts the
+parameter on a boundary: measured here at a nominal 5%, the one-sided LR and
+third-moment tests hold their size while the naive LR rejects about half as
+often as it should and the Wald test rejects three to four times too often
+*without improving as n grows*. Separately, `sfm(estimator = "cols")` now
+reports that paper's analytic standard errors for the variance parameters,
+which were `NA` unless bootstrapped; the OLS errors are not appropriate for
+them, and the analytic ones agree with the bootstrap to within 2% by n = 3200.
 
 **Robustness diagnostics** for the divergence estimators `sfm()` already
 offered: `hscore()`/`hscore_select()` and `calibrate_c()` to choose the tuning

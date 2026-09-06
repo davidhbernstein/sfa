@@ -351,13 +351,15 @@ defensible at all.
 | `spec_test()`, `spec_test_all()` | Is this *pair* of noise/inefficiency distributions defensible, from OLS residuals alone |
 | `sfma()` | What if the data does not identify one — average over distributions instead of choosing |
 | `lcsfm_homogeneity()` | Does a latent-class fit beat a single technology |
-| `skewness_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
+| `gof_test()` | Is the assumed *inefficiency distribution* right, holding normal noise fixed |
+| `skewness_test()`, `inefficiency_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
 | `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
 | `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |
 | `efficiency()`, `meanefficiency()`, `efficiency_ci()` | Efficiency predictions, model-implied means, and Horrace–Schmidt intervals |
 | `marginal_effects()` | Effects of the variance determinants on `E[u]` |
 | `simulation_se()` | How much of a simulated-ML standard error is simulation noise |
-| `pcomposed()`, `dcomposed()` | Distribution and density of the composed error |
+| `pcomposed()`, `dcomposed()` | Distribution and density of the composed error (half-normal) |
+| `pcomposed_model()`, `composed_cdf()` | The same CDF for any of the thirteen cross-sectional models |
 | `sfa_diagnostics()` | Convergence and boundary diagnostics for a fit |
 
 ```r
@@ -371,10 +373,20 @@ influence_sfa(fit_hn)                           # who is driving this fit
 
 spec_test_all(residuals(lm(y ~ x1 + x2, d)))    # before fitting anything
 sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NTN"))
+
+## Is the assumed inefficiency distribution itself defensible? Hold the
+## normality of the noise fixed and it implies a distribution for the composed
+## error, so testing that is testing the assumption on u.
+gof_test(fit_hn, data = d, B = 199)             # KS and Pearson chi-square
+
+## Is there any inefficiency to speak of? The one-sided LR test is the one to
+## quote: the Wald ratio and the naive LR test both have the wrong size here,
+## because the null sits on a boundary.
+inefficiency_test(fit_hn)
 ```
 
-`spec_test()`, `lcsfm_homogeneity()` and `sfma()` default to a **bootstrap**
-null rather than the published asymptotic one. Their help pages give the
+`spec_test()`, `gof_test()`, `lcsfm_homogeneity()` and `sfma()` default to a
+**bootstrap** null rather than the published asymptotic one. Their help pages give the
 measured size distortions behind that choice: in two cases the asymptotic limit
 is badly mis-sized for the models this package fits, because it is stated for a
 restricted specification the package does not impose.

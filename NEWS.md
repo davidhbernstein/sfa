@@ -2,6 +2,41 @@
 
 A feature release. In brief:
 
+* **Goodness-of-fit tests for the assumed inefficiency distribution**,
+  `gof_test()`, from Wang, Amsler and Schmidt (2011). The distribution of `u`
+  is the assumption in this model least often defended and least often tested,
+  and it is testable: hold the normality of `v` fixed and the assumed `u`
+  implies a distribution for the composed error, so rejecting that is
+  rejecting the assumed `u`. Kolmogorov-Smirnov and Pearson chi-square, both
+  on the composed error rather than on `u-hat` -- which is the same test,
+  since `u-hat = E[u|eps]` is monotonic in `eps`, but far easier, and it
+  avoids the trap the paper warns about: comparing the spread of `u-hat`
+  with the assumed density of `u` is a mistake, not a diagnostic, because
+  those are different distributions.
+
+  Parameter estimation is not ignored. The default parametric bootstrap copies
+  the estimation step exactly -- each replication draws from the fitted model,
+  rebuilds the response, **refits**, forms its own residuals and recomputes the
+  statistic. The `"asymptotic"` option gives a chi-square p-value that the
+  authors note is conservative at the MLE, and **returns `NA` rather than a
+  KS p-value**, because with parameters estimated the Kolmogorov distribution
+  does not apply and Bai's (2003) transformation is not implemented.
+
+  Size and power over 200 replications (half-normal data for size, exponential
+  data fitted as half-normal for power), at nominal 0.10 / 0.05:
+
+  | | n | KS | chi2 |
+  |---|---|---|---|
+  | size | 200 | 0.065 / 0.025 | 0.085 / 0.065 |
+  | size | 800 | 0.070 / 0.040 | 0.065 / 0.010 |
+  | power | 200 | 0.505 / 0.395 | 0.235 / 0.145 |
+  | power | 800 | 0.985 / 0.965 | 0.810 / 0.655 |
+  | power | 2000 | 1.000 / 1.000 | 0.990 / 0.985 |
+
+  Both hold their size, mildly conservatively, and **KS dominates chi-square
+  at every sample size** -- the paper's own conclusion, and the reason it is
+  the better default.
+
 * **Coelli (1995)'s hypothesis tests, and his COLS standard errors.** New
   `inefficiency_test()` tests H0: no technical inefficiency, reporting the
   one-sided LR test, the naive LR test, the Wald ratio and the third-moment

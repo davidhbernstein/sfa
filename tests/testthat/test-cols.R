@@ -96,13 +96,21 @@ test_that("bootstrap standard errors are produced and reproducible", {
   expect_equal(a$std.errors, b$std.errors)
   expect_true(all(is.finite(a$std.errors)))
   expect_equal(dim(a$cols_boot_draws), c(100L, length(coef(a))))
-  ## without the bootstrap, the moment-based parameters carry no standard error
-  ## rather than a misleading one
+  ## Without the bootstrap, NHN now carries Coelli's (1995, Appendix 1)
+  ## analytic delta-method errors rather than NA. They were NA until 1.2.0,
+  ## which is what this test used to assert.
   c0 <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d, estimator = "cols")
-  expect_true(is.na(c0$std.errors[["sigv"]]))
-  expect_true(is.na(c0$std.errors[["sigu"]]))
-  expect_true(is.na(c0$std.errors[["(Intercept)"]]))
+  expect_true(is.finite(c0$std.errors[["sigv"]]))
+  expect_true(is.finite(c0$std.errors[["sigu"]]))
+  expect_true(is.finite(c0$std.errors[["(Intercept)"]]))
   expect_true(is.finite(c0$std.errors[["x1"]]))   ## OLS slope SEs are valid
+  ## and they agree with the bootstrap, which is the independent check
+  expect_equal(c0$std.errors[["sigu"]], a$std.errors[["sigu"]], tolerance = 0.2)
+  expect_equal(c0$std.errors[["sigv"]], a$std.errors[["sigv"]], tolerance = 0.2)
+  ## The analytic variance is derived for the half-normal only, so the other
+  ## COLS models still carry NA and need the bootstrap.
+  ce <- sfm(y_pcs_e ~ x1 + x2, model_name = "NE", data = d, estimator = "cols")
+  expect_true(is.na(ce$std.errors[["sigu"]]))
 })
 
 test_that("the bootstrap restores the caller's RNG stream", {
