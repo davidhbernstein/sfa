@@ -37,7 +37,8 @@ bread.sfareg <- function(x, ...) {
 estfun.sfareg <- function(x, ...) {
   if (is.null(x$objective)) {
     stop("estfun(): this fit does not retain its likelihood, so the score ",
-      "matrix cannot be built. Refit with sfm(..., keep_objective = TRUE).",
+      "matrix cannot be built. Refit with keep_objective = TRUE (accepted by ",
+      "sfm() and psfm()).",
       call. = FALSE
     )
   }
@@ -62,8 +63,22 @@ estfun.sfareg <- function(x, ...) {
   ll_i <- function(theta) {
     v <- tryCatch(x$objective(theta, per_obs = TRUE), error = function(e) NULL)
     if (is.null(v)) {
-      stop("estfun(): the stored likelihood does not accept `per_obs`. It ",
-        "was retained by a version of sfm() older than 1.2.0; refit.",
+      ## psfm()'s closures were never given the `per_obs` branch that sfm()'s
+      ## gained in 1.2.0, so keep_objective = TRUE stores an objective the
+      ## score matrix cannot use. Say which case this is rather than blaming a
+      ## stale fit for both.
+      stop("estfun(): the stored likelihood does not return per-observation ",
+        "contributions, so the score matrix cannot be built.\n",
+        if (!is.null(x$model_name)) {
+          paste0("  This fit is model_name = ", dQuote(x$model_name), ". ")
+        } else {
+          "  "
+        },
+        "psfm()'s panel likelihoods do not yet support `per_obs`, so ",
+        "sandwich-form standard errors, influence_sfa() and the other ",
+        "score-based diagnostics are currently available for sfm() fits only. ",
+        "If this IS an sfm() fit, it was retained by a version older than ",
+        "1.2.0 -- refit.",
         call. = FALSE
       )
     }

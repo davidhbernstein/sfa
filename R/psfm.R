@@ -155,15 +155,37 @@ psfm <- function(formula,
       }
 
       if (identical(collinear_action, "warn_drop")) {
-        warning(.collinearity_message(collinear_chk, "warn_drop"), call. = FALSE)
+        ## Dropping from the MODEL is only expressible at TERM granularity. A
+        ## factor whose dummies are only PARTLY collinear -- factor(year) in an
+        ## unbalanced panel is the common case -- cannot be removed wholesale
+        ## without discarding identified columns too, so those are left in the
+        ## formula and handled as "start_only" instead. Previously this branch
+        ## silently did nothing at all for such terms.
         drop_terms <- .terms_for_columns(fx_probe, data, collinear_chk$between_drop)
         if (length(drop_terms)) {
           keep <- setdiff(attr(stats::terms(fx_probe), "term.labels"), drop_terms)
-          formula <- stats::reformulate(if (length(keep)) keep else "1",
+          fx_probe <- stats::reformulate(if (length(keep)) keep else "1",
             response = all.vars(fx_probe)[1]
           )
+          formula <- fx_probe
+          collinear_chk <- tryCatch(.check_collinearity(fx_probe, data, individual),
+            error = function(e) NULL
+          )
         }
-        collinear_chk <- NULL ## handled here; nothing left for start_panel
+        if (is.null(collinear_chk) || !length(collinear_chk$between_drop)) {
+          warning(.collinearity_message(
+            list(
+              pooled_cols = NA, pooled_rank = NA, between_cols = NA,
+              between_rank = NA, between_condition_number = NA_real_,
+              between_drop = drop_terms
+            ), "warn_drop"
+          ), call. = FALSE)
+          collinear_chk <- NULL ## handled here; nothing left for start_panel
+        } else {
+          warning(.collinearity_message(collinear_chk, "warn_drop_partial"), call. = FALSE)
+          ## start_panel() would otherwise repeat essentially this warning.
+          collinear_chk$already_warned <- TRUE
+        }
       }
     }
   }
@@ -356,6 +378,7 @@ psfm <- function(formula,
     beta_0_st <- Start_Panel$beta_0_st
     beta_hat <- Start_Panel$beta_hat
     beta_se <- Start_Panel$beta_se
+    beta_se_named <- Start_Panel$beta_se_named
     epsilon_hat <- Start_Panel$epsilon_hat
     exp_eta <- Start_Panel$exp_eta
     exp_u <- Start_Panel$exp_u
@@ -2477,6 +2500,7 @@ psfm <- function(formula,
   }
   if (model_name == "GTRE_SEQ1") {
     Start.Time <- start.time()
+    .gtre_seq_finiteT_warning(N, nrow(data), "GTRE_SEQ1")
 
     ## Sequential Method -- each stage is an ordinary cross-sectional
     ## intercept-only normal-half-normal fit of one composite residual.
@@ -2542,12 +2566,14 @@ psfm <- function(formula,
     }
 
     End.Time <- end.time(Start.Time)
-    st_err <- rep(NA, ncol(out))
-    st_err <- if (isTRUE(intercept == 0)) {
-      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se, summary(plm_gtre)$coefficients[, 2])
-    } else {
-      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se, summary(plm_gtre)$coefficients[-c(1), 2])
-    }
+    ## Align by NAME, not by position: when the starting-value design was
+    ## reduced for collinearity, plm has fewer coefficients than the requested
+    ## formula has columns, and positional indexing silently misaligned them
+    ## (or errored on the length mismatch).
+    st_err <- c(
+      gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se,
+      .expand_start_se(beta_se_named, colnames(out)[-c(1:4)])
+    )
     t_val <- start_v / st_err
     out[1, ] <- start_v
     out[2, ] <- st_err
@@ -2790,14 +2816,9 @@ psfm <- function(formula,
   }
   if (model_name == "GTRE_SEQ2") {
     Start.Time <- start.time()
-    ## Sequential Method following 1995 paper
-    ## take second and third moments of alpha_hat and epsilon_hat
-    alp_2m <- mean(alpha_hat^2)
-    alp_3m <- min(0, mean(alpha_hat^3))
-    eps_2m <- mean(epsilon_hat^2)
-    eps_3m <- min(0, mean(epsilon_hat^3))
-
-    ## The moment inversion lives in .gtre_two_step() so GTRE_FML can seed
+    .gtre_seq_finiteT_warning(N, nrow(data), "GTRE_SEQ2")
+    ## Sequential Method following 1995 paper: invert the second and third
+    ## moments of alpha_hat and epsilon_hat. The moment inversion lives in .gtre_two_step() so GTRE_FML can seed
     ## its FIML search from the same decomposition.
     .ts <- .gtre_two_step(epsilon_hat, alpha_hat, beta_0_st)
     gamma_uv <- .ts$gamma_uv
@@ -2806,51 +2827,19 @@ psfm <- function(formula,
     sigmaSq_hr <- .ts$sigmaSq_hr
     beta_0 <- .ts$beta_0
 
-    ## calculate the ten needed central moments
-    mu_2_eps <- sigmaSq_uv * ((1 - gamma_uv) + gamma_uv * ((pi - 2) / pi))
-    mu_3_eps <- sigmaSq_uv^(3 / 2) * (sqrt(2 / pi) * (1 - (4 / pi)) * gamma_uv^(3 / 2))
-    mu_4_eps <- sigmaSq_uv^2 * (3 * (1 - gamma_uv)^2 + ((6 * (pi - 2) * gamma_uv * (1 - gamma_uv)) / pi) + gamma_uv^2 * (3 - (4 / pi) - (12 / pi^2)))
-    mu_5_eps <- sigmaSq_uv^(5 / 2) * gamma_uv^(3 / 2) * sqrt(2 / pi) * (10 * (1 - (4 / pi)) * (1 - gamma_uv) + (7 - (20 / pi) - (16 / pi^2)) * gamma_uv)
-    mu_6_eps <- sigmaSq_uv^3 * (15 * (1 - gamma_uv)^3 +
-      (45 * (pi - 2) * (1 - gamma_uv)^2 * gamma_uv / pi) +
-      15 * (3 - (4 / pi) - (12 / pi^2)) * (1 - gamma_uv) * gamma_uv^2 +
-      (15 - (6 / pi) - (100 / pi^2) - (40 / pi^3)) * gamma_uv^3)
-
-    mu_2_alp <- sigmaSq_hr * ((1 - gamma_hr) + gamma_hr * ((pi - 2) / pi))
-    mu_3_alp <- sigmaSq_hr^(3 / 2) * (sqrt(2 / pi) * (1 - (4 / pi)) * gamma_hr^(3 / 2))
-    mu_4_alp <- sigmaSq_hr^2 * (3 * (1 - gamma_hr)^2 + ((6 * (pi - 2) * gamma_hr * (1 - gamma_hr)) / pi) + gamma_hr^2 * (3 - (4 / pi) - (12 / pi^2)))
-    mu_5_alp <- sigmaSq_hr^(5 / 2) * gamma_hr^(3 / 2) * sqrt(2 / pi) * (10 * (1 - (4 / pi)) * (1 - gamma_hr) + (7 - (20 / pi) - (16 / pi^2)) * gamma_hr)
-    mu_6_alp <- sigmaSq_hr^3 * (15 * (1 - gamma_hr)^3 +
-      (45 * (pi - 2) * (1 - gamma_hr)^2 * gamma_hr / pi) +
-      15 * (3 - (4 / pi) - (12 / pi^2)) * (1 - gamma_hr) * gamma_hr^2 +
-      (15 - (6 / pi) - (100 / pi^2) - (40 / pi^3)) * gamma_hr^3)
-
-    var_2m_eps <- (1 / nrow(data)) * (mu_4_eps - mu_2_eps^2)
-    var_3m_eps <- (1 / nrow(data)) * (mu_6_eps - mu_3_eps^3 - 6 * mu_2_eps * mu_4_eps + 9 * mu_2_eps)
-    cov_23m_eps <- (1 / nrow(data)) * (mu_5_eps - 4 * mu_2_eps * mu_3_eps)
-
-    var_2m_alp <- (1 / N) * (mu_4_alp - mu_2_alp^2)
-    var_3m_alp <- (1 / N) * (mu_6_alp - mu_3_alp^3 - 6 * mu_2_alp * mu_4_alp + 9 * mu_2_alp)
-    cov_23m_alp <- (1 / N) * (mu_5_alp - 4 * mu_2_alp * mu_3_alp)
-
-    ## define 8 needed derivatives
-    d_beta_0_d_m3_eps <- (pi / (pi - 4)) * (1 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m)^(-2 / 3)
-    d_sigma2_d_m3_eps <- sqrt(2 / pi) * (pi / (pi - 4)) * (2 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m)^(-1 / 3)
-    d_gamma_d_m2_eps <- -(sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m)^(-2 / 3) * (eps_3m * (sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m) + (2 / pi))
-    d_gamma_d_m3_eps <- eps_2m * sqrt(pi / 2) * (pi / (pi - 4)) * (2 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m)^(-5 / 3) * (eps_3m * (sqrt(pi / 2) * (pi / (pi - 4)) * eps_3m)^(-2 / 3) + (2 / pi))^(-2)
-
-    d_beta_0_d_m3_alp <- (pi / (pi - 4)) * (1 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m)^(-2 / 3)
-    d_sigma2_d_m3_alp <- sqrt(2 / pi) * (pi / (pi - 4)) * (2 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m)^(-1 / 3)
-    d_gamma_d_m2_alp <- -(sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m)^(-2 / 3) * (alp_3m * (sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m) + (2 / pi))
-    d_gamma_d_m3_alp <- alp_2m * sqrt(pi / 2) * (pi / (pi - 4)) * (2 / 3) * (sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m)^(-5 / 3) * (alp_3m * (sqrt(pi / 2) * (pi / (pi - 4)) * alp_3m)^(-2 / 3) + (2 / pi))^(-2)
-
-    beta_0_se <- sqrt(beta_se[1] + d_beta_0_d_m3_eps^2 * var_3m_eps + d_beta_0_d_m3_alp^2 * var_3m_alp)
-
-    sigmaSq_uv_se <- sqrt(var_2m_eps + d_sigma2_d_m3_eps^2 * var_3m_eps + d_sigma2_d_m3_eps * cov_23m_eps)
-    gamma_uv_se <- sqrt(d_gamma_d_m2_eps^2 * var_2m_eps + d_gamma_d_m3_eps^2 * var_3m_eps + d_gamma_d_m2_eps * d_gamma_d_m3_eps * cov_23m_eps)
-
-    sigmaSq_hr_se <- sqrt(var_2m_alp + d_sigma2_d_m3_alp^2 * var_3m_alp + d_sigma2_d_m3_alp * cov_23m_alp)
-    gamma_hr_se <- sqrt(d_gamma_d_m2_alp^2 * var_2m_alp + d_gamma_d_m3_alp^2 * var_3m_alp + d_gamma_d_m2_alp * d_gamma_d_m3_alp * cov_23m_alp)
+    ## Delta-method SEs for the moment inversion (see .gtre_two_step_se).
+    .se5 <- .gtre_two_step_se(
+      epsilon_hat, alpha_hat,
+      ## lengths of the two series, not nrow(data)/N: the starting-value
+      ## design can drop incomplete rows, and n enters the moment variances.
+      n_eps = length(as.numeric(epsilon_hat)), n_alp = length(as.numeric(alpha_hat)),
+      beta_se1 = if (length(beta_se)) beta_se[1] else NA_real_
+    )
+    gamma_uv_se <- .se5[["gamma_uv"]]
+    sigmaSq_uv_se <- .se5[["sigmaSq_uv"]]
+    gamma_hr_se <- .se5[["gamma_hr"]]
+    sigmaSq_hr_se <- .se5[["sigmaSq_hr"]]
+    beta_0_se <- .se5[["beta_0"]]
 
     start_v <- if (is.na(beta_0_st)) {
       unname(c(gamma_uv, sigmaSq_uv, gamma_hr, sigmaSq_hr, beta_hat))
@@ -2866,11 +2855,13 @@ psfm <- function(formula,
       c("gamma_uv", "sigmaSq_uv", "gamma_hr", "sigmaSq_hr", colnames(data_x))
     }
 
-    st_err <- rep(NA, ncol(out))
+    ## Name-aligned for the same reason as GTRE_SEQ1 above.
     st_err <- if (is.na(beta_0_st)) {
-      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se, summary(plm_gtre)$coefficients[c(x_vars_vec), 2])
+      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se,
+        .expand_start_se(beta_se_named, colnames(out)[-c(1:4)]))
     } else {
-      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se, beta_0_se, summary(plm_gtre)$coefficients[-c(1), 2])
+      c(gamma_uv_se, sigmaSq_uv_se, gamma_hr_se, sigmaSq_hr_se, beta_0_se,
+        .expand_start_se(beta_se_named, colnames(out)[-c(1:5)]))
     }
     t_val <- start_v / st_err
     out[1, ] <- start_v
@@ -2882,7 +2873,9 @@ psfm <- function(formula,
     Sigma_v <- sqrt((1 - gamma_uv) * sigmaSq_uv)
     Sigma_h <- sqrt(gamma_hr * sigmaSq_hr)
     Sigma_r <- sqrt((1 - gamma_hr) * sigmaSq_hr)
-    Lambda <- sigma_u / sigma_v
+    ## Was sigma_u/sigma_v -- the start_panel() values from a DIFFERENT
+    ## (likelihood) decomposition, reported beside SEQ2's own moment sigmas.
+    Lambda <- Sigma_u / Sigma_v
     Sigma <- sqrt(sigmaSq_uv)
 
     other_parms <- as.matrix(c(Sigma_u, Sigma_v, Sigma_h, Sigma_r, Lambda, Sigma))

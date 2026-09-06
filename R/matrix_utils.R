@@ -346,6 +346,15 @@
       "warn_drop" = paste0(
         "  These columns were DROPPED FROM THE MODEL (collinear_action = \"warn_drop\")."
       ),
+      "warn_drop_partial" = paste0(
+        "  collinear_action = \"warn_drop\" could not remove these: they are SOME\n",
+        "  (not all) of the columns of a single factor term, and a formula can only\n",
+        "  drop the term whole, which would discard identified columns too.\n",
+        "  They were therefore kept in the likelihood and dropped from the\n",
+        "  starting-value regression only. To remove them from the model, replace\n",
+        "  the factor with explicit dummies for the periods you want, or use\n",
+        "  broader period groups / a time trend."
+      ),
       "start_only" = paste0(
         "  The likelihood is still estimated using the requested formula; these\n",
         "  columns were dropped only from the starting-value regression, and their\n",
@@ -1926,4 +1935,188 @@
     "with the same caution as the split itself."
   )
   warning(msg, call. = FALSE)
+}
+
+
+## Build the reduced random-effects starting-value regression at COLUMN
+## granularity. Dropping whole formula TERMS cannot express "keep 13 of a
+## factor's 24 dummies", which is exactly what factor(year) in an unbalanced
+## panel needs, so the reduced design is assembled from the model matrix and
+## handed to plm() under placeholder names. Returns NULL if it cannot be built,
+## in which case the caller keeps the unreduced formula.
+.re_start_design <- function(formula_x, data, drop_cols) {
+  df <- as.data.frame(data)
+  idx <- tryCatch(as.data.frame(plm::index(data)), error = function(e) NULL)
+  if (is.null(idx) || nrow(idx) != nrow(df) || ncol(idx) < 2L) {
+    return(NULL)
+  }
+  yname <- all.vars(formula_x)[1]
+  if (!yname %in% names(df)) {
+    return(NULL)
+  }
+  vars_needed <- intersect(all.vars(formula_x), names(df))
+  ok <- stats::complete.cases(df[, vars_needed, drop = FALSE])
+  if (!any(ok)) {
+    return(NULL)
+  }
+  X <- tryCatch(stats::model.matrix(formula_x, data = df[ok, , drop = FALSE]),
+    error = function(e) NULL
+  )
+  if (is.null(X) || !ncol(X) || nrow(X) != sum(ok)) {
+    return(NULL)
+  }
+  keep <- setdiff(colnames(X), c("(Intercept)", drop_cols))
+  if (!length(keep)) {
+    return(NULL)
+  }
+  safe <- paste0(".v", seq_along(keep))
+  nd <- data.frame(
+    .id = idx[ok, 1], .time = idx[ok, 2], .y = df[[yname]][ok],
+    X[, keep, drop = FALSE], check.names = FALSE
+  )
+  names(nd) <- c(".id", ".time", ".y", safe)
+  pd <- tryCatch(plm::pdata.frame(nd, index = c(".id", ".time")),
+    error = function(e) NULL
+  )
+  if (is.null(pd)) {
+    return(NULL)
+  }
+  list(
+    data = pd,
+    formula = stats::reformulate(safe, response = ".y"),
+    map = stats::setNames(keep, safe)
+  )
+}
+
+## Rename a plm coefficient/SE vector fitted on .re_start_design()'s
+## placeholder columns back to the original model-matrix column names.
+.remap_start_names <- function(v, map) {
+  if (is.null(v) || !length(v)) {
+    return(v)
+  }
+  nm <- names(v)
+  hit <- !is.na(match(nm, names(map)))
+  nm[hit] <- unname(map[nm[hit]])
+  stats::setNames(v, nm)
+}
+
+## Align a named SE vector to the requested coefficient names, leaving NA for
+## columns the starting-value regression could not identify. The point
+## estimates for those come from a pooled OLS fit (.expand_start_beta), which
+## carries no comparable standard error, so NA is the honest entry.
+.expand_start_se <- function(se_named, target) {
+  out <- stats::setNames(rep(NA_real_, length(target)), target)
+  if (!is.null(se_named) && length(se_named) && !is.null(names(se_named))) {
+    common <- intersect(names(se_named), target)
+    out[common] <- se_named[common]
+  }
+  out
+}
+
+
+## Delta-method standard errors for the GTRE two-step (moment) decomposition.
+## Extracted from psfm()'s GTRE_SEQ2 branch so the algebra is unit-testable.
+## `n_eps`/`n_alp` are the counts the two moment sets are averaged over.
+##
+## Note the maintained assumption: the moment variances below are the iid ones,
+## so they describe sampling variability around the estimator's PROBABILITY
+## LIMIT, and for fixed T that plim is not the truth (see the GTRE_SEQ note in
+## ?psfm). They are also optimistic for the epsilon side, whose n residuals are
+## correlated within firm.
+.gtre_two_step_se <- function(eps_hat, alp_hat, n_eps, n_alp, beta_se1 = NA_real_) {
+  k <- sqrt(pi / 2) * (pi / (pi - 4))
+  na5 <- stats::setNames(rep(NA_real_, 5), c(
+    "gamma_uv", "sigmaSq_uv", "gamma_hr", "sigmaSq_hr", "beta_0"
+  ))
+
+  side <- function(z, nn) {
+    z <- as.numeric(z)
+    m2 <- mean(z^2)
+    m3 <- min(0, mean(z^3))
+    ## m3 == 0 is the wrong-skew boundary: the inversion is not differentiable
+    ## there and every derivative below diverges, so report NA rather than Inf.
+    if (!is.finite(m2) || !is.finite(m3) || m3 >= 0 || nn <= 0) {
+      return(NULL)
+    }
+    g <- min(1, 1 / (m2 * (k * m3)^(-2 / 3) + (2 / pi)))
+    ssq <- m2 + (2 / pi) * (k * m3)^(2 / 3)
+
+    ## Central moments of the implied normal-half-normal composite.
+    mu2 <- ssq * ((1 - g) + g * ((pi - 2) / pi))
+    mu3 <- ssq^(3 / 2) * (sqrt(2 / pi) * (1 - (4 / pi)) * g^(3 / 2))
+    mu4 <- ssq^2 * (3 * (1 - g)^2 + ((6 * (pi - 2) * g * (1 - g)) / pi) +
+      g^2 * (3 - (4 / pi) - (12 / pi^2)))
+    mu5 <- ssq^(5 / 2) * g^(3 / 2) * sqrt(2 / pi) *
+      (10 * (1 - (4 / pi)) * (1 - g) + (7 - (20 / pi) - (16 / pi^2)) * g)
+    mu6 <- ssq^3 * (15 * (1 - g)^3 + (45 * (pi - 2) * (1 - g)^2 * g / pi) +
+      15 * (3 - (4 / pi) - (12 / pi^2)) * (1 - g) * g^2 +
+      (15 - (6 / pi) - (100 / pi^2) - (40 / pi^3)) * g^3)
+
+    var_m2 <- (mu4 - mu2^2) / nn
+    var_m3 <- (mu6 - mu3^2 - 6 * mu2 * mu4 + 9 * mu2^3) / nn
+    cov_23 <- (mu5 - 4 * mu2 * mu3) / nn
+
+    ## gamma = 1/(m2 A + 2/pi), A = (k m3)^(-2/3); sigmaSq = m2 + (2/pi)(k m3)^(2/3)
+    A <- (k * m3)^(-2 / 3)
+    gg <- 1 / (m2 * A + (2 / pi))
+    d_g_m2 <- -A * gg^2
+    d_g_m3 <- (2 / 3) * m2 * k * (k * m3)^(-5 / 3) * gg^2
+    d_s_m2 <- 1
+    d_s_m3 <- sqrt(2 / pi) * (pi / (pi - 4)) * (2 / 3) * (k * m3)^(-1 / 3)
+    d_b_m3 <- (pi / (pi - 4)) * (1 / 3) * (k * m3)^(-2 / 3)
+
+    dm <- function(a, b) a^2 * var_m2 + b^2 * var_m3 + 2 * a * b * cov_23
+    list(
+      gamma = sqrt(max(0, dm(d_g_m2, d_g_m3))),
+      sigmaSq = sqrt(max(0, dm(d_s_m2, d_s_m3))),
+      var_b = d_b_m3^2 * var_m3
+    )
+  }
+
+  e <- side(eps_hat, n_eps)
+  a <- side(alp_hat, n_alp)
+  if (is.null(e) || is.null(a)) {
+    return(na5)
+  }
+  vb <- if (is.finite(beta_se1)) beta_se1^2 else NA_real_
+  c(
+    gamma_uv = e$gamma, sigmaSq_uv = e$sigmaSq,
+    gamma_hr = a$gamma, sigmaSq_hr = a$sigmaSq,
+    beta_0 = sqrt(vb + e$var_b + a$var_b)
+  )
+}
+
+
+## GTRE_SEQ1/GTRE_SEQ2 are LARGE-T estimators. Both take plm's random-effects
+## decomposition and treat the two generated series as if they were draws from
+## the latent composite errors, which they are not at finite T:
+##
+##   alpha_hat is the shrunken BLUP  c * (alpha_i + ebar_i),
+##       c = T s2a / (T s2a + s2e)
+##   eps_hat   is the quasi-demeaned residual  (1-th) alpha_i + e_it - th ebar_i,
+##       th = 1 - s2e^0.5 / (T s2a + s2e)^0.5
+##
+## so the second stage inverts the moments of the PREDICTORS. Measured against
+## the latent draws this attenuates the third central moment by
+## (1 - th/T)^3 + (T-1)(-th/T)^3 on the epsilon side (0.81 at T = 10) and
+## scales the alpha side by c^2 and c^3. Neither factor goes to 1 as N grows
+## with T held fixed, so the estimators converge to the wrong constants.
+.gtre_seq_finiteT_warning <- function(N, n, model_name) {
+  Tbar <- if (is.finite(N) && N > 0) n / N else NA_real_
+  warning(
+    model_name, " is a LARGE-T estimator and is NOT consistent for fixed T.\n",
+    "  Its two stages treat plm's random-effects output as if it were the\n",
+    "  latent composite errors, but alpha_hat is a SHRUNKEN predictor and\n",
+    "  eps_hat is a QUASI-DEMEANED residual. Their second and third moments\n",
+    "  are attenuated by factors that depend on T and do not vanish as N grows,\n",
+    "  so the variance components are biased toward zero",
+    if (is.finite(Tbar)) paste0(" (mean T = ", format(Tbar, digits = 3), ")") else "",
+    ".\n",
+    "  sigmaSq_hr is affected most. Increasing N tightens these estimates\n",
+    "  around the WRONG values; only larger T removes the bias.\n",
+    "  For a consistent alternative use model_name = \"GTRE\" (estimator =\n",
+    "  \"fiml\" on a balanced panel, \"sml\" otherwise), which estimates all\n",
+    "  four variance components jointly by maximum likelihood.",
+    call. = FALSE
+  )
 }

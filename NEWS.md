@@ -2,6 +2,57 @@
 
 A feature release. In brief:
 
+* **`psfm()` died with "system is exactly singular" when a factor was only
+  partly collinear between individuals.** Reported from use: `factor(year)` on
+  an unbalanced panel, where the between-individual means of the year dummies
+  are rank deficient. The guard added in 1.1.5 detected this correctly and
+  printed an accurate warning, then did nothing, because it could only express
+  the fix by deleting whole formula **terms** -- and 11 of `factor(year)`'s 24
+  dummies being collinear names no term that can be deleted without discarding
+  the 13 identified ones too. `plm::ercomp()` was then handed the same singular
+  design and failed inside `solve()`. The starting-value design is now reduced
+  at **column** granularity (`.re_start_design()`), so the identified dummies
+  survive, the dropped ones take their starting values from a pooled OLS fit as
+  documented, and the likelihood still uses the formula as written. This was a
+  no-op for every partly-collinear factor, which is the common case -- a fully
+  collinear term was the only shape the old path could handle.
+
+  Two consequences of that path are fixed with it. `collinear_action =
+  "warn_drop"` silently dropped nothing in the same situation, and now says so
+  instead. And `"GTRE_SEQ1"`/`"GTRE_SEQ2"` took the frontier standard errors
+  from the starting-value fit by **position**, which errored on the length
+  mismatch once the design was reduced; they are matched by name, with `NA` for
+  columns that fit could not identify rather than a neighbour's value.
+
+* **`"GTRE_SEQ1"` and `"GTRE_SEQ2"` are inconsistent for fixed `T`, and now say
+  so.** Both hand `plm`'s random-effects output to a second stage that treats it
+  as draws from the latent composite errors. It is not: `alpha_hat` is a
+  shrunken BLUP and `eps_hat` a quasi-demeaned residual, which attenuates the
+  third central moment by about 0.81 at \eqn{T = 10} on the transient side and
+  scales the persistent side by \eqn{c^2} and \eqn{c^3}. No factor tends to 1 as
+  \eqn{N} grows at fixed \eqn{T}, so both converge to the wrong constants --
+  \eqn{\sigma^2_{hr}} settles near 0.68 against a true 0.80. Feeding the same two
+  second stages the latent draws instead recovers the truth at the \eqn{\sqrt{N}}
+  rate, which puts the fault in the shared first stage rather than in the
+  likelihood or the moment inversion. Each call now warns and points at
+  `model_name = "GTRE"`. This is a documentation and diagnosis change: the
+  estimators are unchanged, and are the large-T procedures they always were.
+
+* **`"GTRE_SEQ2"`'s standard errors were wrong in four ways.** The variance of
+  the third central moment used `mu_3^3` for \eqn{\mu_3^2} and `9 * mu_2` for
+  \eqn{9\mu_2^3} (also dimensionally inconsistent); the delta-method
+  cross-terms were missing their factor of 2; `beta_0`'s error added a standard
+  error to a sum of variances instead of its square; and both
+  \eqn{\partial\gamma} derivatives were garbled, squaring neither denominator and
+  carrying \eqn{m_3} where \eqn{m_2} belongs. Against the Monte Carlo sampling
+  standard deviation the reported error for `gamma_uv` was **16 times too
+  large** and `sigmaSq_uv` 1.37 times; corrected, both land within 2%. The
+  algebra now lives in `.gtre_two_step_se()` so it is unit-tested, and returns
+  `NA` at the wrong-skew boundary where it is not differentiable rather than
+  `Inf`. `"GTRE_SEQ2"` also reported a `lambda` computed from a *different*
+  (likelihood) decomposition than the sigmas printed beside it; it now comes
+  from its own.
+
 * **`ttsfm()` returned an infinite penalty on unusable parameter draws, in
   seven places.** `TTNE`, `TTHN` and `TTNLS` each returned
   `.Machine$double.xmax` when a draw produced non-finite contributions. That is

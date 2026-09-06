@@ -97,6 +97,37 @@ The \eqn{(T+1)}-dimensional normal CDF this requires would normally be the bottl
 
 Note that \eqn{\sigma_r} and \eqn{\sigma_h} enter the density only through \eqn{\sigma_r^2 + \sigma_h^2}; their separation rests entirely on the skewness term. That pair is therefore the least precisely estimated part of the model even when the fit is at the global optimum, which is consistent with the confounding between latent heterogeneity and persistent inefficiency reported in the source papers.
 
+\bold{\code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} are large-T estimators.} Both take
+the random-effects decomposition from \code{plm} and hand its two output series to a
+second stage -- \code{"GTRE_SEQ1"} fits an intercept-only normal--half-normal likelihood
+to each, \code{"GTRE_SEQ2"} inverts their second and third moments. The second stage
+treats those series as if they were draws from \eqn{v_{it}-u_{it}} and \eqn{r_i-h_i},
+and at finite \eqn{T} they are not: \code{alpha_hat} is the shrunken predictor
+\eqn{c\,(\alpha_i+\bar e_i)} with \eqn{c = T\sigma_\alpha^2/(T\sigma_\alpha^2+\sigma_\epsilon^2)},
+and \code{eps_hat} is the quasi-demeaned residual
+\eqn{(1-\theta)\alpha_i + e_{it} - \theta\bar e_i} with
+\eqn{\theta = 1-\sigma_\epsilon/\sqrt{T\sigma_\alpha^2+\sigma_\epsilon^2}}.
+
+Relative to the latent draws this attenuates the third central moment on the
+\eqn{\epsilon} side by \eqn{(1-\theta/T)^3+(T-1)(-\theta/T)^3} (about 0.81 at
+\eqn{T=10}) and scales the \eqn{\alpha} side by \eqn{c^2} and \eqn{c^3}. None of these
+factors tends to 1 as \eqn{N} grows with \eqn{T} fixed, so \bold{both estimators
+converge to the wrong constants and are inconsistent for fixed \eqn{T}}; each call
+warns accordingly. On the package's own convergence design (\eqn{T=10},
+\eqn{\sigma_h=0.8}, \eqn{\sigma_r=0.4}) the estimates settle at
+\eqn{\gamma_{uv}\approx0.87} against 0.917 and \eqn{\sigma^2_{hr}\approx0.68} against
+0.80, and the log MSE-on-log \eqn{N} slopes are near zero rather than \eqn{-1}. The
+same routines applied to the latent draws themselves recover the truth at the
+\eqn{\sqrt{N}} rate, which locates the problem in the first-stage decomposition rather
+than in either second stage. Raising \eqn{T} removes the bias; raising \eqn{N} only
+sharpens it. For a consistent alternative use \code{model_name = "GTRE"}, which
+estimates all four variance components jointly.
+
+The standard errors these two report are delta-method errors built from the
+\emph{iid} moment variances, so they describe sampling variability around each
+estimator's probability limit, not around the truth. They are also optimistic on the
+\eqn{\epsilon} side, whose \eqn{n} residuals are correlated within firm.
+
 \bold{The two true-fixed-effects estimators, and a change of meaning in \code{"TFE"}.} Both \code{"TFE"} and \code{"TFE_WMLE"} fit the same model,
 \deqn{y_{it} = \alpha_i + x_{it}'\beta + v_{it} - u_{it},\quad v \sim N(0,\sigma_v^2),\ u \sim N^+(0,\sigma_u^2),}
 with \eqn{\alpha_i} an unrestricted individual effect; they differ in how they estimate it.

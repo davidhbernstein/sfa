@@ -407,6 +407,7 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
   sfa_eps <- sfa_alp <- exp_eta <- exp_u <- sigma_v <- sigma_u <-
     sigma_r <- sigma_h <- beta_0 <- lambda <- sigma <- start_v <- out <-
     plm_gtre <- beta_hat <- alpha_hat <- epsilon_hat <- beta_0_st <- beta_se <- NULL
+  beta_se_named <- NULL
 
   plm_tfe <- plm_fd <- NULL
 
@@ -416,25 +417,32 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
       plm_fd <- plm(formula_x, data, effect = "individual", model = "pooling")
     } else {
       ## Guard the random-effects starting-value regression against a
-      ## rank-deficient BETWEEN-individual design.
+      ## rank-deficient BETWEEN-individual design. The reduction happens at
+      ## COLUMN granularity (see .re_start_design): dropping whole terms cannot
+      ## express "keep 13 of factor(year)'s 24 dummies", so it left the singular
+      ## design untouched and plm::ercomp() then failed in solve().
       formula_start <- formula_x
+      data_start <- data
+      start_map <- NULL
       if (!is.null(collinear_chk) && length(collinear_chk$between_drop)) {
-        warning(.collinearity_message(collinear_chk, "start_only"), call. = FALSE)
-        keep_terms <- setdiff(
-          attr(stats::terms(formula_x), "term.labels"),
-          .terms_for_columns(formula_x, data, collinear_chk$between_drop)
-        )
-        formula_start <- stats::reformulate(if (length(keep_terms)) keep_terms else "1",
-          response = all.vars(formula_x)[1]
-        )
+        if (!isTRUE(collinear_chk$already_warned)) {
+          warning(.collinearity_message(collinear_chk, "start_only"), call. = FALSE)
+        }
+        rd <- .re_start_design(formula_x, data, collinear_chk$between_drop)
+        if (!is.null(rd)) {
+          formula_start <- rd$formula
+          data_start <- rd$data
+          start_map <- rd$map
+        }
       }
 
-      plm_gtre <- plm(formula_start, data, effect = "individual", model = "random")
+      plm_gtre <- plm(formula_start, data_start, effect = "individual", model = "random")
       beta_hat_raw <- if (isTRUE(intercept == 0)) {
-        plm(formula_start, data, effect = "individual")$coefficients
+        plm(formula_start, data_start, effect = "individual")$coefficients
       } else {
         plm_gtre$coefficients[-c(1)]
       }
+      if (!is.null(start_map)) beta_hat_raw <- .remap_start_names(beta_hat_raw, start_map)
       ## Re-expand to the FULL requested coefficient vector.
       beta_target <- if (isTRUE(intercept == 0)) x_vars_vec else x_vars_vec[x_vars_vec != "(Intercept)"]
       beta_hat <- .expand_start_beta(beta_hat_raw, beta_target, formula_x, data)
@@ -446,6 +454,12 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
         plm_gtre$coefficients[c(1)]
       }
       beta_se <- as.data.frame(summary(plm_gtre)[1])$coefficients.Std..Error
+      ## Named copy, so SEQ1/SEQ2 can align SEs to the REQUESTED columns even
+      ## when the starting-value regression was reduced.
+      beta_se_named <- stats::setNames(
+        summary(plm_gtre)$coefficients[, 2], rownames(summary(plm_gtre)$coefficients)
+      )
+      if (!is.null(start_map)) beta_se_named <- .remap_start_names(beta_se_named, start_map)
     }
   }
 
@@ -500,14 +514,14 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
   results <- list(
     sfa_eps, sfa_alp, exp_eta, exp_u, sigma_v, sigma_u, sigma_r,
     sigma_h, beta_0, lambda, sigma, start_v, out,
-    plm_gtre, beta_hat, alpha_hat, epsilon_hat, beta_0_st, beta_se,
+    plm_gtre, beta_hat, alpha_hat, epsilon_hat, beta_0_st, beta_se, beta_se_named,
     plm_tfe, plm_fd
   )
 
   names(results) <- c(
     "sfa_eps", "sfa_alp", "exp_eta", "exp_u", "sigma_v", "sigma_u", "sigma_r",
     "sigma_h", "beta_0", "lambda", "sigma", "start_v", "out",
-    "plm_gtre", "beta_hat", "alpha_hat", "epsilon_hat", "beta_0_st", "beta_se",
+    "plm_gtre", "beta_hat", "alpha_hat", "epsilon_hat", "beta_0_st", "beta_se", "beta_se_named",
     "plm_tfe", "plm_fd"
   )
   return(results)
