@@ -84,12 +84,14 @@ models. \emph{Review of Economics and Statistics} \bold{85}, 531--549.
 }
 \seealso{\code{\link{spec_test}}, \code{\link{pcomposed_model}}, \code{\link{sfm}}}
 \examples{
-d <- as.data.frame(data_gen_cs(N = 300, rand = 5, sig_u = 1, sig_v = 0.5,
+d <- as.data.frame(data_gen_cs(N = 200, rand = 5, sig_u = 1, sig_v = 0.5,
                                cons = 0.5, beta1 = 0.5, beta2 = 0.5,
                                a = 5, mu = 0.1))
 f <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d)
 \donttest{
-gof_test(f, data = d, B = 99, seed = 1)
+## Every bootstrap replication REFITS, so keep B small in an example; use
+## B = 999 for a real test.
+gof_test(f, data = d, B = 39, seed = 1)
 }
 gof_test(f, data = d, test = "chisq", null = "asymptotic")
 }

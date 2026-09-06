@@ -209,6 +209,20 @@ locally. The five new panel estimators are documented in `?psfm` with runnable
 examples rather than in the vignette, deliberately, to keep the build time where
 Uwe Ligges asked for it.
 
+## Check time, and where the expensive tests live
+
+The specification tests added in this release are validated by bootstraps and
+Monte Carlo studies that refit the model hundreds of times. Those are all
+behind `skip_on_cran()`, so **CRAN does not run them**: the four new test files
+take about **8 seconds** together under CRAN's conditions, against roughly
+twelve minutes locally with `NOT_CRAN=true`. The measured size and power tables
+they produce are recorded in the help pages and in `NEWS.md` rather than
+recomputed at check time.
+
+Examples are kept in proportion for the same reason. `?gof_test`'s bootstrap
+example uses `B = 39` at `n = 200` and runs in 2.2 seconds; the help text says
+to use `B = 999` for real work.
+
 ## Test environments
 
 * local macOS 26.5 (aarch64-apple-darwin20), R 4.5.2
