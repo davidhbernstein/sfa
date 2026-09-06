@@ -2041,16 +2041,11 @@
     g <- min(1, 1 / (m2 * (k * m3)^(-2 / 3) + (2 / pi)))
     ssq <- m2 + (2 / pi) * (k * m3)^(2 / 3)
 
-    ## Central moments of the implied normal-half-normal composite.
-    mu2 <- ssq * ((1 - g) + g * ((pi - 2) / pi))
-    mu3 <- ssq^(3 / 2) * (sqrt(2 / pi) * (1 - (4 / pi)) * g^(3 / 2))
-    mu4 <- ssq^2 * (3 * (1 - g)^2 + ((6 * (pi - 2) * g * (1 - g)) / pi) +
-      g^2 * (3 - (4 / pi) - (12 / pi^2)))
-    mu5 <- ssq^(5 / 2) * g^(3 / 2) * sqrt(2 / pi) *
-      (10 * (1 - (4 / pi)) * (1 - g) + (7 - (20 / pi) - (16 / pi^2)) * g)
-    mu6 <- ssq^3 * (15 * (1 - g)^3 + (45 * (pi - 2) * (1 - g)^2 * g / pi) +
-      15 * (3 - (4 / pi) - (12 / pi^2)) * (1 - g) * g^2 +
-      (15 - (6 / pi) - (100 / pi^2) - (40 / pi^3)) * g^3)
+    ## Central moments of the implied normal-half-normal composite, shared with
+    ## the COLS standard errors (.cols_se_nhn) so there is one derivation.
+    .m <- .nhn_central_moments(g, ssq)
+    mu2 <- .m[["mu2"]]; mu3 <- .m[["mu3"]]; mu4 <- .m[["mu4"]]
+    mu5 <- .m[["mu5"]]; mu6 <- .m[["mu6"]]
 
     var_m2 <- (mu4 - mu2^2) / nn
     var_m3 <- (mu6 - mu3^2 - 6 * mu2 * mu4 + 9 * mu2^3) / nn
@@ -2118,5 +2113,80 @@
     "  \"fiml\" on a balanced panel, \"sml\" otherwise), which estimates all\n",
     "  four variance components jointly by maximum likelihood.",
     call. = FALSE
+  )
+}
+
+
+## Central moments 2..6 of the normal-half-normal composite error, in the
+## (gamma, sigmaSq) parameterization. Factored out of .gtre_two_step_se() so
+## the COLS standard errors below use the SAME expressions rather than a second
+## hand-derivation of the same algebra.
+.nhn_central_moments <- function(g, ssq) {
+  mu2 <- ssq * ((1 - g) + g * ((pi - 2) / pi))
+  mu3 <- ssq^(3 / 2) * (sqrt(2 / pi) * (1 - (4 / pi)) * g^(3 / 2))
+  mu4 <- ssq^2 * (3 * (1 - g)^2 + ((6 * (pi - 2) * g * (1 - g)) / pi) +
+    g^2 * (3 - (4 / pi) - (12 / pi^2)))
+  mu5 <- ssq^(5 / 2) * g^(3 / 2) * sqrt(2 / pi) *
+    (10 * (1 - (4 / pi)) * (1 - g) + (7 - (20 / pi) - (16 / pi^2)) * g)
+  mu6 <- ssq^3 * (15 * (1 - g)^3 + (45 * (pi - 2) * (1 - g)^2 * g / pi) +
+    15 * (3 - (4 / pi) - (12 / pi^2)) * (1 - g) * g^2 +
+    (15 - (6 / pi) - (100 / pi^2) - (40 / pi^3)) * g^3)
+  c(mu2 = mu2, mu3 = mu3, mu4 = mu4, mu5 = mu5, mu6 = mu6)
+}
+
+## Coelli (1995, Appendix 1) standard errors for COLS, expressed in the
+## (sigma_v, sigma_u) parameterization sfm(estimator = "cols") reports rather
+## than the (gamma, sigma^2) one the paper writes them in.
+##
+## Most applications of COLS quote the OLS standard errors for the variance
+## parameters. Those are not appropriate: sigma_u and sigma_v are non-linear
+## functions of the residual moments m2 and m3, not regression coefficients.
+## The delta method on (m2, m3) is, with all of these divided by n,
+##
+##   V(m2) = mu4 - mu2^2,  V(m3) = mu6 - mu3^2 - 6 mu2 mu4 + 9 mu2^3,
+##   C(m2, m3) = mu5 - 4 mu2 mu3,
+##
+## and the higher central moments evaluated at the estimates themselves.
+## HALF-NORMAL ONLY: the paper derives it for that case and the moment
+## inversion is distribution-specific, so NE and NG keep NA and the bootstrap.
+.cols_se_nhn <- function(sigma_u, sigma_v, n) {
+  na3 <- c(sigma_v = NA_real_, sigma_u = NA_real_, eu = NA_real_)
+  if (!is.finite(sigma_u) || !is.finite(sigma_v) ||
+    sigma_u <= 0 || sigma_v <= 0 || !is.finite(n) || n < 5) {
+    return(na3)
+  }
+  s2u <- sigma_u^2
+  ssq <- s2u + sigma_v^2
+  g <- s2u / ssq
+  ## The shared formula ALREADY returns the production-frontier signs: its
+  ## (1 - 4/pi) factor is negative, so mu3 and mu5 come back negative. Flipping
+  ## them here would be wrong twice over.
+  m <- .nhn_central_moments(g, ssq)
+  mu2 <- m[["mu2"]]; mu3 <- m[["mu3"]]; mu4 <- m[["mu4"]]
+  mu5 <- m[["mu5"]]; mu6 <- m[["mu6"]]
+
+  Vm2 <- (mu4 - mu2^2) / n
+  Vm3 <- (mu6 - mu3^2 - 6 * mu2 * mu4 + 9 * mu2^3) / n
+  Cm <- (mu5 - 4 * mu2 * mu3) / n
+
+  ## sigma_u = (c m3)^(1/3) with c = 1/(sqrt(2/pi)(1 - 4/pi)); it depends on
+  ## m3 alone, which is why the wrong-skew boundary is a m3 condition.
+  ## cst is NEGATIVE, because 1 - 4/pi is, so cst^(1/3) is NaN in R even though
+  ## (cst * m3)^(1/3) is perfectly real. Write the derivative through sigma_u
+  ## instead: sigma_u^3 = cst * m3, so d sigma_u / d m3 = cst / (3 sigma_u^2),
+  ## which never takes a fractional power of a negative number.
+  cst <- 1 / (sqrt(2 / pi) * (1 - 4 / pi))
+  du_m3 <- cst / (3 * s2u)
+  ## sigma_v = sqrt(m2 - (1 - 2/pi) sigma_u^2)
+  cc <- 1 - 2 / pi
+  dv_m2 <- 1 / (2 * sigma_v)
+  dv_m3 <- -cc * sigma_u * du_m3 / sigma_v
+
+  var_u <- du_m3^2 * Vm3
+  var_v <- dv_m2^2 * Vm2 + dv_m3^2 * Vm3 + 2 * dv_m2 * dv_m3 * Cm
+  var_eu <- (2 / pi) * var_u ## E[u] = sigma_u sqrt(2/pi) shifts the intercept
+  c(
+    sigma_v = sqrt(max(0, var_v)), sigma_u = sqrt(max(0, var_u)),
+    eu = sqrt(max(0, var_eu))
   )
 }

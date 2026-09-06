@@ -25,17 +25,58 @@ A feature release. In brief:
   size, which is Coelli's recommendation. `NTN` fits get the two-restriction
   mixture `0.25/0.5/0.25` over `chi2(0,1,2)`.
 
-* **`cols_sfm()`** estimates the normal-half-normal frontier by corrected OLS
-  and reports the standard errors from Coelli's Appendix 1 (A15-A16) rather
-  than the OLS ones, which are not appropriate for `gamma` and `sigmaSq` --
-  those are non-linear functions of the residual moments, not regression
-  coefficients. Coelli's A13 inversion turned out to be the moment inversion
-  the package already carried as `.gtre_two_step()` (verified equal to 10
-  decimal places), and his A15 variance is the delta method whose GTRE_SEQ2
+* **`sfm(estimator = "cols")` now reports Coelli's analytic standard errors.**
+  It previously returned `NA` for `sigv` and `sigu` unless a bootstrap was
+  requested, because the OLS errors are not appropriate for them: those
+  parameters are non-linear functions of the residual moments `m2` and `m3`,
+  not regression coefficients. Coelli's Appendix 1 (A15-A16) gives the correct
+  delta-method variance and it is now filled in for `NHN`; the intercept
+  additionally carries the error in its `E[u]` shift. `NE` and `NG` keep `NA`
+  and the bootstrap, because the moment inversion -- and therefore the
+  variance -- is distribution-specific.
+
+  Checked against the nonparametric bootstrap that was already there, on the
+  same data: the analytic/bootstrap ratio for `sigu` is 1.047 at n = 200,
+  1.011 at n = 800 and 0.984 at n = 3200, which is an asymptotic
+  approximation behaving as one should.
+
+  Coelli's A13 inversion turned out to be the moment inversion the package
+  already carried as `.gtre_two_step()` (equal to ten decimal places, not
+  merely similar), and his A15 variance is the delta method whose GTRE_SEQ2
   implementation is corrected elsewhere in this release -- **including the
-  factor of 2 on the covariance term, which A15 independently confirms.**
-  A wrong-signed third moment is reported as the Type I failure it is, rather
-  than returned as a silent `sigma_u = 0`.
+  factor of 2 on the covariance term, which A15 independently confirms**, and
+  A16's `mu6 - mu3^2 - 6 mu2 mu4 + 9 mu2^3`, which confirms the other two
+  repairs. The central moments now live in one shared helper,
+  `.nhn_central_moments()`, rather than being derived twice.
+
+* **A composed-error CDF for every cross-sectional model**, `pcomposed_model()`
+  and `composed_cdf()`. `pcomposed()` covers the half-normal only, which is
+  enough for copulas but not for goodness-of-fit testing, where the CDF is
+  needed for whichever inefficiency distribution the model assumes. All
+  thirteen are covered: NHN, NTN, NE, NR, NU, NGE, NLN, NW, NG, NNAK, TSL,
+  THT and tHN.
+
+  Three parameterizations do not read the way their names suggest and are
+  taken from each likelihood rather than from the label: **`THT` lists `sigu`
+  before `sigv`**, the only model that does; **`NG`'s `sigu` is the gamma
+  scale** and its `mu` the shape; **`NNAK`'s `sigu` is the Nakagami spread**,
+  so `Omega = sigu^2`; and `NLN`'s `mu` is a meanlog.
+
+  **`THT` is not an independent convolution.** Tancredi's composed error is
+  skew-t, a scale mixture in which `v` and `u` are divided by the *same*
+  `sqrt(V/a)`. Treating it as t noise plus an independent half-normal -- which
+  is exactly what `tHN` is -- gets the log density wrong by up to 1.74. The
+  first draft did precisely that, and the check below is what caught it.
+
+  Verified three ways: against `pcomposed()` for the half-normal, agreeing to
+  3.5e-15 relative including a lower tail at `log F = -209`; against a
+  four-million-draw simulation for all thirteen models, maximum absolute error
+  4e-4 against a Monte Carlo standard error of 7.5e-4; and by numerically
+  differentiating the CDF and comparing with each model's own stored
+  log-density, which agrees to about 1e-8 for eleven of them. `NLN` and `NW`
+  differ by ~3e-3 because their likelihoods are simulated, not because the
+  models disagree.
+
 
 * **`psfm()` died with "system is exactly singular" when a factor was only
   partly collinear between individuals.** Reported from use: `factor(year)` on

@@ -436,7 +436,29 @@ sfm <- function(formula,
     }
 
     par_v <- c(CF$sigma_v, CF$sigma_u, CF$extra, CF$beta)
-    se_v <- c(NA_real_, NA_real_, if (is.null(CF$extra)) NULL else NA_real_, CF$se_beta)
+    ## Coelli (1995, Appendix 1): analytic delta-method errors for the variance
+    ## parameters, which are NOT the OLS ones -- sigma_u and sigma_v are
+    ## non-linear functions of the residual moments, not regression
+    ## coefficients. Half-normal only; NE and NG keep NA and the bootstrap.
+    .cse <- if (identical(model_name, "NHN")) {
+      .cols_se_nhn(CF$sigma_u, CF$sigma_v, length(Yc))
+    } else {
+      c(sigma_v = NA_real_, sigma_u = NA_real_, eu = NA_real_)
+    }
+    se_beta_c <- CF$se_beta
+    ## The intercept carries the OLS error PLUS the error in the E[u] shift.
+    if (!is.na(icol) && icol >= 1 && icol <= length(se_beta_c) &&
+      is.finite(.cse[["eu"]])) {
+      .v_ols <- tryCatch(diag(chol2inv(qr.R(stats::lm.fit(Xc, Yc)$qr)))[icol] *
+        sum((CF$residuals - mean(CF$residuals))^2) / (length(Yc) - ncol(Xc)),
+      error = function(e) NA_real_
+      )
+      se_beta_c[icol] <- sqrt(.v_ols + .cse[["eu"]]^2)
+    }
+    se_v <- c(
+      .cse[["sigma_v"]], .cse[["sigma_u"]],
+      if (is.null(CF$extra)) NULL else NA_real_, se_beta_c
+    )
     nm_v <- c("sigv", "sigu", names(CF$extra), x_vars_vec)
 
     ## Optional nonparametric bootstrap.

@@ -67,7 +67,7 @@ Gourieroux, C., Holly, A. and Monfort, A. (1982). Likelihood ratio test,
 Wald test, and Kuhn-Tucker test in linear models with inequality constraints
 on the regression parameters. \emph{Econometrica} \bold{50}, 63--80.
 }
-\seealso{\code{\link{skewness_test}}, \code{\link{spec_test}}, \code{\link{cols_sfm}}}
+\seealso{\code{\link{skewness_test}}, \code{\link{spec_test}}, \code{\link{sfm}}}
 \examples{
 d <- data_gen_cs(N = 300, rand = 7, sig_u = 1, sig_v = 0.5, cons = 0.5,
                  beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.1)
