@@ -180,9 +180,10 @@ second-step variance. Where the characteristics are correlated with the
 regressors the uncorrected standard error is 52% too large and the
 uncorrected test's size collapses to zero; the corrected one is calibrated.
 Its help page states plainly that the corrected test is conservative in
-simulation (size 0.024-0.036 against a nominal 0.05) and that this gap against
-the paper's own figure has not been explained -- the naive branch does
-reproduce the paper's figure for the uncorrected test.
+simulation (size 0.024-0.036 against a nominal 0.05), that this gap against the
+paper's own figure is unexplained, and which two candidate explanations were
+tested and refuted. The naive branch does reproduce the paper's figure for the
+uncorrected test, and the entry is recorded as partial rather than done.
 
 **Chen and Wang (2012).** `cw_test()` tests the composed-error distribution
 without evaluating its density or distribution function at all: it compares

@@ -26,8 +26,12 @@ A feature release. In brief:
   analytic half-normal score to 1e-11, `gamma-hat` is unbiased and Gaussian,
   and an oracle test using the true sampling standard deviation has correct
   size (0.045) -- so the gap is in the variance estimate, not in `gamma-hat`
-  or the reference distribution, and it has not been closed. Read a rejection
-  as meaningful and a non-rejection as weak evidence.
+  or the reference distribution. Two candidate explanations were tested and
+  **both refuted**: the homoskedastic second-step variance (the paper's "OLS"
+  against its "OLS-H") changes nothing, and neither does using the Hessian
+  information rather than the outer product when forming `r_i`. The gap is
+  unexplained rather than merely unverified. Read a rejection as meaningful
+  and a non-rejection as weak evidence.
 
   Fits on the wrong-skew boundary are refused rather than answered: every
   `E[u|eps]` is then identical, so there is no estimated inefficiency for `z`

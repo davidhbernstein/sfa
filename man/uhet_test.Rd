@@ -56,10 +56,17 @@ first-step scores agree with an analytic half-normal score to
 \eqn{10^{-11}}, \eqn{\hat\gamma} is unbiased and Gaussian (kurtosis 2.92), and
 an oracle test using the true sampling standard deviation has correct size
 (0.045) -- so the discrepancy is in the variance estimate, not in
-\eqn{\hat\gamma} or the reference distribution. The likely cause is that the
-paper's \dQuote{OLS} variant assumes a homoskedastic second step where this
-implementation always uses the robust form, but that has not been confirmed.
-\bold{Treat a rejection as meaningful and a non-rejection as weak evidence.}
+\eqn{\hat\gamma} or the reference distribution: \eqn{cor(|\hat\gamma|, se)}
+is 0.375, which compresses the ratio to a standard deviation of 0.93.
+
+Two candidate explanations were tested and \bold{both refuted}. Replacing the
+robust second-step variance with the homoskedastic one -- the difference
+between the paper's \dQuote{OLS} and \dQuote{OLS-H} variants -- changes
+nothing (0.023/0.027/0.036 against 0.022/0.036/0.031). Nor does using the
+Hessian information in place of the outer-product one when forming \eqn{r_i}
+(0.020/0.026/0.026). The discrepancy is therefore \bold{unexplained}, not
+merely unverified. \bold{Treat a rejection as meaningful and a non-rejection
+as weak evidence.}
 
 Fits sitting on the wrong-skew boundary are refused rather than answered:
 \eqn{\hat u} is then identical for every firm, so there is no estimated
