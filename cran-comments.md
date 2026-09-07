@@ -172,6 +172,17 @@ four-million-draw simulation for all thirteen, and -- the check that matters --
 against each model's own stored log-density, which is what caught that
 Tancredi's `"THT"` is a scale mixture rather than an independent convolution.
 
+**A frontier that tolerates the wrong skewness.** `esfm()` implements Hafner,
+Manner and Simar (2018). When the residual skewness comes out with the sign
+the model does not expect -- a small-sample accident rather than evidence
+against the model -- the classical MLE collapses to OLS and reports every firm
+as fully efficient. This model nests the classical one and lets the skewness
+go either way, so such a sample yields a well-defined fit instead of a
+degenerate one. Its LR test of "no inefficiency" is an ordinary chi-square(1)
+rather than a chi-bar-square mixture, because the null is an interior point
+here. Their size table is replicated, and `?esfm` states plainly where the
+model is NOT an improvement on the classical one.
+
 **Kim and Schmidt (2008).** `uhet_test()` tests whether inefficiency depends
 on firm characteristics from the two-step procedure applied work already uses,
 with the variance correction that makes it valid: the JLMS predictor is a

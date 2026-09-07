@@ -2,6 +2,37 @@
 
 A feature release. In brief:
 
+* **A frontier that tolerates the wrong skewness**, `esfm()`, from Hafner,
+  Manner and Simar (2018). When the sample skewness of the residuals comes out
+  positive -- a small-sample accident, not evidence against the model -- the
+  classical MLE collapses: `sigma_u` is exactly zero, every firm is fully
+  efficient and the fit says nothing. This model keeps the frontier and widens
+  the distribution of `u`, with one parameter `gamma` whose SIZE is the scale
+  of inefficiency and whose SIGN chooses the direction of skewness. The
+  classical model is nested at `gamma > 0`.
+
+  On a 50-observation wrongly skewed draw, `sfm(model_name = "NHN")` returns
+  `sigma_u = 0.0003` and mean efficiency 0.99976; `esfm()` returns
+  `gamma = -0.57` with the slopes still near truth.
+
+  Because `gamma = 0` is an **interior** point rather than a boundary, the LR
+  test of "no inefficiency" is an ordinary `chi2(1)` -- not the chi-bar-square
+  mixture `inefficiency_test()` needs for the classical model. Size over 2000
+  replications on the paper's design, at a nominal 5%: 0.178 / 0.082 / 0.054 /
+  0.061 / 0.058 for n = 50 / 100 / 200 / 500 / 1000, against the paper's
+  0.152 / 0.076 / 0.061 / 0.054 / 0.053. Badly oversized below n = 100, usable
+  from n = 200 -- their own conclusion.
+
+  **It is not a free improvement everywhere.** The paper reports smaller bias
+  in mean efficiency than the classical model even when the population
+  skewness has the correct sign, and that reproduces when inefficiency is not
+  small: at `gamma = 0.5` the bias is -0.0001 at n = 100 against the classical
+  +0.021. But at `gamma = 0.3`, where 22% of samples are wrongly skewed, this
+  model overshoots the other way (-0.040 against +0.036) and is the worse of
+  the two at n = 50 (-0.080 against +0.044). A small true `gamma` lets it fit
+  sizeable inefficiency of either sign to noise. Use it when the wrong
+  skewness is the problem.
+
 * **Kim and Schmidt (2008) two-step test**, `uhet_test()`. The procedure
   applied work actually runs -- fit the frontier, regress the JLMS predictor
   on firm characteristics, test the slopes -- is invalid as usually performed,
