@@ -329,19 +329,41 @@ ivsfm <- function(formula,
   }
 
   ## Report on the scale users think in: sigma_u, sigma_v and the correlations
-  ## rho, not their unconstrained transforms. Delta-method for the scales;
-  ## rho's standard error is not transformed because r is a vector map whose
-  ## Jacobian is not diagonal -- reported as NA rather than as a wrong number.
+  ## rho, not their unconstrained transforms. Delta-method throughout.
+  ##
+  ## rho's standard errors used to be NA here, on the ground that r = t/s with
+  ## s = sqrt(1 + t't) is a vector map whose Jacobian is not diagonal. It is
+  ## not diagonal, but it is short:
+  ##
+  ##   dr_i/dt_j = delta_ij/s - t_i t_j/s^3   =>   J = (I - r r') / s,
+  ##
+  ## so Var(rho) = J V_tt J'. At the null rho = 0 the map is the identity, which
+  ## is what makes endogeneity_test() well behaved there. See
+  ## notes/code_history/ivsfm.md.
   th <- opt$par
   su <- exp(th[i_su])
   sv <- exp(th[i_sv])
   tt <- th[i_t]
-  rho <- tt / sqrt(1 + sum(tt^2))
+  ss <- sqrt(1 + sum(tt^2))
+  rho <- tt / ss
+
+  V <- if (optHessian == TRUE) {
+    suppressWarnings(tryCatch(solve(opt$hessian), error = function(e) NULL))
+  } else {
+    NULL
+  }
+  J_rho <- (diag(m) - tcrossprod(rho)) / ss
+  V_rho <- if (!is.null(V) && all(is.finite(V[i_t, i_t, drop = FALSE]))) {
+    J_rho %*% V[i_t, i_t, drop = FALSE] %*% t(J_rho)
+  } else {
+    matrix(NA_real_, m, m)
+  }
+  se_rho <- suppressWarnings(sqrt(diag(V_rho)))
 
   par <- c(th[i_b], su, sv, if (n_q) th[i_d] else NULL, rho)
   se <- c(
     st_err[i_b], su * st_err[i_su], sv * st_err[i_sv],
-    if (n_q) st_err[i_d] else NULL, rep(NA_real_, m)
+    if (n_q) st_err[i_d] else NULL, se_rho
   )
   rep_names <- c(
     colnames(X), "sigma_u", "sigma_v",
@@ -376,9 +398,13 @@ ivsfm <- function(formula,
   zz <- mus / sst
   jlms <- mus + sst * stats::dnorm(zz) / pmax(stats::pnorm(zz), cz$MIN_POSITIVE)
 
+  ## vcov_rho travels with the fit so endogeneity_test() can form the JOINT
+  ## Wald statistic; the diagonal alone would only give one-at-a-time t-ratios.
+  dimnames(V_rho) <- list(paste0("rho_", endog_v), paste0("rho_", endog_v))
+
   results <- list(
     t(out), c(opt), End.Time, start_v, model_name, formula, endogenous,
-    instruments, jlms, exp(-jlms), Pim, tcrossprod(Lc), rho, sc, b_2sls,
+    instruments, jlms, exp(-jlms), Pim, tcrossprod(Lc), rho, V_rho, sc, b_2sls,
     wrong_skew, S, n, uhet,
     out["par", ], out["st_err", ], out["t-val", ], call
   )
@@ -386,7 +412,7 @@ ivsfm <- function(formula,
   names(results) <- c(
     "out", "opt", "total_time", "start_v", "model_name", "formula",
     "endogenous", "instruments", "jlms", "efficiency", "Pi", "Sigma_xi",
-    "rho", "sigma_c", "b_2sls", "wrong_skew", "S", "nobs", "uhet",
+    "rho", "vcov_rho", "sigma_c", "b_2sls", "wrong_skew", "S", "nobs", "uhet",
     "coefficients", "std.errors", "t.values", "call"
   )
   results

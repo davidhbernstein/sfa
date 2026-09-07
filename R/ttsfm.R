@@ -7,6 +7,26 @@
 ## notes/code_history/ttsfm.md.
 .TT_PENALTY <- 1e12
 
+## rho reaches exactly +-1 once sigma_v is small enough relative to the two
+## one-sided scales -- measured at sigma_v = 2.2e-16 with sigma_u = sigma_w = 1
+## -- and pmnorm() is then handed a singular varcov. Hold it strictly inside.
+.TT_RHO_MAX <- 1 - 1e-12
+
+## Turn per-observation log-densities into the objective, or refuse.
+##
+## A non-finite entry means the draw could not be evaluated, and the only
+## honest answer is the finite barrier the optimisers already understand. What
+## this replaces substituted -sqrt(.Machine$double.xmax / n) for each one --
+## about -9.5e152 at n = 200 -- which is 140 orders of magnitude past
+## .TT_PENALTY and undid the very thing that penalty was introduced for. It
+## also mapped a +Inf log-density to a huge NEGATIVE one, hiding the cause.
+.tt_objective <- function(ll) {
+  if (is.null(ll) || !length(ll) || any(!is.finite(ll))) {
+    return(.TT_PENALTY)
+  }
+  -sum(ll)
+}
+
 ## Phi2(x, y; rho) at n points, without a per-observation loop.
 ##
 ## mnormt::pmnorm() vectorises over the ROWS of x for one varcov, but not over
@@ -139,7 +159,12 @@ ttsfm <- function(formula,
     plm_lm$coefficients[x_vars_vec][-1]
   }
   beta_0 <- beta_0_st
-  sigma_v <- .2
+  ## The likelihood reads this slot as log(sigma_v) -- every branch below forms
+  ## sigv as exp(p[nr + 1]). The value 0.2 was carried over from the reference
+  ## implementation in `base code/ttsfm/2TierR.Rnw`, which parameterises sigma_v
+  ## DIRECTLY, so the optimiser was in fact starting at exp(0.2) = 1.22 rather
+  ## than at 0.2 -- four times the truth on the package's own TTHN design.
+  sigma_v <- log(0.2)
 
   ## Starting vector
   if (isTRUE(is.numeric(start_val))) {
@@ -207,18 +232,7 @@ ttsfm <- function(formula,
 
       ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize
       ## by default, see opts.R -- none of them flip the sign).
-      if (any(is.na(ll))) {
-        return(.TT_PENALTY)
-      }
-      if (is.null(ll)) {
-        return(.TT_PENALTY)
-      }
-
-      ll[ll == -Inf] <- -sqrt(.Machine$double.xmax / length(ll))
-      ll[ll == Inf] <- -sqrt(.Machine$double.xmax / length(ll))
-      ll[is.nan(ll)] <- -sqrt(.Machine$double.xmax / length(ll))
-
-      return(-sum(ll))
+      return(.tt_objective(ll))
     }
 
     Start.Time <- start.time()
@@ -299,11 +313,20 @@ ttsfm <- function(formula,
       opt <- opt00
     }
 
-    ## Guard against the "silently accept a failed optim() call" bug described
-    ## above.
+    ## Was a stop(); now a warning. The bug it was written for -- accepting a
+    ## FAILED stage 3 whose par/value/hessian were garbage -- is handled
+    ## upstream now: opt.optim() rebuilds at the stage-2 point whenever the
+    ## value or the Hessian is non-finite. What was left was over-strict, and it
+    ## was throwing away GOOD fits. L-BFGS-B returns code 52
+    ## (ABNORMAL_TERMINATION_IN_LNSRCH) whenever its line search meets a
+    ## discontinuity -- for TTHN, the -708 cliff the D floor used to create --
+    ## and it does so HAVING IMPROVED the objective. Measured: N = 400 seed 23
+    ## and N = 800 seed 23 both returned code 52 with usable estimates where
+    ## the stop() had aborted the fit outright. A non-zero code is information
+    ## worth printing, not a reason to discard the answer.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
-      stop(sprintf(
-        "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
+      warning(sprintf(
+        "ttsfm() %s: the final optimizer stage returned a non-zero convergence code (optim() message: \"%s\"). L-BFGS-B reports this whenever its line search meets a discontinuity, usually having improved the objective, so the estimates below are reported rather than discarded -- but check them, and consider a different formula, starting values or seed.",
         model_name, if (!is.null(opt$message)) opt$message else "unknown"
       ), call. = FALSE)
     }
@@ -423,9 +446,15 @@ ttsfm <- function(formula,
       nzu <- n_z_vars ## number of determinants for u component
       nzw <- n_zp_vars ## number of determinants for w component
 
-      sigv <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-      sigu <- .z_sigma((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
-      sigw <- .z_sigma((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      ## Clip the linear predictors BEFORE exponentiating. The TTNE branch
+      ## above already clips its exponentials at EXP_CLIP_UPPER; this branch
+      ## did not, so an eta above 709 gave sigu = Inf and every quantity below
+      ## it became NaN -- reaching the objective as a fabricated number rather
+      ## than as a refusal.
+      ec <- .SFA_CONSTANTS$EXP_CLIP_UPPER
+      sigv <- exp(min(p[nr + 1], ec)) ## Assume homoscedastic two sided component
+      sigu <- .z_sigma(pmin((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]), ec))
+      sigw <- .z_sigma(pmin((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]), ec))
 
       ## Numerical safety, same rationale as the analogous fix in the TTNE
       ## branch above: theta1/theta2/omega1/omega2 below divide by sigv.
@@ -443,8 +472,8 @@ ttsfm <- function(formula,
       lambda1 <- (theta2 / theta1) * sqrt(1 + theta1^2 + theta2^2)
       lambda2 <- (theta1 / theta2) * sqrt(1 + theta1^2 + theta2^2)
 
-      rho1 <- lambda1 / sqrt(1 + lambda1^2)
-      rho2 <- -lambda2 / sqrt(1 + lambda2^2)
+      rho1 <- pmin(pmax(lambda1 / sqrt(1 + lambda1^2), -.TT_RHO_MAX), .TT_RHO_MAX)
+      rho2 <- pmin(pmax(-lambda2 / sqrt(1 + lambda2^2), -.TT_RHO_MAX), .TT_RHO_MAX)
 
       x1 <- e / omega1
       x2 <- e / omega2
@@ -454,32 +483,42 @@ ttsfm <- function(formula,
       biv_cdf <- function(xvec, rhovec) .tt_biv(xvec, 0, rhovec)
 
       ## Defensive tryCatch: a pathological parameter draw during optimization
-      ## (e.g.
-      D <- suppressWarnings(tryCatch(
-        biv_cdf(x1, rho1) - biv_cdf(x2, rho2),
+      ## can make pmnorm() itself throw.
+      PP <- suppressWarnings(tryCatch(
+        list(p1 = biv_cdf(x1, rho1), p2 = biv_cdf(x2, rho2)),
         error = function(e) NULL
       ))
-      if (is.null(D)) {
+      if (is.null(PP)) {
         return(.TT_PENALTY)
       }
-      D <- pmax(D, .Machine$double.xmin)
+      D <- PP$p1 - PP$p2
+
+      ## D is a difference of two bivariate normal CDFs of the same order of
+      ## magnitude, and in parts of the parameter space it cancels completely:
+      ## at sigma_v = 0.3, sigma_u = 1, sigma_w = 0.2 on a 400-observation draw,
+      ## one observation's D comes back as exactly 0 while both CDFs are O(0.1).
+      ##
+      ## pmax(D, .Machine$double.xmin) does NOT repair that. It invents
+      ## log(D) = -708.4 for the observation, and one such observation moved the
+      ## summed objective by 715 log-units in a surface whose real curvature is
+      ## a few units per 0.1 step in log sigma. That cliff is what L-BFGS-B
+      ## reports as ABNORMAL_TERMINATION_IN_LNSRCH. It also treated a legitimate
+      ## small D, a rounded zero and a negative rounding artefact identically.
+      ##
+      ## So: refuse the draw instead. The tolerance is the rounding error of the
+      ## subtraction itself, which leaves genuinely tiny probabilities alone --
+      ## a D of 6e-94 where both CDFs are also ~1e-94 has full significance and
+      ## is kept.
+      dtol <- 8 * .Machine$double.eps * pmax(abs(PP$p1), abs(PP$p2))
+      if (any(!is.finite(D)) || any(D <= pmax(dtol, .Machine$double.xmin))) {
+        return(.TT_PENALTY)
+      }
 
       ll <- log(2 * sqrt(2) / sqrt(pi)) - log(s) - (e^2) / (2 * s^2) + log(D)
 
       ## Same minimizer-sign convention as the TTNE branch above: return the
       ## NEGATIVE summed log-likelihood (bobyqa/psoptim/optim all minimize fn).
-      if (any(is.na(ll))) {
-        return(.TT_PENALTY)
-      }
-      if (is.null(ll)) {
-        return(.TT_PENALTY)
-      }
-
-      ll[ll == -Inf] <- -sqrt(.Machine$double.xmax / length(ll))
-      ll[ll == Inf] <- -sqrt(.Machine$double.xmax / length(ll))
-      ll[is.nan(ll)] <- -sqrt(.Machine$double.xmax / length(ll))
-
-      return(-sum(ll))
+      return(.tt_objective(ll))
     }
 
     Start.Time <- start.time()
@@ -559,8 +598,8 @@ ttsfm <- function(formula,
     ## See the identical guard in the TTNE branch above for the full
     ## explanation.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
-      stop(sprintf(
-        "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
+      warning(sprintf(
+        "ttsfm() %s: the final optimizer stage returned a non-zero convergence code (optim() message: \"%s\"). L-BFGS-B reports this whenever its line search meets a discontinuity, usually having improved the objective, so the estimates below are reported rather than discarded -- but check them, and consider a different formula, starting values or seed.",
         model_name, if (!is.null(opt$message)) opt$message else "unknown"
       ), call. = FALSE)
     }
@@ -779,8 +818,8 @@ ttsfm <- function(formula,
     ## See the identical guard in the TTNE branch above for the full
     ## explanation.
     if (optHessian == TRUE && !is.null(opt$convergence) && opt$convergence != 0) {
-      stop(sprintf(
-        "ttsfm() %s: final optimizer stage failed (optim() message: \"%s\"). This can happen when a fit approaches a degenerate boundary (e.g. one variance component -> 0); try a different formula/starting values, or refit with a different random seed if using simulated data.",
+      warning(sprintf(
+        "ttsfm() %s: the final optimizer stage returned a non-zero convergence code (optim() message: \"%s\"). L-BFGS-B reports this whenever its line search meets a discontinuity, usually having improved the objective, so the estimates below are reported rather than discarded -- but check them, and consider a different formula, starting values or seed.",
         model_name, if (!is.null(opt$message)) opt$message else "unknown"
       ), call. = FALSE)
     }

@@ -124,11 +124,18 @@ variable (absent for \code{"C2SLS"}). Alongside the usual components:
 \item{wrong_skew}{Whether the 2SLS residuals are skewed the wrong way.}
 \item{jlms, efficiency}{\eqn{E[u_i \mid \varepsilon_i, \xi_i]} and
   \code{exp(-jlms)}.}
+\item{vcov_rho}{The full \eqn{q \times q} covariance of \eqn{\hat\rho}, which
+  \code{\link{endogeneity_test}} needs for the joint Wald statistic.}
 
-The standard error of \eqn{\rho} is reported as \code{NA}: \eqn{\rho} is
-recovered from an unconstrained vector through a map whose Jacobian is not
-diagonal, and a delta-method value computed as though it were would be wrong.
-Bootstrap it if you need it.
+\bold{Standard errors for \eqn{\rho}} arrived in 1.2.0. They were previously
+reported as \code{NA}, on the ground that \eqn{\rho = t/\sqrt{1+t't}} has a
+non-diagonal Jacobian and a delta-method value computed as though it were
+diagonal would be wrong. That much was true, but the Jacobian itself is short --
+\eqn{J = (I - \rho\rho')/s} with \eqn{s = \sqrt{1+t't}} -- so
+\eqn{\mathrm{Var}(\hat\rho) = J\,\mathrm{Var}(\hat t)\,J'} is available
+exactly. Checked against a numerical Jacobian in the tests, and validated
+end-to-end by the size of \code{\link{endogeneity_test}}, which is 0.046 at a
+nominal 5\% over 1000 replications.
 }
 \references{
 Amsler, C., Prokhorov, A. and Schmidt, P. (2016). Endogeneity in stochastic
@@ -141,7 +148,8 @@ variables in stochastic frontier models. \emph{Journal of Econometrics},
 Kutlu, L. (2010). Battese-Coelli estimator with endogenous regressors.
 \emph{Economics Letters}, \bold{109}(2), 79--81.
 }
-\seealso{\code{\link{sfm}} for the frontier without an endogeneity correction.}
+\seealso{\code{\link{endogeneity_test}} for the Wald test of whether the
+correction was needed at all; \code{\link{sfm}} for the frontier without one.}
 \examples{
 \donttest{
 set.seed(1)

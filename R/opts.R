@@ -64,6 +64,17 @@ opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.boby
 ## Stage 3 is a refinement pass over a point stages 1-2 already produced, so a
 ## failure here should cost the polish, not the fit. See
 ## notes/code_history/opts.md for the two failures this guards.
+##
+## NOT here, deliberately: a guard that falls back to the stage-2 point whenever
+## optim() ends at a higher objective than it started from. It looks obviously
+## right -- stages 1 and 2 refuse to move backwards, so why not stage 3 -- and it
+## is wrong, because "the point it started from" is not always trustworthy. On
+## sfma()'s own test data the NR likelihood has a spike: the stage-2 point
+## evaluates to -3.6e17, optim() correctly escapes it to 541.8, and such a guard
+## drags the fit back onto the spike and hands sfma() a log-likelihood of
+## +3.6e17. L-BFGS-B is a descent method; when it ends above its own start, that
+## is evidence about the START, not about the search. See
+## test-ttsfm-numerics.R, which pins this.
 opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose = verbose) {
   start_feval <- fn(start_v)
   opt <- NULL

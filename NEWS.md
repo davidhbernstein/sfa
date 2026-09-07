@@ -2,6 +2,66 @@
 
 A feature release. In brief:
 
+* **A Wald test for whether the endogeneity correction was needed**,
+  `endogeneity_test()`, from Hou, Ramalho and Roseta-Palma (2025). On an
+  `ivsfm()` fit it tests `H0: rho = 0` -- that the noise is uncorrelated with
+  the reduced-form errors, so a plain `sfm()` fit would have been consistent.
+  The null is INTERIOR, since rho lives in the open unit ball, so this is an
+  ordinary chi-square and not the chi-bar-square mixture
+  `inefficiency_test()` needs. Size 0.046 at a nominal 5% over 1000
+  replications; power 1.000 at rho = 0.4 and 0.8.
+
+* **`ivsfm()` now reports standard errors for `rho`.** They were `NA`, on the
+  ground that `rho = t/sqrt(1 + t't)` has a non-diagonal Jacobian and a
+  delta-method value computed as though it were diagonal would be wrong. The
+  first half was right and the conclusion was not: the Jacobian is
+  `J = (I - rho rho')/s`, so `Var(rho) = J Var(t) J'` exactly. Checked against
+  a numerical Jacobian, and validated end-to-end by the size of the test above
+  -- a wrong Jacobian would show up there as a mis-sized test. The full
+  covariance travels with the fit as `$vcov_rho`, which the joint test needs.
+
+* **`ttsfm(model_name = "TTHN")` no longer fabricates a log-density it cannot
+  compute.** The likelihood needs `D = Phi2(x1, 0; rho1) - Phi2(x2, 0; rho2)`,
+  a difference of two bivariate normal CDFs of the same order of magnitude, and
+  in parts of the parameter space it cancels completely: at
+  `sigma_v = 0.3, sigma_u = 1, sigma_w = 0.2` on a 400-observation draw one
+  observation's `D` comes back as exactly 0 while both CDFs are O(0.1).
+
+  `pmax(D, .Machine$double.xmin)` did not repair that -- it invented
+  `log(D) = -708.4` for the observation, and that single observation moved the
+  summed objective by **715 log-units** in a surface whose real curvature is a
+  few units per 0.1 step in log sigma. A cliff that size is what L-BFGS-B
+  reports as `ABNORMAL_TERMINATION_IN_LNSRCH`. `D` is now rejected when it
+  falls below the rounding error of its own subtraction, which leaves genuine
+  small probabilities alone: a `D` of 6e-94 where both CDFs are also ~1e-94 has
+  full significance and is kept.
+
+  Three smaller repairs in the same branch: the exponentials for
+  `sigma_v`/`sigma_u`/`sigma_w` are clipped at `EXP_CLIP_UPPER` as the `TTNE`
+  branch already clipped its own; `rho` is held strictly inside `(-1, 1)`,
+  which `sigma_v` small enough does reach; and the substitution of
+  `-sqrt(.Machine$double.xmax / n)` -- about `-9.5e152` at n = 200, 140 orders
+  of magnitude past the finite penalty it sat beside -- is gone, replaced by
+  that penalty. It had also mapped a `+Inf` log-density to a large NEGATIVE
+  one, so an unusable draw could be rewarded.
+
+  Measured on eight matched fits: one that previously failed outright now
+  converges, and one that previously returned `sigma_w = 0.044` against a truth
+  of 1 now returns 1.047 **with a better likelihood**. The other six are
+  unchanged. `sigma_v` still collapses toward zero on some draws; that is a
+  separate problem and is not fixed.
+
+* **`ttsfm()` no longer throws away a fit because of the optimizer's exit
+  code.** It was the only entry point calling `stop()` on ANY non-zero
+  convergence code, including L-BFGS-B's code 52,
+  `ABNORMAL_TERMINATION_IN_LNSRCH`, which it returns whenever its line search
+  meets a discontinuity and usually *having improved* the objective. The guard
+  was written when nothing checked `opt$convergence` at all; `opt.optim()` now
+  rebuilds at the stage-2 point whenever the value or the Hessian is
+  non-finite, so what was left of it only destroyed usable fits. Two of eight
+  TTHN test fits returned code 52 with sound estimates where the `stop()` had
+  aborted them.
+
 * **What skewness and kurtosis a pair of distributions can actually produce**,
   `moment_range()`, from Papadopoulos and Parmeter (2021). `spec_test()` already
   shipped their formal statistic; this is the range check that comes before it.
