@@ -249,21 +249,39 @@ none was removed.
 ## Vignette build time
 
 Recorded here because it was the blocker on the 1.1.5 submission. The single
-vignette is unchanged in this release and still renders in **13.9 seconds**
-locally. The five new panel estimators are documented in `?psfm` with runnable
-examples rather than in the vignette, deliberately, to keep the build time where
-Uwe Ligges asked for it.
+vignette is unchanged in this release. `checking re-building of vignette
+outputs` reports **21s CPU / 29s elapsed** on this machine; the render itself
+is 13.9 seconds and the rest is R startup and package loading. The five new
+panel estimators are documented in `?psfm` with runnable examples rather than
+in the vignette, deliberately, to keep the build time where Uwe Ligges asked
+for it.
 
 ## Check time, and where the expensive tests live
 
 The specification tests added in this release are validated by bootstraps and
 Monte Carlo studies that refit the model hundreds of times. Those are all
-behind `skip_on_cran()`, so **CRAN does not run them**: the seven new test
-files run in about **3 seconds** together under CRAN's conditions (measured
-2026-09-07 with `testthat::test_file()` and `NOT_CRAN` unset), against roughly
-twelve minutes locally with `NOT_CRAN=true`. The measured size and power tables
-they produce are recorded in the help pages and in `NEWS.md` rather than
-recomputed at check time.
+behind `skip_on_cran()`, so **CRAN does not run them**: the nine test files
+added for the specification tests and the two fixes above run in **2.9 seconds**
+together under CRAN's conditions (measured 2026-09-07 with
+`testthat::test_file()` and `NOT_CRAN` unset -- the slowest is
+`test-moment-range.R` at 0.98s and six of the nine are under a fifth of a
+second), against 45 minutes for the whole suite with `NOT_CRAN=true`. The
+measured size and power tables they produce are recorded in the help pages and
+in `NEWS.md` rather than recomputed at check time.
+
+The stage as a whole is what that buys. Measured on this machine, the same
+tarball:
+
+\tabular{lll}{
+ \tab `checking tests` \tab result \cr
+ CRAN's conditions (`NOT_CRAN` unset) \tab **[65s/65s] OK** \tab
+   `FAIL 0 | WARN 3 | SKIP 289 | PASS 1929` \cr
+ locally with `NOT_CRAN=true` \tab [45m/45m] OK \tab
+   `FAIL 0 | WARN 46 | SKIP 8 | PASS 3368`
+}
+
+So the validation work is real and is run here, and CRAN pays 65 seconds for
+the contract tests rather than 45 minutes for the Monte Carlo behind them.
 
 Examples are kept in proportion for the same reason. `?gof_test`'s bootstrap
 example uses `B = 39` at `n = 200` and runs in 2.2 seconds; the help text says
@@ -278,36 +296,50 @@ to use `B = 999` for real work.
 
 ## R CMD check results
 
-`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 26.5:
-**0 errors | 0 warnings | 2 notes**, both of which are properties of the check
-machine rather than of the package.
+`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 26.5, on a tarball
+built WITH the vignette: **0 errors | 0 warnings | 1 note**, and that note is
+a property of the check machine rather than of the package.
 
-1. `checking CRAN incoming feasibility ... NOTE` --- reports the maintainer
-   address, and that the package has a `VignetteBuilder` field but no prebuilt
-   vignette index. The second half is an artefact of checking with
-   `--no-build-vignettes`: pandoc is not installed on this machine, so the
-   vignette cannot be built here. It builds on all five GitHub Actions
-   platforms and on win-builder.
+`checking HTML version of manual ... NOTE` --- HTML Tidy on this machine is
+not recent enough and package `V8` is unavailable, so the HTML-validation and
+math-rendering sub-checks are skipped rather than failed.
 
-   The "Days since last update" note is **not** raised. It was when this file
-   was first written; 1.1.5 is now twelve days old.
+Every other stage is `OK`, including `checking CRAN incoming feasibility`,
+`checking top-level files`, `checking files in 'vignettes'`,
+`checking package vignettes` and
+`checking re-building of vignette outputs ... [21s/29s] OK`. The "Days since
+last update" note is **not** raised.
 
-2. `checking top-level files ... NOTE` --- `README.md` and `NEWS.md` cannot be
-   checked without pandoc. Same cause as above.
+An earlier version of this file reported two further notes and two warnings,
+all four saying in different words that the vignette had not been built and
+that `README.md`/`NEWS.md` could not be checked. They were artefacts of
+checking with `--no-build-vignettes`, which was being used because pandoc was
+believed to be absent from this machine. It is present, and the checks above
+were run with the vignette built, so none of the four arises. The correction
+is recorded here rather than silently dropped because the earlier text asked
+the reviewer to discount four things that do not happen.
 
-Two `WARNING`s also appear locally, both saying that `inst/doc` does not exist
-and that `intro_to_psfm.Rmd` has no rendered output. Both are the same missing
-pandoc. They do not appear where the vignette can be built.
+`checking tests ... [45m/45m] OK` under `NOT_CRAN=true`, which runs the Monte
+Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 46 | SKIP 8 |
+PASS 3368`. Under CRAN's own conditions the same stage is **65 seconds** with
+3 warnings; see "Check time" above. The 46 warnings are deliberate
+diagnostics being exercised by the
+tests that exist to fire them --- boundary reports from Greene's true fixed
+effects likelihood and from `GTRE`, the wrong-skew report from `npsfm("FLW")`,
+and the `model_name = "TFE"` rename notice --- together with warnings raised
+by `plm` and by `optim()`'s numerical Hessian stepping outside its own box.
+None accompanies a failed expectation.
 
-`checking examples ... OK` and `checking examples with --run-donttest ... OK`.
-The examples that dominate that stage, measured from `sfa-Ex.timings`:
+`checking examples ... OK` and `checking examples with --run-donttest ...
+[267s] OK`. The examples that dominate that stage, measured from
+`sfa-Ex.timings`:
 
 \tabular{ll}{
- `influence_sfa` \tab 76 s \cr
- `simulation_se` \tab 38 s \cr
- `zsfm` \tab 23 s \cr
- `PL80_MVTN` \tab 15 s \cr
- `lcsfm_homogeneity` \tab 14 s
+ `influence_sfa` \tab 79 s \cr
+ `simulation_se` \tab 37 s \cr
+ `zsfm` \tab 20 s \cr
+ `PL80_MVTN` \tab 19 s \cr
+ `lcsfm_homogeneity` \tab 16 s
 }
 
 All are inside `\donttest{}`. They fit models by simulated maximum likelihood
@@ -325,16 +357,13 @@ Two examples were cut for this submission after measuring rather than
 estimating: `copsfm` from **239 s to 7 s**, by moving its example from n = 4000
 at the default 128 quadrature nodes to n = 600 at 64 -- the release notes
 already record that the quadrature is converged by 64, so nothing is lost --
-and `influence_sfa` from 116 s to 76 s. The whole `--run-donttest` stage falls
-from 511 s to about 240 s as a result.
+and `influence_sfa` from 116 s to 79 s. The whole `--run-donttest` stage falls
+from 511 s to 267 s as a result.
 
-Not reproduced locally, and expected on the submission machine:
-`checking HTML version of manual ... NOTE`, reporting that HTML Tidy is not
-recent enough and that package `V8` is unavailable, so those two sub-checks are
-skipped rather than failed; and `checking for future file timestamps ... NOTE`
-when the clock-check web service is unreachable. Both are properties of the
-machine. The check above was run with `--no-manual`, so the first did not
-arise.
+One further note is expected on the submission machine and did not arise here:
+`checking for future file timestamps ... NOTE`, raised when the clock-check
+web service is unreachable.
+
 
 ## Notes for the reviewer
 
