@@ -2,6 +2,30 @@
 
 A feature release. In brief:
 
+* **What skewness and kurtosis a pair of distributions can actually produce**,
+  `moment_range()`, from Papadopoulos and Parmeter (2021). `spec_test()` already
+  shipped their formal statistic; this is the range check that comes before it.
+  Because the variance share `R` lies in `(0,1)`, the composed error can never
+  be more skewed than `u` itself -- Normal-Half-Normal is confined to
+  `gamma1 in (-0.995, 0)`, Normal-Exponential to `(-2, 0)` -- so residual
+  moments outside that set refute the pair with no test statistic involved.
+  That is their Type II failure, alongside the Type I failure of wrong skew.
+
+  Five noise and five inefficiency distributions, including the two whose
+  shape is a free parameter: the truncated normal sweeps
+  `gamma1(u) in (0, 2)` and `gamma2(u) in (-0.243, 6)` and is the only `u`
+  here whose composed error can be platykurtic under normal noise, while the
+  gamma is unbounded in both and so can **never** suffer a Type II failure.
+  The kurtosis range is not the interval between the two components: with
+  leptokurtic noise it dips below both, to `0.674` for Laplace noise with a
+  half-normal `u` against the half-normal's own `0.869`.
+
+  **It is a diagnostic, not a test, and the print method says so.** PP2021's
+  Tables 1-5 replicate -- their population rows exactly, and Tables 2, 3 and 5
+  cell for cell -- and they show the range check over-rejects: with correctly
+  specified data at `n = 200` and SNR 3, the sample excess kurtosis leaves its
+  theoretical range 26% of the time. Use `spec_test()` for the p-value.
+
 * **A frontier that tolerates the wrong skewness**, `esfm()`, from Hafner,
   Manner and Simar (2018). When the sample skewness of the residuals comes out
   positive -- a small-sample accident, not evidence against the model -- the

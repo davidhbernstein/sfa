@@ -40,7 +40,7 @@ Schmidt, P. and Lin, T.-F. (1984). Simple tests of alternative specifications in
 
 Waldman, D.M. (1982). A stationary point for the stochastic frontier likelihood. \emph{Journal of Econometrics}, 18(2), 275--279.
 }
-\seealso{\code{\link{sfm}}, \code{\link{sfa_diagnostics}}}
+\seealso{\code{\link{moment_range}} and \code{\link{spec_test}} for the Type II counterpart, \code{\link{sfm}}, \code{\link{sfa_diagnostics}}}
 \examples{
 \donttest{
 cs <- data_gen_cs(N = 200, rand = 1, sig_u = 0.3, sig_v = 0.4, cons = 0.5,

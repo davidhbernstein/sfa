@@ -164,6 +164,17 @@ asymptotic KS p-value: with parameters estimated the Kolmogorov distribution
 does not apply, Bai's (2003) correction is not implemented, and `NA` is
 returned rather than a number that would look valid.
 
+**And the range check that precedes the pair test.** `moment_range()` reports,
+for each of 25 pairs of noise and inefficiency distributions, the skewness and
+excess kurtosis the composed error can attain at all -- Papadopoulos and
+Parmeter (2021). Because the variance share lies in the unit interval, the
+composed error can never be more skewed than the inefficiency term itself, so
+residual moments outside that set refute a pair without any test statistic.
+Their Tables 1-5 replicate; the population rows exactly, three of the five
+tables cell for cell. The function is documented as a diagnostic and not a
+test, with the measured over-rejection rates in `?moment_range`, because that
+is the paper's own finding and the reason `spec_test()` exists.
+
 This needed a **composed-error CDF for every model**, `pcomposed_model()` and
 `composed_cdf()`, where `pcomposed()` covered the half-normal alone. All
 thirteen cross-sectional models are supported. It is verified against
@@ -247,8 +258,9 @@ Uwe Ligges asked for it.
 
 The specification tests added in this release are validated by bootstraps and
 Monte Carlo studies that refit the model hundreds of times. Those are all
-behind `skip_on_cran()`, so **CRAN does not run them**: the four new test files
-take about **8 seconds** together under CRAN's conditions, against roughly
+behind `skip_on_cran()`, so **CRAN does not run them**: the seven new test
+files run in about **3 seconds** together under CRAN's conditions (measured
+2026-09-07 with `testthat::test_file()` and `NOT_CRAN` unset), against roughly
 twelve minutes locally with `NOT_CRAN=true`. The measured size and power tables
 they produce are recorded in the help pages and in `NEWS.md` rather than
 recomputed at check time.

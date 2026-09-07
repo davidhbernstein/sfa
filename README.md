@@ -349,6 +349,7 @@ defensible at all.
 |---|---|
 | `TIC()`, `vuong()` | Which of two non-nested specifications fits better, without assuming either is correct |
 | `spec_test()`, `spec_test_all()` | Is this *pair* of noise/inefficiency distributions defensible, from OLS residuals alone |
+| `moment_range()` | Can this pair *produce* the residuals' skewness and kurtosis at all — the range check that precedes the test |
 | `sfma()` | What if the data does not identify one — average over distributions instead of choosing |
 | `lcsfm_homogeneity()` | Does a latent-class fit beat a single technology |
 | `gof_test()` | Is the assumed *inefficiency distribution* right, holding normal noise fixed |
@@ -375,6 +376,7 @@ vuong(fit_hn, fit_e)                            # neither assumed correct
 influence_sfa(fit_hn)                           # who is driving this fit
 
 spec_test_all(residuals(lm(y ~ x1 + x2, d)))    # before fitting anything
+moment_range(residuals(lm(y ~ x1 + x2, d)))    # which pairs are even possible
 sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NTN"))
 
 ## Is the assumed inefficiency distribution itself defensible? Hold the

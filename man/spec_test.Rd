@@ -62,7 +62,7 @@ Papadopoulos, A. and Parmeter, C.F. (2021). Type II failure and specification te
 
 Papadopoulos, A. and Parmeter, C.F. (2023). A specification test for the composed error term in the stochastic frontier model. \emph{Economics Letters}, 233, 111390.
 }
-\seealso{\code{\link{skewness_test}}, \code{\link{TIC}}, \code{\link{sfm}}}
+\seealso{\code{\link{moment_range}} for the attainable ranges the same two equations imply, \code{\link{skewness_test}}, \code{\link{TIC}}, \code{\link{sfm}}}
 \examples{
 \donttest{
 set.seed(2)
