@@ -230,6 +230,16 @@ With `uhet` the model becomes that of Amsler, Prokhorov and Schmidt (2017), in
 which the environmental variables entering the inefficiency scale may themselves
 be endogenous.
 
+`endogeneity_test()` asks whether the correction was needed at all — a Wald test
+of `H0: rho = 0`, i.e. that the noise is uncorrelated with the reduced-form
+errors and a plain `sfm()` fit would already have been consistent.
+
+```r
+fit <- ivsfm(y ~ x1 + x2, endogenous = ~ x2, instruments = ~ w1 + w2,
+             data = d, model_name = "IVLIML")
+endogeneity_test(fit)
+```
+
 ### `copsfm()` — dependence between `v` and `u`
 
 Drops the independence assumption between the noise and inefficiency
@@ -356,6 +366,7 @@ defensible at all.
 | `cw_test()` | The same question without ever forming the composed density, from OLS residuals |
 | `skewness_test()`, `inefficiency_test()` | Is there evidence of inefficiency at all (the wrong-skew problem) |
 | `uhet_test()` | Does inefficiency depend on firm characteristics (validly, from a two-step fit) |
+| `endogeneity_test()` | Was the endogeneity correction needed — is `rho` different from zero |
 | `esfm()`, `symmetry_test()` | Fit a frontier when the residual skewness has the *wrong* sign |
 | `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
 | `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |
