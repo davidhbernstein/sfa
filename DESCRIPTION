@@ -1,5 +1,5 @@
 Package: sfa
-Version: 1.2.0
+Version: 1.2.1
 Date: 2026-09-07
 Title: Stochastic Frontier Analysis
 Type: Package
@@ -9,7 +9,23 @@ Authors@R: c(person("David", "Bernstein",
               person("Christopher", "Parmeter", role = c("aut")),
               person("Alexander", "Stead", role = c("aut")))
 Maintainer: David Bernstein <davebernstein1@gmail.com>
-Description: Provides a user-friendly framework for estimating a wide variety of cross-sectional and panel stochastic frontier models. Suitable for a broad range of applications, the implementation offers extensive flexibility in specification and estimation techniques.
+Description: Maximum likelihood estimation of stochastic frontier models, in
+    which observed output falls short of an unobserved production frontier by a
+    one-sided inefficiency term in addition to symmetric noise, following
+    Aigner, Lovell and Schmidt (1977) <doi:10.1016/0304-4076(77)90052-5> and
+    Meeusen and van den Broeck (1977) <doi:10.2307/2525757>. Cross-sectional
+    models cover fifteen noise and inefficiency distribution pairs, with
+    heteroskedasticity permitted in either error component. Panel models
+    include the true fixed and random effects estimators of Greene (2005)
+    <doi:10.1016/j.jeconom.2004.05.003> and the four-component model of
+    Colombi, Kumbhakar, Martini and Vittadini (2014)
+    <doi:10.1007/s11123-014-0386-y>. Further entry points address zero
+    inefficiency, latent classes, two-tier frontiers, sample selection,
+    nonparametric frontiers, dependence between the error components, and
+    endogenous regressors after Amsler, Prokhorov and Schmidt (2016)
+    <doi:10.1016/j.jeconom.2015.06.013>. Technical efficiency prediction,
+    marginal effects, and specification tests for wrong skewness, for the
+    assumed inefficiency distribution and for heteroskedasticity are provided.
 Suggests: knitr, rmarkdown, testthat, sn, np, lpSolve, sandwich, lmtest, texreg
 Imports: pso, numDeriv, gsl, plm, minqa, randtoolbox, mnormt, truncnorm, tmvtnorm, Formula, methods, pbapply, pracma, MASS, parallel, graphics, grDevices
 Depends: R (>= 4.0.0)

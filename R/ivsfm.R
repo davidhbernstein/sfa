@@ -225,7 +225,7 @@ ivsfm <- function(formula,
   diag(ch0) <- log(pmax(diag(ch0), 1e-6))
   ch0 <- ch0[lower.tri(ch0, diag = TRUE)]
 
-  like.fn <- function(th) {
+  like.core <- function(th, use_full) {
     if (!all(is.finite(th))) return(cz$MAX_VALUE)
     beta <- th[i_b]
     su <- exp(pmin(th[i_su], 12))
@@ -233,8 +233,8 @@ ivsfm <- function(formula,
     tt <- th[i_t]
     r <- tt / sqrt(1 + sum(tt^2))
 
-    Pim <- if (full) matrix(th[i_pi], L, m) else Pi_ols
-    Lc <- if (full) .chol_from(th[i_ch]) else Lc_ols
+    Pim <- if (use_full) matrix(th[i_pi], L, m) else Pi_ols
+    Lc <- if (use_full) .chol_from(th[i_ch]) else Lc_ols
     Xi <- P - Z %*% Pim
 
     ## L^{-1} xi, by triangular solve rather than an explicit inverse.
@@ -263,9 +263,53 @@ ivsfm <- function(formula,
     -sum(tot)
   }
 
+  like.fn <- function(th) like.core(th, full)
+
   start_v <- c(b_2sls, log(su0), log(sv0), rep(0, n_q), rep(0, m))
   if (has_int) start_v[1L] <- start_v[1L] + S * su0 * sqrt(2 / pi)
-  if (full) start_v <- c(start_v, as.numeric(Pi_ols), ch0)
+
+  ## IVLIML is seeded from the IVCF solution rather than from t = 0. See
+  ## notes/code_history/ivsfm.md; the short version is that t = 0 is the WORST
+  ## available start for this likelihood. rho = t/sqrt(1+t't), so t = 0 is
+  ## rho = 0 exactly, the point where the frontier and reduced-form blocks are
+  ## independent and the data carry no gradient information about which way
+  ## rho should move. It is also the centre of the box, since
+  ## span = pmax(10*abs(start_v), 10) makes the bound +-10 when the start is
+  ## zero, so the far corner t = -10 (rho = -10/sqrt(101) = -0.99503719) sits
+  ## exactly as far away as the true optimum. On the Hou, Ramalho and
+  ## Roseta-Palma (2025) design the optimizer took that corner on 27 of 300
+  ## draws at rho = 0.8 and 6 of 300 at rho = 0.4, returning beta2 near 6
+  ## against a truth of 0.5, with no error and no warning.
+  ##
+  ## IVCF is the same likelihood with Pi and chol(Sigma_xi) pinned at their OLS
+  ## values, so its solution is a valid point of THIS parameter space once
+  ## those two blocks are appended -- not an approximation being borrowed from
+  ## a different model. It never fails on these designs (0 of 300), costs a
+  ## fraction of a second, and lands t near its optimum, which both gives the
+  ## search a gradient and recentres the box away from the corner.
+  if (full) {
+    like.cf <- function(th) like.core(th, FALSE)
+    span0 <- pmax(10 * abs(start_v), 10)
+    lo0 <- start_v - span0
+    up0 <- start_v + span0
+    lo0[c(i_su, i_sv)] <- log(1e-6)
+    up0[c(i_su, i_sv)] <- log(1e4)
+    cf <- tryCatch({
+      b <- opt.bobyqa(fn = like.cf, start_v = start_v, lower.bobyqa = lo0,
+        upper.bobyqa = up0, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE,
+        rhobeg = NA, rhoend = NA, verbose = FALSE)$start_v
+      opt.optim(fn = like.cf, start_v = b, lower.optim = lo0,
+        upper.optim = up0, maxit.optim = maxit.optim, opt.TF = FALSE,
+        method = Method, optHessian = FALSE, verbose = FALSE)$start_v
+    }, error = function(e) NULL)
+    ## Only accept a seed that is finite and actually better than where we
+    ## started; a failed sub-fit must not make the main fit worse than before.
+    if (!is.null(cf) && all(is.finite(cf)) &&
+        is.finite(like.cf(cf)) && like.cf(cf) <= like.cf(start_v)) {
+      start_v <- cf
+    }
+    start_v <- c(start_v, as.numeric(Pi_ols), ch0)
+  }
 
   nm_par <- c(
     colnames(X), "log_sigma_u", "log_sigma_v",

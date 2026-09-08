@@ -1,3 +1,49 @@
+# sfa 1.2.1
+
+* **`ivsfm(model_name = "IVLIML")` could walk into a corner of its own box and
+  report the result as an ordinary fit.** `IVLIML` is the default estimator, so
+  this is the one to know about. On the design of Hou, Ramalho and
+  Roseta-Palma (2025) it returned `rho = -0.99503719` with `beta2` near 6
+  against a truth of 0.5 -- on **27 of 300** draws at `rho = 0.8` and 6 of 300
+  at `rho = 0.4` -- with no error, no warning and a plausible-looking
+  `sigma_u`. `"IVCF"` failed on 0 of 300 of the same draws.
+
+  The cause was the STARTING POINT, not the search. `rho = t/sqrt(1 + t't)`,
+  and `t` started at 0 -- which is `rho = 0` exactly, the one point where the
+  frontier and reduced-form blocks are independent and the likelihood carries
+  no gradient information about which way `rho` should move. It is also the
+  centre of the box, because `span = pmax(10 * abs(start_v), 10)` gives a bound
+  of `+-10` when the start is zero, so the corner `t = -10`
+  (`rho = -10/sqrt(101)`) sat exactly as far from the start as the true
+  optimum.
+
+  `IVLIML` is now seeded from the `IVCF` solution. That is not an
+  approximation borrowed from another model: `IVCF` is the same likelihood with
+  `Pi` and `chol(Sigma_xi)` pinned at their OLS values, so its answer is a
+  valid point of `IVLIML`'s own parameter space once those two blocks are
+  appended. It lands `t` near its optimum, which both supplies a gradient and
+  recentres the box away from the corner. Measured over 300 replications at
+  each of `rho = 0`, `0.4` and `0.8`:
+
+  | rho | collapses before | collapses after | RMSE(beta2) before | after |
+  |---|---|---|---|---|
+  | 0.0 | 0/300 | 0/300 | 0.0261 | 0.0268 |
+  | 0.4 | 6/300 | **0/300** | 0.9188 | **0.0263** |
+  | 0.8 | 27/300 | **0/300** | 1.6808 | **0.0241** |
+
+  The fit is also about twice as fast, because the optimizer now starts near
+  the answer. `"IVCF"` and `"C2SLS"` are untouched -- the seeding runs only for
+  `IVLIML`, and a sub-fit that fails or does not improve on the old start is
+  discarded rather than used.
+
+* **The `DESCRIPTION` now says what the package does.** The previous text
+  ("a user-friendly framework ... extensive flexibility in specification and
+  estimation techniques") named no model, no method and no reference. It now
+  names the model families and cites Aigner, Lovell and Schmidt (1977),
+  Meeusen and van den Broeck (1977), Greene (2005), Colombi, Kumbhakar,
+  Martini and Vittadini (2014) and Amsler, Prokhorov and Schmidt (2016) with
+  DOIs.
+
 # sfa 1.2.0
 
 A feature release. In brief:

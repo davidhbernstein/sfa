@@ -73,7 +73,18 @@ which is what makes the likelihood closed-form and needs no simulation.
   \item{\code{"IVLIML"}}{APS (2016) Equation (13): maximum likelihood over the
     frontier and the reduced form jointly, so \eqn{\Pi} and
     \eqn{\Sigma_{\xi\xi}} are estimated alongside \eqn{\beta}. Efficient, and
-    its standard errors are correct as reported.}
+    its standard errors are correct as reported. It is \bold{seeded from the
+    \code{"IVCF"} solution} rather than from \eqn{t = 0}, which is why fitting
+    it runs a cheap control-function fit first. \eqn{t = 0} is
+    \eqn{\rho = 0} exactly -- the point where the frontier and reduced-form
+    blocks are independent, so the likelihood has no gradient in \eqn{\rho}
+    there -- and it is also the centre of the search box, which put the corner
+    \eqn{\rho = -10/\sqrt{101}} exactly as far from the start as the true
+    optimum. Through version 1.2.0 the optimizer took that corner on a minority
+    of samples and reported the result as an ordinary fit. Since \code{"IVCF"}
+    is this same likelihood with \eqn{\Pi} and \eqn{\Sigma_{\xi\xi}} held
+    at least squares, its answer is a point of \code{"IVLIML"}'s own parameter
+    space, not an approximation carried in from elsewhere.}
   \item{\code{"IVCF"}}{The two-step control function of Kutlu (2010), described
     in APS (2016) Section 4.4. \eqn{\Pi} and \eqn{\Sigma_{\xi\xi}} are fixed at
     their reduced-form least-squares values and only the frontier block is

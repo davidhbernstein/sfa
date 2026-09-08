@@ -204,3 +204,39 @@ test_that("IVLIML and IVCF agree closely but are not the same estimator", {
   ## parameters. If these ever match exactly, IVLIML has stopped doing that.
   expect_gt(length(a$start_v), length(b$start_v))
 })
+
+## Gap A7. On the Hou, Ramalho and Roseta-Palma (2025) Table 2 design,
+## "IVLIML" used to walk to the far corner of its own box on a minority of
+## draws: rho pinned at -10/sqrt(101) = -0.99503719 with beta2 near 6 against
+## a truth of 0.5, returned as an ordinary fit with no error and no warning.
+## 27 of 300 draws at rho = 0.8, 6 of 300 at rho = 0.4, 0 of 300 for "IVCF" on
+## the same draws. The cause was the starting point, not the search: t starts
+## at 0, and span = pmax(10*abs(start_v), 10) then makes that corner exactly
+## as far from the start as the true optimum. Seeding from the IVCF solution
+## fixes it (0 of 300 in all three designs). These are two of the seeds that
+## used to fail.
+hou_data <- function(seed, rho, NN = 100L, TT = 20L) {
+  set.seed(10000L * as.integer(100 * rho) + seed)
+  n <- NN * TT
+  x1 <- rnorm(n); z <- rnorm(n); eps <- rnorm(n)
+  x2 <- z + eps
+  v <- rho * eps + sqrt(1 - rho^2) * rnorm(n)
+  u <- rep(abs(rnorm(NN)), each = TT)
+  data.frame(y = 0.5 * x1 + 0.5 * x2 + v - u, x1 = x1, x2 = x2, z = z)
+}
+
+test_that("IVLIML does not walk into the rho = -10/sqrt(101) corner", {
+  rho_bound <- -10 / sqrt(101)
+  for (s in c(6L, 25L)) {
+    d <- hou_data(s, 0.8)
+    f <- ivsfm(y ~ 0 + x1 + x2, endogenous = ~x2, instruments = ~z,
+      data = d, model_name = "IVLIML"
+    )
+    p <- f$out[, "par"]
+    ## The signature of the old failure, pinned directly.
+    expect_gt(abs(p[["rho_x2"]] - rho_bound), 0.01)
+    ## and the consequence of it.
+    expect_lt(abs(p[["x2"]] - 0.5), 0.1)
+    expect_gt(p[["rho_x2"]], 0)
+  }
+})
