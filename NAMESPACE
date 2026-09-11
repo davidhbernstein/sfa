@@ -16,6 +16,7 @@ import("parallel") # import whole package
 
 importFrom("utils", "head")
 importFrom("stats", "coef",         "dnorm",          "dt",      "integrate", "lm",
+                    "dexp",         "dbinom",
                     "model.matrix", "model.response", "optim",   "pnorm",     "pt",
                     "qnorm",        "rcauchy",        "rexp",    "rnorm",     "rt",
                     "qt",

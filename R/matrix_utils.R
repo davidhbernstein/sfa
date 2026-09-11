@@ -1054,7 +1054,8 @@
     "LCM"        = 1,    "LCM_CN"     = 1,
     "NHN"        = 1,     "NE"         = 1,   "NU"            = 1,
     "NGE"        = 1,     "NLN"        = 1,   "NW"            = 1,
-    "tHN"        = 1,     "TSL"        = 1,
+    "tHN"        = 1,     "TSL"        = 1,   "NB"            = 1,
+    "NGB2"       = 1,
     "TRE"        = 1,     "GTRE"       = 1,   "GTRE_FML"      = 1,
 
     "CSS"        = 1,     "LS"         = 1,
@@ -1113,6 +1114,9 @@
   m3 <- mean(e^3)
   m4 <- mean(e^4)
 
+  ## "Wrong" skew is model-specific. For every positively skewed u a positive
+  ## m3 has no admissible solution; for the binomial it merely means p > 1/2,
+  ## and the flag is set below from whether the inversion actually succeeded.
   wrong <- !is.finite(m3) || m3 >= 0
   pars <- switch(model_name,
     "NHN" = {
@@ -1139,12 +1143,66 @@
         sigma_u = su, extra = c(mu = sh), eu = sh * su
       )
     },
-    stop("COLS is implemented for model_name \"NHN\", \"NE\" and \"NG\" only. ",
-      "The moment inversion is distribution-specific and no closed form is ",
-      "available for \"", model_name, "\".",
+    ## Carree (2002): u ~ Binomial(n, p). Gap L19.
+    ##
+    ## The only inefficiency distribution in the package that can be skewed
+    ## EITHER way, and the reason it is here. Every other one-sided law -- half
+    ## normal, exponential, gamma, truncated normal -- is positively skewed, so
+    ## a production frontier implies a negatively skewed composed error and a
+    ## positive residual skew has nowhere to go but sigma_u = 0. Carree'''s point
+    ## is that "no inefficiency" is not the only reading of that: a binomial
+    ## with p > 1/2 is negatively skewed, which says most firms carry
+    ## considerable inefficiency and only a few sit near the frontier. Same
+    ## sample moment, opposite economics.
+    ##
+    ## Inverting the second, third and fourth central moments (his Eq. 7):
+    ##
+    ##   m2 = sigma_v^2 + n p (1-p)
+    ##   m3 = -n p (1-p) (1 - 2p)
+    ##   m4 - 3 m2^2 = n p (1-p) (1 - 6p + 6p^2)
+    ##
+    ## whose ratio x = (m4 - 3 m2^2) / m3 = (6p^2 - 6p + 1)/(2p - 1) is a
+    ## quadratic in p with the two roots of his Eq. (8). This uses the FOURTH
+    ## moment, so it is markedly more fragile than the NHN and NE inversions
+    ## above -- as Greene'''s gamma estimator is, and for the same reason.
+    "NB" = {
+      k4 <- m4 - 3 * m2^2
+      xr <- if (is.finite(m3) && m3 != 0) k4 / m3 else NA_real_
+      pp <- NA_real_
+      if (is.finite(xr)) {
+        rt <- sqrt(xr^2 + 3) / 6
+        p1 <- 0.5 + xr / 6 + rt
+        p2 <- 0.5 + xr / 6 - rt
+        ## Outside [-1, 1] only one root lands in (0, 1); inside it, the sign
+        ## of the residual skew picks the branch.
+        pp <- if (xr < -1) p1 else if (xr > 1) p2 else if (m3 > 0) p1 else p2
+      }
+      nb <- if (is.finite(pp) && pp > 0 && pp < 1 && pp != 0.5) {
+        -m3 / (pp * (1 - pp) * (1 - 2 * pp))
+      } else {
+        NA_real_
+      }
+      ## The infeasible region is Carree'''s: k4 > |m3| > 0 drives n negative.
+      ## Reported as "no admissible solution", never as an estimate of zero.
+      bad <- !is.finite(nb) || nb <= 0 || !is.finite(pp) ||
+        m2 <= nb * pp * (1 - pp)
+      if (bad) {
+        list(sigma_v = sqrt(max(m2, .Machine$double.eps)), sigma_u = 0,
+          extra = c(n_bin = NA_real_, p_bin = NA_real_), eu = 0)
+      } else {
+        list(sigma_v = sqrt(max(m2 - nb * pp * (1 - pp), .Machine$double.eps)),
+          sigma_u = sqrt(nb * pp * (1 - pp)),
+          extra = c(n_bin = nb, p_bin = pp), eu = nb * pp)
+      }
+    },
+    stop("COLS is implemented for model_name \"NHN\", \"NE\", \"NG\" and ",
+      "\"NB\" only. The moment inversion is distribution-specific and no ",
+      "closed form is available for \"", model_name, "\".",
       call. = FALSE
     )
   )
+
+  if (identical(model_name, "NB")) wrong <- !is.finite(pars$extra[["n_bin"]])
 
   ## The only coefficient COLS corrects. OLS slopes are already consistent.
   b_cols <- b
@@ -1709,6 +1767,191 @@
     if (length(near)) paste0(" Did you mean ", paste0("\"", near, "\"", collapse = " or "), "?") else "",
     "\n  Valid choices (case does not matter): ", paste(choices, collapse = ", "),
     call. = FALSE
+  )
+}
+
+## log(1 + e^x), overflowing at neither end.
+.log1pexp <- function(x) ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+
+## ---------------------------------------------------------------------------
+## Generalized beta of the second kind. Gap L20.
+## ---------------------------------------------------------------------------
+##
+## Makiela and Mazur (2022), Eq. 4:
+##
+##   f(u) = (psi/sigma) / [B(tau/psi, nu/psi) nu^(tau/psi)] (u/sigma)^(tau-1)
+##          [1 + (1/nu) (u/sigma)^psi]^(-(tau+nu)/psi)
+##
+## sigma is a scale; nu governs tail thickness (and therefore which moments
+## exist, like the degrees of freedom of a t); psi and tau are shape. The
+## reason for carrying four parameters on ONE error component is that the
+## limits are the rest of the package:
+##
+##   nu -> Inf                       generalized gamma  (their Eq. 9)
+##   nu -> Inf, tau = 1, psi = 2     half-normal        -> model_name "NHN"
+##   nu -> Inf, tau = psi = 1        exponential        -> model_name "NE"
+##   tau = 1, psi = 2                half-Student t
+##   nu -> Inf, psi = 1              gamma              -> model_name "NG"
+##
+## so a single fit says which of them the data want, instead of a table of
+## separate fits saying it by their likelihoods.
+##
+## Everything is in logs. nu^(tau/psi) overflows long before nu is large
+## enough to reach the generalized-gamma limit, and that limit is the whole
+## point of the parameter.
+.gb2_ld <- function(u, sigma, nu, psi, tau) {
+  lz <- log(u) - log(sigma)
+  log(psi) - log(sigma) - lbeta(tau / psi, nu / psi) - (tau / psi) * log(nu) +
+    (tau - 1) * lz - ((tau + nu) / psi) * .log1pexp(psi * lz - log(nu))
+}
+
+## The quantile, through the beta. With w = (u/sigma)^psi / [nu + (u/sigma)^psi]
+## the density above is exactly a Beta(tau/psi, nu/psi) in w, so
+## u = sigma [nu w / (1 - w)]^(1/psi) and no root-finding is needed -- which is
+## what makes the GB2 usable by the simulated-ML path at all.
+.gb2_q <- function(p, sigma, nu, psi, tau) {
+  ## 1 - w is taken from the MIRRORED beta rather than by subtracting w from 1.
+  ## For a heavy tail (nu below about 1) qbeta returns exactly 1 well before
+  ## the quantile is actually infinite, and u = sigma (nu w/(1-w))^(1/psi)
+  ## would then divide by zero -- which reaches the likelihood as a non-finite
+  ## draw and steers the optimizer away from the very region nu is there to fit.
+  ## Whichever of w and 1 - w is the SMALL one is taken from qbeta directly and
+  ## the other by subtraction, so the ratio w/(1-w) never divides by a
+  ## catastrophically cancelled number. Doing it only one way round leaves the
+  ## opposite tail wrong: with nu below about 1, qbeta returns exactly 1 well
+  ## before the quantile is genuinely infinite, and the resulting non-finite
+  ## draw steers the optimizer away from the very region nu exists to fit.
+  a <- tau / psi; b <- nu / psi
+  lo <- p <= 0.5
+  ## Seeded from `p` rather than allocated with numeric(): the simulated-ML
+  ## path hands this a MATRIX of draws, and numeric(length(p)) silently drops
+  ## the dimensions. cbind() then recycles the vector against the other
+  ## proposal and the importance weights are formed from misaligned draws --
+  ## no error, just a wrong likelihood.
+  w <- p; omw <- p
+  if (any(lo)) { w[lo] <- stats::qbeta(p[lo], a, b); omw[lo] <- 1 - w[lo] }
+  if (any(!lo)) {
+    omw[!lo] <- stats::qbeta(p[!lo], b, a, lower.tail = FALSE)
+    w[!lo] <- 1 - omw[!lo]
+  }
+  sigma * (nu * w / omw)^(1 / psi)
+}
+
+.gb2_p <- function(q, sigma, nu, psi, tau) {
+  zp <- (pmax(q, 0) / sigma)^psi
+  ## w and 1 - w each formed directly, so neither is a difference of nearly
+  ## equal numbers, and pbeta is handed whichever tail it can resolve.
+  w <- ifelse(is.finite(zp), zp / (nu + zp), 1)
+  omw <- ifelse(is.finite(zp), nu / (nu + zp), 0)
+  ifelse(w <= 0.5,
+    stats::pbeta(w, tau / psi, nu / psi),
+    stats::pbeta(omw, nu / psi, tau / psi, lower.tail = FALSE)
+  )
+}
+
+## The composed density for the GB2 inefficiency:
+##
+##   f_eps(eps) = int_0^inf phi(eps + u; 0, sigma_v) f_U(u) du
+##
+## by DETERMINISTIC quadrature with TWO node sets, combined by the balance
+## heuristic. One node set will not do, and the reason is worth stating.
+##
+## Reparameterizing by u's own quantiles, u = Q(p), turns the integral into
+## int_0^1 phi(eps + Q(p)) dp with a bounded integrand -- but the bump in p is
+## narrow whenever sigma_v is small relative to how fast Q moves, and Q moves
+## arbitrarily fast in the tails for a spiky GB2. Measured on a grid of 243
+## (sigma_v, sigma_u, nu, psi, tau) settings, that scheme was wrong by up to
+## 12 in log f AT THE PEAK of the density, not merely in the tails.
+## Reparameterizing by the noise instead fails in the mirror image: it misses a
+## concentrated u.
+##
+## So use both. Proposal A puts nodes at the quantiles of u; proposal B puts
+## them at the quantiles of the noise truncated to u > 0 -- the same
+## construction .sml_mis() uses for NLN and NW, but with quadrature nodes and
+## their weights rather than random draws. Weighting each node set by
+## a/(a+b) and b/(a+b), which sum to 1 pointwise, makes the combination exact
+## whenever either set alone would be, and the algebra collapses: BOTH sets
+## contribute w * a(u) phi(eps+u) / (a(u) + b(u)), differing only in where
+## their nodes are.
+##
+## This model was first written on the simulated-ML path, alongside NLN and
+## NW, and that was wrong in a way worth recording. With 100 draws per proposal
+## the simulated likelihood is biased UPWARD, and the optimizer chases the
+## bias: on n = 400 generated from the half-normal it walked to psi = 88,
+## tau = 0.22 -- a near point mass, where importance sampling from the
+## inefficiency overstates the density badly -- and reported a log-likelihood
+## of -336.9 where the exact value at those parameters is -458.7. Simulated ML
+## rewards whatever parameters maximise its own simulation error, and a
+## four-parameter family gives it room to find them.
+
+## Nodes per proposal. Fixed rather than adaptive: the whole point of carrying
+## two node sets is that neither has to be widened to cover the other's regime,
+## and a Gauss-Legendre rule costs O(m^3) to build (0.18 s at 1024 nodes).
+##
+## 512 measured against a 4096-node reference over 243 (sigma_v, sigma_u, nu,
+## psi, tau) settings. Where the density is not negligible (log f > -20) the
+## largest error is 3.2e-1 at 128 nodes, 1.2e-1 at 256, 3.4e-2 at 512 and
+## 6.7e-3 at 1024. What is left at 512 sits entirely in the extreme lower
+## tail -- an observation whose composed density is e^-20 -- and adaptive
+## integrate() disagrees with ITSELF by up to 0.9 in that same region, so it is
+## not a reference that would justify going further.
+.GB2_NODES <- 512L
+
+## The pieces shared by the density and the efficiency predictor, so the two
+## cannot come to disagree about the model. Returns the per-node log terms,
+## whose row log-sum-exp is log f, and the u they sit at.
+.gb2_parts <- function(e, sigma_v, sigma_u, nu, psi, tau, m = .GB2_NODES) {
+  e <- as.numeric(e)
+  n <- length(e)
+  gl <- .gauss_legendre_01(as.integer(m))
+  lw <- log(gl$weights)
+
+  ## Proposal A: the quantiles of u. The SAME nodes for every observation, so
+  ## f_U is evaluated m times and not n*m times -- which is most of the cost,
+  ## since .gb2_ld() carries an lbeta and a log1pexp.
+  uAv <- .gb2_q(gl$nodes, sigma_u, nu, psi, tau)
+  laAv <- .gb2_ld(uAv, sigma_u, nu, psi, tau)
+  uA <- matrix(uAv, n, m, byrow = TRUE)
+  laA <- matrix(laAv, n, m, byrow = TRUE)
+
+  ## Proposal B: the quantiles of the noise, conditioned on u > 0. With
+  ## v = eps + u, u > 0 is v > eps, whose log probability is lC; the node sits
+  ## at the quantile of that truncated normal. Kept in logs throughout: lC
+  ## underflows for a very efficient unit.
+  lC <- stats::pnorm(e / sigma_v, lower.tail = FALSE, log.p = TRUE)
+  Tm <- stats::qnorm(lC + log1p(-matrix(gl$nodes, n, m, byrow = TRUE)),
+    lower.tail = FALSE, log.p = TRUE)
+  uB <- sigma_v * Tm - e
+
+  u <- cbind(uA, uB)
+  la <- cbind(laA, .gb2_ld(uB, sigma_u, nu, psi, tau))     # log a(u) = log f_U
+  lphi <- stats::dnorm(e + u, 0, sigma_v, log = TRUE)
+  lb <- lphi - lC                                          # log b(u)
+  ## log[a phi / (a + b)] = la + lphi - logsumexp(la, lb)
+  mx <- pmax(la, lb)
+  lterm <- la + lphi - (mx + log1p(exp(-abs(la - lb))))
+  lterm <- sweep(lterm, 2, c(lw, lw), "+")
+  lterm[!is.finite(lterm)] <- -Inf
+  list(u = u, lterm = lterm)
+}
+
+.log_d_gb2 <- function(e, sigma_v, sigma_u, nu, psi, tau) {
+  p <- .gb2_parts(e, sigma_v, sigma_u, nu, psi, tau)
+  if (all(!is.finite(p$u))) return(rep(-1e6, length(e)))
+  out <- .log_row_sum_exp(p$lterm)
+  ifelse(is.finite(out), out, -1e6)
+}
+
+## E[exp(-u)|e] and E[u|e] over the same nodes and weights the density used.
+.gb2_eff <- function(e, sigma_v, sigma_u, nu, psi, tau) {
+  p <- .gb2_parts(e, sigma_v, sigma_u, nu, psi, tau)
+  W <- exp(p$lterm - .log_row_sum_exp(p$lterm))
+  W[!is.finite(W)] <- 0
+  uu <- p$u
+  uu[!is.finite(uu)] <- 0
+  list(
+    exp_u_hat = pmin(pmax(rowSums(W * exp(-uu)), 0), 1),
+    u_hat = pmax(rowSums(W * uu), 0)
   )
 }
 

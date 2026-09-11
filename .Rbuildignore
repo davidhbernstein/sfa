@@ -9,3 +9,4 @@
 ^revdep$
 ^figure$
 ^research$
+^\.git-rewrite$

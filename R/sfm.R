@@ -1,7 +1,7 @@
 sfm <- function(formula,
                 model_name = c(
                   "NHN", "NHN_Z", "NE", "NE_Z", "NR", "THT", "NTN", "NG", "NNAK",
-                  "NU", "NGE", "NLN", "NW", "tHN", "TSL"
+                  "NU", "NGE", "NLN", "NW", "tHN", "TSL", "NB", "NGB2"
                 ),
                 data,
                 maxit.bobyqa = 10000,
@@ -197,6 +197,19 @@ sfm <- function(formula,
   ## "mols" and "cols" select the same estimator, and the literature's name
   ## for it is MOLS.
   estimator <- if (estimator == "mols") "cols" else estimator
+
+  ## Carree's binomial is a MOMENT model, not a likelihood one. Its inefficiency
+  ## is discrete, so there is no density to maximize in the shape that sfm()'s
+  ## scaffold expects, and the paper gives the corrected-OLS inversion and
+  ## nothing else. Refuse early and say which call works, rather than failing
+  ## somewhere inside the optimizer.
+  if (identical(model_name, "NB") && estimator != "cols") {
+    stop("sfm(model_name = \"NB\"): the binomial inefficiency of Carree (2002) ",
+      "is estimated by corrected OLS, not by maximum likelihood. Call it as ",
+      "sfm(..., model_name = \"NB\", estimator = \"cols\").",
+      call. = FALSE
+    )
+  }
 
   if (estimator == "cols" && robust != "mle") {
     stop("`robust` applies to the maximum-likelihood estimator only. ",
@@ -423,7 +436,21 @@ sfm <- function(formula,
     }
     CF <- .cols_fit(Yc, Xc, model_name, intercept_col = icol)
 
-    if (isTRUE(CF$wrong_skew)) {
+    if (isTRUE(CF$wrong_skew) && identical(model_name, "NB")) {
+      ## For a binomial u a positive residual skew is not "wrong" -- it is
+      ## p > 1/2 -- so the failure here is Carree's infeasible region rather
+      ## than the Olson-Schmidt-Waldman boundary.
+      warning("sfm(model_name = \"NB\", estimator = \"cols\"): the residual ",
+        "moments admit no binomial solution. Carree (2002) shows this happens ",
+        "when the excess fourth moment exceeds the third in absolute value ",
+        "(here m4 - 3 m2^2 = ", signif(CF$moments[["m4"]] - 3 * CF$moments[["m2"]]^2, 3),
+        " against m3 = ", signif(CF$moments[["m3"]], 3), "), which drives the ",
+        "implied n negative. Read this as evidence AGAINST a binomial ",
+        "inefficiency in these data, not as an estimate. Unlike the other ",
+        "distributions, a positive m3 is admissible here and means p > 1/2.",
+        call. = FALSE
+      )
+    } else if (isTRUE(CF$wrong_skew)) {
       warning("sfm(estimator = \"cols\"): the OLS residuals are skewed the WRONG ",
         "way (third central moment ", signif(CF$moments[["m3"]], 3), " >= 0). ",
         "A production frontier implies negative skew, so the moment ",
@@ -455,9 +482,11 @@ sfm <- function(formula,
       )
       se_beta_c[icol] <- sqrt(.v_ols + .cse[["eu"]]^2)
     }
+    ## rep(), not a bare NA: "NB" carries TWO extra parameters and a single NA
+    ## would silently shorten se_v against par_v.
     se_v <- c(
       .cse[["sigma_v"]], .cse[["sigma_u"]],
-      if (is.null(CF$extra)) NULL else NA_real_, se_beta_c
+      if (is.null(CF$extra)) NULL else rep(NA_real_, length(CF$extra)), se_beta_c
     )
     nm_v <- c("sigv", "sigu", names(CF$extra), x_vars_vec)
 
@@ -489,15 +518,54 @@ sfm <- function(formula,
     out[2, ] <- se_v
     out[3, ] <- par_v / se_v
 
-    ## Efficiency at the COLS parameters, using the same predictors the ML path
-    ## uses. Undefined when sigma_u collapses under wrong skew.
+    ## Efficiency at the COLS parameters, using the same predictor the ML path
+    ## uses FOR THAT DISTRIBUTION. It has to dispatch: E[exp(-u) | eps] is a
+    ## property of the assumed u, and the normal/half-normal posterior applied
+    ## to an exponential or a gamma u answers a different question. Undefined
+    ## when sigma_u collapses under wrong skew.
     eps_c <- inefdec_n * CF$residuals
     if (CF$sigma_u > 0) {
       s2u <- CF$sigma_u^2
       s2v <- CF$sigma_v^2
-      exp_u_hat <- .te_battese_coelli(
-        mu_star = -eps_c * s2u / (s2u + s2v),
-        sigma_star = CF$sigma_u * CF$sigma_v / sqrt(s2u + s2v)
+      exp_u_hat <- switch(model_name,
+        "NHN" = .te_battese_coelli(
+          mu_star = -eps_c * s2u / (s2u + s2v),
+          sigma_star = CF$sigma_u * CF$sigma_v / sqrt(s2u + s2v)
+        ),
+        "NE" = .te_battese_coelli(
+          mu_star = -eps_c - s2v / CF$sigma_u,
+          sigma_star = rep_len(CF$sigma_v, length(eps_c))
+        ),
+        "NG" = {
+          ## The same parabolic-cylinder form the ML branch uses, at the
+          ## moment estimates. CF$sigma_u is the gamma SCALE and extra["mu"]
+          ## the shape, matching .cols_fit()'s "NG" inversion.
+          ##
+          ## .log_pcf() directly, NOT the `lnDv` alias: that alias is a local
+          ## defined inside the maximum-likelihood path further down, which
+          ## this branch returns long before reaching.
+          zg <- eps_c / CF$sigma_v + CF$sigma_v / CF$sigma_u
+          mg <- unname(CF$extra[["mu"]])
+          pmin(pmax(exp(((zg + CF$sigma_v) / 2)^2 - (zg / 2)^2 +
+            .log_pcf(-mg, zg + CF$sigma_v) - .log_pcf(-mg, zg)), 0), 1)
+        },
+        ## Carree's u is DISCRETE, so its posterior is a finite sum rather than
+        ## an integral: P(u = j | eps) proportional to C(n,j) p^j (1-p)^(n-j)
+        ## phi(eps + j; 0, sigma_v), j = 0..n. The moment estimate of n is a
+        ## real number and a binomial needs an integer, so the predictor rounds
+        ## it; `n_bin` in $out keeps the unrounded estimate.
+        "NB" = {
+          nb <- max(1L, as.integer(round(unname(CF$extra[["n_bin"]]))))
+          pb <- unname(CF$extra[["p_bin"]])
+          j <- 0:nb
+          lw <- outer(eps_c, j, function(e, jj) {
+            stats::dbinom(jj, nb, pb, log = TRUE) +
+              stats::dnorm(e + jj, 0, CF$sigma_v, log = TRUE)
+          })
+          W <- exp(lw - .log_row_sum_exp(lw))
+          pmin(pmax(as.numeric(W %*% exp(-j)), 0), 1)
+        },
+        rep(NA_real_, length(eps_c))
       )
     } else {
       exp_u_hat <- rep(NA_real_, length(eps_c))
@@ -558,7 +626,7 @@ sfm <- function(formula,
     ## smooth.
   }
 
-  if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN", "TSL")) {
+  if (model_name %in% c("NHN", "NE", "NR", "NG", "NNAK", "THT", "NTN", "NHN_Z", "NE_Z", "NU", "NGE", "NLN", "NW", "tHN", "TSL", "NGB2")) {
     ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
     ## contributions instead of the negative sum. That is what estfun.sfareg()
     ## differences to build the score matrix that `sandwich` needs; the
@@ -571,6 +639,11 @@ sfm <- function(formula,
       }
       if (model_name %in% c("THT", "NTN", "NLN", "NW", "tHN", "NG", "NNAK", "TSL")) {
         x_x_vec <- x[4:as.numeric(n_x_vars + 3)]
+      }
+      ## NGB2 carries three shape parameters (nu, psi, tau) on top of the two
+      ## scales, so five parameters precede the frontier coefficients.
+      if (model_name == "NGB2") {
+        x_x_vec <- x[6:as.numeric(n_x_vars + 5)]
       }
 
       if (model_name %in% c("NE_Z", "NHN_Z")) {
@@ -692,6 +765,19 @@ sfm <- function(formula,
         lt2 <- -q + .log_phi_tilt(-eps / sigv - 2 * lam * sigv)
         d <- pmin(lt2 - lt1, -.Machine$double.eps) ## T2 < T1 by construction
         like <- log(2 * lam) + lt1 + log(-expm1(d))
+      }
+
+      if (model_name == "NGB2") {
+        ## Deterministic quadrature, NOT simulated ML -- see .log_d_gb2() in
+        ## matrix_utils.R for why this model cannot use the draws.
+        sigv <- x[1]; sigu <- x[2]
+        nu <- x[3]; psi <- x[4]; tau <- x[5]
+        like <- if (!all(is.finite(c(sigv, sigu, nu, psi, tau))) ||
+          sigv <= 0 || sigu <= 0 || nu <= 0 || psi <= 0 || tau <= 0) {
+          rep(-1e12 / length(eps), length(eps))
+        } else {
+          .log_d_gb2(eps, sigv, sigu, nu, psi, tau)
+        }
       }
 
       if (model_name %in% c("NLN", "NW")) {
@@ -1138,6 +1224,37 @@ sfm <- function(formula,
       u_hat <- pmax(w1 * .jlms_u(mu1, sig_v) - w2 * .jlms_u(mu2, sig_v), 0)
     }
 
+    if (identical(model_name, "NGB2")) {
+      ## nu is the tail-thickness parameter, and its generalized-gamma limit is
+      ## at infinity: past nu of roughly a few hundred the density has stopped
+      ## moving (the error against the limit falls like 1/nu, and is 2e-4 at
+      ## nu = 1e6). A large fitted nu is therefore a statement about the FAMILY
+      ## -- "generalized gamma, no heavy tail detected" -- and not an estimate
+      ## of a number. Say so, as model_name = "tHN" already does for its own nu.
+      .nu_hat <- opt$par[3]
+      if (is.finite(.nu_hat) && .nu_hat > 200) {
+        warning("sfm(model_name = \"NGB2\"): nu converged to ", signif(.nu_hat, 4),
+          ", where the GB2 is numerically indistinguishable from its ",
+          "generalized-gamma limit. The likelihood is flat in nu there, so ",
+          "report this as \"generalized gamma; no heavy tail detected\" rather ",
+          "than as an estimate of nu, and read its standard error as ",
+          "meaningless. psi and tau, which is where the generalized gamma ",
+          "still has shape, are unaffected. See ?sfm.",
+          call. = FALSE
+        )
+      }
+    }
+
+    if (model_name == "NGB2") {
+      ## Bayes rule over the same quadrature nodes the likelihood used.
+      beta <- opt$par[-c(1:5)]
+      eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
+      .eff <- .gb2_eff(eps_hat, opt$par[1], opt$par[2], opt$par[3],
+        opt$par[4], opt$par[5])
+      exp_u_hat <- .eff$exp_u_hat
+      u_hat <- .eff$u_hat
+    }
+
     if (model_name %in% c("NLN", "NW")) {
       ## Simulated Bayes rule over the same fixed draws used in the likelihood.
       beta <- opt$par[-c(1:3)]
@@ -1354,7 +1471,7 @@ sfm <- function(formula,
 
     ## NE/NTN additionally return u_hat (the JLMS E[u|e] point predictor)
     ## alongside exp_u_hat.
-    if (model_name %in% c("NE", "NTN", "NU", "NGE", "NLN", "NW", "TSL")) {
+    if (model_name %in% c("NE", "NTN", "NU", "NGE", "NLN", "NW", "TSL", "NGB2")) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula, exp_u_hat, u_hat,
         out["par", ], out["st_err", ], out["t-val", ], call
@@ -1397,7 +1514,7 @@ sfm <- function(formula,
 
     ## Fallback for models with no efficiency predictor yet (currently the _Z
     ## variants other than NHN_Z).
-    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL"))) {
+    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL", "NGB2"))) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula,
         out["par", ], out["st_err", ], out["t-val", ], call

@@ -65,6 +65,37 @@
   out
 }
 
+
+## Keep whichever optimizer stage actually attained the lowest objective.
+##
+## Chris Parmeter, 2026-09-10, on TTHN: asked whether "comparison across
+## optimization stages" had been implemented. It had not -- the three stages
+## are CHAINED, each seeded from the last, and the final one is returned
+## whatever it did. On a surface with a nearly flat direction that is a real
+## hazard: stage 3 can wander a long way along the flat and come back with a
+## worse objective than stage 1 or 2 reached, and nothing notices.
+##
+## The objective is RE-EVALUATED here rather than read off each stage's own
+## `value`. That distinction is the whole safety of this: an earlier attempt at
+## cross-stage comparison elsewhere in the package trusted the reported values
+## and picked a stage whose value was +3.6e17, which is why it was reverted.
+## A stage whose parameters do not evaluate finitely is simply not a candidate.
+.tt_best_stage <- function(fn, cands, model_name, verbose = FALSE) {
+  cands <- Filter(function(z) !is.null(z) && !is.null(z$par) && all(is.finite(z$par)), cands)
+  if (!length(cands)) return(NULL)
+  vals <- vapply(cands, function(z) {
+    v <- suppressWarnings(tryCatch(fn(z$par), error = function(e) NA_real_))
+    if (is.null(v) || length(v) != 1L || !is.finite(v)) NA_real_ else v
+  }, numeric(1))
+  if (all(is.na(vals))) return(NULL)
+  k <- which.min(vals)
+  if (isTRUE(verbose)) {
+    message(sprintf("ttsfm() %s: stage objectives %s -- keeping %s.", model_name,
+      paste(sprintf("%s = %.4f", names(cands), vals), collapse = ", "), names(cands)[k]))
+  }
+  list(opt = cands[[k]], which = names(cands)[k], values = vals)
+}
+
 ttsfm <- function(formula,
                   model_name = c("TTNE", "TTHN", "TTNLS"),
                   data,
@@ -593,6 +624,23 @@ ttsfm <- function(formula,
 
     if (optHessian == FALSE && PSopt == TRUE) {
       opt <- opt00
+    }
+
+    ## Stage comparison. Only when the full chain ran -- the two branches above
+    ## deliberately return an earlier stage when the later ones were switched
+    ## off, and that is a request, not an accident.
+    if (optHessian == TRUE) {
+      .bs <- .tt_best_stage(fn, list(bobyqa = bob1, psoptim = opt00, optim = opt),
+                            model_name, verbose = verbose)
+      if (!is.null(.bs) && !identical(.bs$which, "optim")) {
+        warning(sprintf(
+          "ttsfm() %s: the final optimizer stage did NOT attain the best objective -- %s reached %.4f against optim()'s %s, so the %s result is returned instead. The TTHN log-likelihood has a nearly flat direction in sigma_v (see ?ttsfm), and a later stage can travel along it without improving.",
+          model_name, .bs$which, .bs$values[[.bs$which]],
+          if ("optim" %in% names(.bs$values) && is.finite(.bs$values[["optim"]]))
+            sprintf("%.4f", .bs$values[["optim"]]) else "a non-finite value",
+          .bs$which), call. = FALSE)
+        opt <- .bs$opt
+      }
     }
 
     ## See the identical guard in the TTNE branch above for the full

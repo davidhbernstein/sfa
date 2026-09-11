@@ -267,7 +267,13 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     colnames(out) <- c("sigv", "sigu", c(names(plm_lm$coefficients)), z_vars)
     lower_bob <- c(rep(.Machine$double.eps, 2), rep(-Inf, n_x_vars + n_z_vars))
   }
-  if (model_name %in% c("NHN")) {
+  ## "NB" is estimated by corrected OLS only (Carree 2002), so it never reaches
+  ## an optimizer and needs no real starting values -- but sfm() calls
+  ## start_cs() before it branches on `estimator`, and the returned `out` is
+  ## read unconditionally. Borrowing the half-normal layout gives that call
+  ## something well-formed to return; nothing downstream of the COLS branch
+  ## uses it.
+  if (model_name %in% c("NHN", "NB")) {
     start_v <- start_v_nhn
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     colnames(out) <- c("lambda", "sigma", c(names(plm_lm$coefficients)))
@@ -307,6 +313,26 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
       if (model_name == "NLN") -Inf else .Machine$double.eps,
       rep(-Inf, n_x_vars)
     )
+  }
+  ## NGB2 (Makiela and Mazur 2022). Started at the HALF-NORMAL point of the
+  ## family -- tau = 1, psi = 2, and nu large -- because that is the model the
+  ## rest of the package would have fitted, so a fit that moves away from it
+  ## has moved for a reason. nu starts at 30 rather than at the 1e5 bound: the
+  ## density is already within 2e-4 of its limit there (measured), and starting
+  ## a search ON a bound is how the bound gets reported back as an estimate.
+  if (model_name == "NGB2") {
+    s_eps <- stats::sd(epsilon_hat)
+    sv_st <- max(0.5 * s_eps, 1e-3)
+    su_st <- max(s_eps, 1e-3)
+    start_v <- if (is.na(beta_0_st)) {
+      unname(c(sv_st, su_st, 30, 2, 1, beta_hat))
+    } else {
+      unname(c(sv_st, su_st, 30, 2, 1, beta_0, beta_hat))
+    }
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    colnames(out) <- c("sigv", "sigu", "nu", "psi", "tau",
+      c(names(plm_lm$coefficients)))
+    lower_bob <- c(rep(.Machine$double.eps, 5), rep(-Inf, n_x_vars))
   }
   if (model_name %in% c("NU", "NGE")) {
     s_eps <- stats::sd(epsilon_hat)
@@ -617,6 +643,12 @@ lower.start <- function(start_v, model_name, differ) {
   }
   if (model_name %in% c("NG", "NNAK", "NW", "TSL")) {
     lower1 <- c(rep(.0000001, 3), start_v[-c(1:3)] - differ)
+  }
+  ## NGB2: two scales and three shapes, all strictly positive. Being marked
+  ## positive is what gives them an OPEN upper bound in the final optim()
+  ## stage, which nu needs -- its generalized-gamma limit is at infinity.
+  if (model_name == "NGB2") {
+    lower1 <- c(rep(.0000001, 5), start_v[-c(1:5)] - differ)
   }
   ## NLN's third parameter is a meanlog and is genuinely unbounded below.
   if (model_name == "NLN") {

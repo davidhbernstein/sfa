@@ -82,9 +82,9 @@ fit_p <- psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
 | `lcsfm()` | Latent-class frontiers | 3 |
 | `zsfm()` | Zero-inefficiency frontiers | 2 |
 | `ttsfm()` | Two-tier frontiers | 3 |
-| `selsfm()` | Sample-selection frontiers | 1 |
+| `selsfm()` | Sample-selection frontiers | 2 |
 | `ivsfm()` | Frontiers with endogenous regressors | 3 |
-| `copsfm()` | Dependence between the error components | 6 copula families, 15 with rotations |
+| `copsfm()` | Dependence between the error components, and skewed noise | 6 copula families (15 with rotations) x 2 `u` x 3 `v` |
 | `npsfm()` | Nonparametric frontiers | 5 |
 
 All but `npsfm()` return an object of class `"sfareg"`. `npsfm()` returns
@@ -115,9 +115,11 @@ it would give one character two meanings.
 | `tHN` | half normal, with Student-*t* noise |
 | `THT` | half *t*, with Student-*t* noise |
 | `TSL` | truncated skew-Laplace |
+| `NGB2` | generalized beta of the second kind — nests `NHN`, `NE`, `NG` and `NW` as limits, and the half-*t* exactly |
+| `NB` | binomial (Carree 2002) — **`estimator = "cols"` only**; the one `u` here that can be skewed *either* way |
 
 `sfm()` also offers `estimator = "cols"` — corrected OLS (Olson, Schmidt and
-Waldman 1980), closed-form and deterministic, for `NHN`, `NE` and `NG` — and
+Waldman 1980), closed-form and deterministic, for `NHN`, `NE`, `NG` and `NB` — and
 robust divergence-based alternatives to MLE via `robust = "mlqe" | "psi" | "mdpd"`
 for `NHN`.
 
@@ -163,6 +165,7 @@ the `| z` segment does), and `muhet` the pre-truncation mean.
 | `LS` | Lee and Schmidt (1993), one common temporal pattern scaled per firm |
 | `KSS` | Kneip, Sickles and Song (2012), data-driven temporal basis |
 | `PL80` | Pitt and Lee (1980), time-invariant |
+| `PL80_MVTN` | Pitt and Lee (1981) Model III: inefficiency varies over time and is correlated within a firm, through a multivariate normal truncated to the negative orthant. Balanced panels only |
 | `BC92` | Battese and Coelli (1992) time decay |
 | `K1990`, `K1990modified` | Kumbhakar (1990) time patterns |
 
@@ -203,16 +206,35 @@ beyond the means of the two one-sided components).
 
 ### `selsfm()` — sample selection
 
-Greene's (2010) frontier for the case where the units in the sample are there
-for reasons correlated with their inefficiency, so estimating on the selected
-sample alone is biased. Estimated in two steps — probit, then simulated maximum
-likelihood — and so it takes its two equations as separate arguments rather than
-through pipes:
+Two estimators, for two different reasons a selected sample misleads. Both take
+their two equations as separate arguments rather than through pipes:
+
+| `model_name` | Estimator |
+|---|---|
+| `"greene"` (default) | Greene (2010), two-step: probit on the full sample, then simulated ML on the selected subsample |
+| `"kts"` | Kumbhakar, Tsionas and Sipilainen (2009), single-step ML |
 
 ```r
 selsfm(selection = participate ~ z1 + z2,
-       frontier  = y ~ x1 + x2, data = d)
+       frontier  = y ~ x1 + x2, data = d)                      # Greene
+
+selsfm(selection = adopt ~ z1 + z2,
+       frontier  = y ~ x1 + x2, data = d, model_name = "kts")  # KTS
 ```
+
+They are not variants of one model. In **Greene** the units in the sample are
+there for reasons correlated with the *noise*, so estimating on the selected
+sample alone is biased; the correction is a selectivity term, and because the
+selection equation is a probit on an observed binary outcome it can be
+estimated first and the frontier second.
+
+In **KTS** there are two technologies, both observed, each with its own
+frontier and its own pair of scales, and the choice between them depends on
+**inefficiency itself**. That forces a single step: the choice equation cannot
+be a probit when the `u` entering it is unobserved, so there is no first stage
+to run. Use `"greene"` when one regime is unobserved and selection is on the
+noise; use `"kts"` when both regimes are observed and the switch is on
+efficiency.
 
 ### `ivsfm()` — endogenous regressors
 
@@ -244,11 +266,26 @@ endogeneity_test(fit)
 
 Drops the independence assumption between the noise and inefficiency
 components, coupling them with a copula and integrating the resulting density by
-Gauss–Legendre quadrature (`n_nodes`).
+Gauss–Legendre quadrature (`n_nodes`). It also drops the assumption that the
+noise is *symmetric*: `vdist` offers a generalized logistic carrying its own
+skewness parameter (Bonanno and Domma 2022), which is where a positive residual
+skew can go other than into `sigma_u = 0`.
 
 ```r
 copsfm(y ~ x1 + x2, data = d, copula = "frank")
+
+# skewed noise and an exponential inefficiency, with and without dependence
+copsfm(y ~ x1 + x2, data = d, copula = "independent",
+       udist = "exponential", vdist = "glogistic")
+copsfm(y ~ x1 + x2, data = d, copula = "fgm",
+       udist = "exponential", vdist = "glogistic")
 ```
+
+| argument | choices |
+|---|---|
+| `udist` | `"hnormal"`, `"exponential"` |
+| `vdist` | `"normal"`, `"logistic"`, `"glogistic"` (the last two are the generalized logistic, `"logistic"` fixing its shape at 1) |
+| `copula` | the fifteen families below, plus `"independent"`, which estimates no dependence parameter at all |
 
 | `copula` | parameter | independence at | dependence it can express |
 |---|---|---|---|
@@ -351,7 +388,7 @@ Omitted segments default to `1`, i.e. homoskedastic.
 
 ## Model selection and diagnostics
 
-The package offers fifteen cross-sectional inefficiency distributions. These are
+The package offers seventeen cross-sectional inefficiency distributions. These are
 the tools for choosing among them, and for asking whether the choice is
 defensible at all.
 

@@ -1,5 +1,82 @@
 # sfa 1.2.1
 
+## Three new distributional specifications
+
+* **`copsfm()` gains skewed noise and a choice of inefficiency marginal**, via
+  new `vdist` and `udist` arguments (Bonanno and Domma 2022, *Mathematics*
+  10:3876). `vdist = "glogistic"` is a generalized logistic noise carrying its
+  own skewness parameter `alpha_v`; `vdist = "logistic"` fixes it at 1, and
+  `udist = "exponential"` replaces the half-normal inefficiency. `copula =
+  "independent"` is now offered as well, and estimates no dependence parameter
+  at all, so the skewed-noise frontier can be fitted without a copula.
+
+  The point is the wrong-skewness anomaly. The third moment of the composed
+  error depends on the skew of `v` and on the dependence between `v` and `u`,
+  not only on the skew of `u`; where `v` is symmetric and independent a
+  positive residual skew has nowhere to go but `sigma_u = 0`. The paper's four
+  specifications are four `(copula, vdist)` pairs -- see `?copsfm`.
+
+  The paper publishes the composed density in closed form, as four Gauss
+  hypergeometric terms, for both a production frontier (Theorem 1) and a cost
+  frontier (Theorem 2). `copsfm()` computes it by quadrature, and the two agree
+  to about **1e-14** in `log f` across `alpha_v`, `theta` and both
+  orientations. Two of the paper's *summary moment* formulas do not survive the
+  same check and are not consistent with its own appendix; `?copsfm` says which.
+
+* **`sfm(model_name = "NGB2")`** fits a generalized beta of the second kind
+  inefficiency (Makiela and Mazur 2022, *JPA* 58:35-54, section 3), with a
+  scale and three shape parameters. It nests
+  most of the rest of the table -- half-normal, exponential, gamma and Weibull
+  as `nu -> Inf` limits, and the half-Student *t* exactly -- so one fit says
+  which of them the data want. `nu` is flat above a few hundred, where the
+  family has reached its generalized-gamma limit, and `sfm()` warns rather than
+  reporting the number as an estimate.
+
+  The composed density is evaluated by deterministic quadrature with two node
+  sets, one on the inefficiency's scale and one on the noise's, combined by the
+  balance heuristic. It was written on the simulated-ML path first, and that
+  was wrong in a way worth repeating: with 100 draws per proposal the simulated
+  likelihood is biased upward and the optimizer chases the bias, reporting a
+  log-likelihood of -336.9 at parameters whose exact value is -458.7. Four
+  shape parameters give simulation error room to be maximized.
+
+* **`sfm(model_name = "NB", estimator = "cols")`** fits Carree's (2002)
+  binomial inefficiency by corrected OLS. It is the only inefficiency
+  distribution here that can be skewed **either** way, which is the whole
+  reason for it: a positive residual skew, which every other model must report
+  as `sigma_u = 0`, is here an admissible `p > 1/2` and says that most firms
+  carry considerable inefficiency. The estimator inverts the second, third and
+  fourth residual moments; it refuses maximum likelihood, and reports Carree's
+  infeasible region as "no binomial solution" rather than as a number.
+
+## Bug fixes
+
+* **`copsfm(inefdec = FALSE)` fitted the cost frontier with the density
+  mirrored, in 1.2.0.** `eps` is already sign-normalized, so multiplying the
+  quadrature node by `S` as well reflected the composed density: the function
+  maximized `f_{v-u}(y - Xb)` where it needed `f_{v+u}(y - Xb)`. On clean cost
+  data with `sigma_u = 1` and `sigma_v = 0.4` it returned `sigma_u = 0.031` and
+  `sigma_v = 0.69`, with the intercept 0.8 too high. The slopes were unaffected,
+  and so was every production fit (`inefdec = TRUE`, the default), which is why
+  the existing tests did not catch it. **Any `copsfm()` cost fit made with
+  1.2.0 should be re-run.**
+
+* **A parameter on its bound cost `copsfm()` every standard error in the fit.**
+  The likelihood refused out-of-range draws with `.Machine$double.xmax`;
+  `optim()` differences the objective to build its gradient, and differencing
+  1.8e308 overflows to a non-finite value, so the final stage aborted and all
+  standard errors came back `NA`. It bites whenever a parameter ends up ON a
+  bound, which a dependence parameter routinely does. Now a large finite
+  penalty, with the two bounded parameters clamped rather than refused --
+  matching what `sfm()`'s `NGE`/`NLN`/`NW` branches already did.
+
+* **`sfm(estimator = "cols")` predicted efficiency with the wrong posterior for
+  `"NE"` and `"NG"`.** `E[exp(-u)|eps]` is a property of the assumed `u`, and
+  the COLS path applied the normal/half-normal posterior regardless of
+  `model_name`. Parameter estimates were correct; only `exp_u_hat` was affected.
+  It now dispatches, `"NG"` using the same parabolic-cylinder form its
+  maximum-likelihood branch uses.
+
 * **`ivsfm(model_name = "IVLIML")` could walk into a corner of its own box and
   report the result as an ordinary fit.** `IVLIML` is the default estimator, so
   this is the one to know about. On the design of Hou, Ramalho and

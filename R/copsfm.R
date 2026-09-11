@@ -168,7 +168,10 @@
 .COP_VERIFIED <- c("gaussian", "fgm", "frank", "clayton")
 
 .cop_warn_family <- function(family) {
-  if (family %in% .COP_VERIFIED) return(invisible(NULL))
+  ## "independent" has no parameter to recover, so there is nothing to warn about.
+  if (identical(family, "independent") || family %in% .COP_VERIFIED) {
+    return(invisible(NULL))
+  }
   ## `[` not `[[`: a name absent from the vector must give NA, not an error.
   rate <- unname(.COP_COLLAPSE[family])
   if (!is.na(rate)) {
@@ -191,13 +194,99 @@
   invisible(NULL)
 }
 
+## ---------------------------------------------------------------------------
+## Marginal distributions for the two error components. Gap L18.
+## ---------------------------------------------------------------------------
+##
+## Bonanno and Domma (2022) pair an EXPONENTIAL inefficiency with a GENERALIZED
+## LOGISTIC noise carrying its own skewness parameter. Their argument is that
+## the wrong-skewness anomaly is a specification failure rather than a small
+## sample accident: the third moment of the composed error (their Eq. 5)
+## depends on the skew of v and on the dependence between v and u, and not only
+## on the skew of u, so a model in which v cannot be skewed has nowhere to put
+## a positive residual skewness except in a sigma_u that collapses to zero.
+##
+## Nothing here is copula-specific. The convolution is done by quadrature, so
+## the marginals vary independently of the dependence structure, and the
+## paper's four specifications -- (I,S), (I,A), (D,S), (D,A) -- are four
+## (copula, vdist) pairs rather than four separate estimators.
+
+## Generalized logistic GL(alpha, delta), in Bonanno and Domma's centred
+## parameterization:
+##
+##   z    = v / delta + [psi(alpha) - psi(1)]
+##   G(v) = (1 + e^-z)^-alpha
+##   g(v) = (alpha / delta) e^-z (1 + e^-z)^-(alpha+1)
+##
+## The location term is the whole point: it holds E[V] = 0 for EVERY (alpha,
+## delta), so the two parameters move the spread and the skew of the noise
+## without moving its mean. A noise term with a non-zero mean is not noise, it
+## is part of the frontier, and would not be separately identified from the
+## intercept.
+##
+## Then Var(V) = delta^2 [psi'(alpha) + psi'(1)] -- NOT delta^2, which is why
+## the fitted scale is reported as `delta_v` and not as `sigma_v` -- and
+## E[V - E V]^3 = delta^3 [psi''(alpha) - psi''(1)]. alpha = 1 is the ordinary
+## logistic with scale delta; alpha < 1 skews negative, alpha > 1 positive.
+.gl_z <- function(v, alpha, delta) v / delta + (digamma(alpha) - digamma(1))
+
+.gl_ld <- function(v, alpha, delta) {
+  z <- .gl_z(v, alpha, delta)
+  log(alpha) - log(delta) - z - (alpha + 1) * .log1pexp(-z)
+}
+
+.gl_lp <- function(v, alpha, delta) -alpha * .log1pexp(-.gl_z(v, alpha, delta))
+
+.gl_q <- function(p, alpha, delta) {
+  delta * (-log(p^(-1 / alpha) - 1) - (digamma(alpha) - digamma(1)))
+}
+
+## alpha is bounded away from 0 rather than merely from below. psi(alpha) ~
+## -1/alpha as alpha -> 0, so the centring shift is delta/alpha and the density
+## walks off to infinity while remaining perfectly finite at every point the
+## optimizer evaluates -- a silent failure, not an error.
+.GL_ALPHA <- c(0.05, 20)
+
+## (log density, CDF) of each marginal. Both take the SCALE parameter; the
+## shape argument is ignored except by the generalized logistic.
+.cop_u_ld <- function(u, su, udist) {
+  if (identical(udist, "exponential")) {
+    stats::dexp(u, rate = 1 / su, log = TRUE)
+  } else {
+    log(2) + stats::dnorm(u, 0, su, log = TRUE)
+  }
+}
+
+.cop_u_p <- function(u, su, udist) {
+  if (identical(udist, "exponential")) -expm1(-u / su) else 2 * stats::pnorm(u / su) - 1
+}
+
+.cop_v_ld <- function(v, sv, av, vdist) {
+  if (identical(vdist, "normal")) stats::dnorm(v, 0, sv, log = TRUE) else .gl_ld(v, av, sv)
+}
+
+.cop_v_p <- function(v, sv, av, vdist) {
+  if (identical(vdist, "normal")) stats::pnorm(v / sv) else exp(.gl_lp(v, av, sv))
+}
+
+## Moments the starting values need: the coefficient of sigma_u^3 in the third
+## central moment of -u, the coefficient of sigma_u^2 in Var(u), E[u]/sigma_u,
+## and the coefficient of delta_v^2 in Var(v) at alpha = 1.
+.cop_u_k3 <- function(udist) if (identical(udist, "exponential")) -2 else sqrt(2 / pi) * (1 - 4 / pi)
+.cop_u_v2 <- function(udist) if (identical(udist, "exponential")) 1 else 1 - 2 / pi
+.cop_u_m1 <- function(udist) if (identical(udist, "exponential")) 1 else sqrt(2 / pi)
+.cop_v_v2 <- function(vdist) if (identical(vdist, "normal")) 1 else pi^2 / 3
+
 copsfm <- function(formula,
                    data,
                    copula = c("gaussian", "fgm", "frank",
                               "clayton", "clayton90", "clayton180", "clayton270",
                               "gumbel", "gumbel90", "gumbel180", "gumbel270",
-                              "joe", "joe90", "joe180", "joe270"),
+                              "joe", "joe90", "joe180", "joe270",
+                              "independent"),
                    inefdec = TRUE,
+                   udist = c("hnormal", "exponential"),
+                   vdist = c("normal", "logistic", "glogistic"),
                    n_nodes = 128,
                    maxit.bobyqa = 10000,
                    maxit.psoptim = 1000,
@@ -210,7 +299,10 @@ copsfm <- function(formula,
                    rand.psoptim = NULL) {
   call <- match.call()
   copula <- match.arg(copula)
+  udist <- match.arg(udist)
+  vdist <- match.arg(vdist)
   .cop_warn_family(copula)
+  has_cop <- !identical(copula, "independent")
   Start.Time <- Sys.time()
   cz <- .SFA_CONSTANTS
 
@@ -240,14 +332,15 @@ copsfm <- function(formula,
   X <- stats::model.matrix(stats::terms(mf), mf)
   n <- length(y)
   k <- ncol(X)
-  if (n <= k + 3L) {
-    stop("copsfm(): ", n, " observations cannot identify ", k + 3L,
+  np <- k + 2L + (vdist == "glogistic") + has_cop
+  if (n <= np) {
+    stop("copsfm(): ", n, " observations cannot identify ", np,
       " parameters.",
       call. = FALSE
     )
   }
   S <- if (isTRUE(inefdec)) 1 else -1
-  cs <- .cop_spec(copula)
+  cs <- if (has_cop) .cop_spec(copula) else NULL
 
   ## Gauss-Legendre nodes on (0, 1), mapped to u in (0, Inf) by u = t/(1-t).
   ## The map is chosen so the integrand's mass -- which sits at moderate u --
@@ -264,59 +357,110 @@ copsfm <- function(formula,
   uu <- tt / (1 - tt)
   jac <- 1 / (1 - tt)^2
 
-  ## log f_eps(eps_i), the composed density, by quadrature over u.
-  .log_dens <- function(eps, su, sv, cpar) {
-    ## Rows are observations, columns quadrature nodes.
-    U <- matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE)
-    V <- eps + S * U
-    lfv <- stats::dnorm(V, 0, sv, log = TRUE)
-    lfu <- log(2) + stats::dnorm(U, 0, su, log = TRUE)
-    lg <- lfv + lfu
-    if (!identical(copula, "independent") && !is.null(cpar)) {
+  ## The per-node log joint density, rows observations and columns quadrature
+  ## nodes. Shared by the likelihood and by the efficiency predictors, so the
+  ## objective and the prediction cannot come to disagree about the model.
+  ##
+  ## `eps` is S * (y - Xb), which is distributed as (S v) - u. Adding back the
+  ## node therefore recovers S*v, and the NOISE ITSELF is S times that. That
+  ## last multiplication is not cosmetic: for a cost frontier the sign-
+  ## normalized error is (-v) - u, and a SKEWED v does not survive the
+  ## reflection the way a normal one does. The same reflection is why F_V is
+  ## evaluated at the actual v -- so that a positive dependence parameter means
+  ## the same thing, association between the real v and the real u, in both
+  ## orientations.
+  .node_lg <- function(eps, su, sv, av, cpar, U) {
+    vv <- S * (eps + U)
+    lg <- .cop_v_ld(vv, sv, av, vdist) + .cop_u_ld(U, su, udist)
+    if (has_cop && !is.null(cpar)) {
       ## Marginal CDFs, clamped off the endpoints: qnorm(0) is -Inf.
-      w1 <- pmin(pmax(stats::pnorm(V / sv), 1e-12), 1 - 1e-12)
-      w2 <- pmin(pmax(2 * stats::pnorm(U / su) - 1, 1e-12), 1 - 1e-12)
+      w1 <- pmin(pmax(.cop_v_p(vv, sv, av, vdist), 1e-12), 1 - 1e-12)
+      w2 <- pmin(pmax(.cop_u_p(U, su, udist), 1e-12), 1 - 1e-12)
       lc <- .cop_logc_rot(as.numeric(w1), as.numeric(w2), cpar, copula)
-      if (any(!is.finite(lc))) return(rep(NA_real_, length(eps)))
+      if (any(!is.finite(lc))) return(NULL)
       lg <- lg + matrix(lc, nrow = nrow(lg))
     }
-    lg <- sweep(lg, 2, log(wt) + log(jac), "+")
+    sweep(lg, 2, log(wt) + log(jac), "+")
+  }
+
+  ## log f_eps(eps_i), the composed density, by quadrature over u.
+  .log_dens <- function(eps, su, sv, av, cpar) {
+    U <- matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE)
+    lg <- .node_lg(eps, su, sv, av, cpar, U)
+    if (is.null(lg)) return(rep(NA_real_, length(eps)))
     .log_row_sum_exp(lg)
   }
 
-  ## Starting values: OLS plus Olson's moments, independence for the copula.
+  ## Starting values: OLS plus Olson's moments, independence for the copula and
+  ## a symmetric noise. The moment identities are per-distribution -- Olson
+  ## reads sigma_u out of the residual skewness, and the exponential and the
+  ## half-normal put different multiples of sigma_u^3 there.
   ols <- stats::lm.fit(x = X, y = y)
   e0 <- as.numeric(ols$residuals)
   m2 <- mean(e0^2); m3 <- mean(e0^3)
-  k3 <- sqrt(2 / pi) * (1 - 4 / pi)
+  k3 <- .cop_u_k3(udist)
   su0 <- if (S * m3 < 0) (S * m3 / k3)^(1 / 3) else 0.5 * stats::sd(e0)
   su0 <- if (is.finite(su0)) max(su0, 1e-3) else max(0.5 * stats::sd(e0), 1e-3)
-  sv0 <- sqrt(max(m2 - (1 - 2 / pi) * su0^2, 1e-6))
+  ## Var(eps) = Var(v) + Var(u), and for a generalized logistic at alpha = 1
+  ## Var(v) is delta_v^2 pi^2/3 rather than delta_v^2.
+  sv0 <- sqrt(max(m2 - .cop_u_v2(udist) * su0^2, 1e-6) / .cop_v_v2(vdist))
   b0 <- as.numeric(ols$coefficients)
   if (attr(stats::terms(mf), "intercept") == 1L) {
-    b0[1L] <- b0[1L] + S * su0 * sqrt(2 / pi)
+    b0[1L] <- b0[1L] + S * su0 * .cop_u_m1(udist)
   }
-  start_v <- c(b0, log(su0), log(sv0), cs$par0)
-  par_names <- c(colnames(X), "sigma_u", "sigma_v", cs$name)
+
+  ## Layout: beta, log sigma_u, log delta_v, then log alpha_v where the noise
+  ## carries a shape, then the copula parameter where there is a copula.
+  i_b <- seq_len(k); i_su <- k + 1L; i_sv <- k + 2L
+  i_av <- NA_integer_; i_c <- NA_integer_
+  start_v <- c(b0, log(su0), log(sv0))
+  par_names <- c(colnames(X), "sigma_u",
+    if (identical(vdist, "normal")) "sigma_v" else "delta_v")
+  span <- pmax(10 * abs(b0), 10)
+  lower1 <- c(b0 - span, log(1e-6), log(1e-6))
+  upper1 <- c(b0 + span, log(1e4), log(1e4))
+  if (identical(vdist, "glogistic")) {
+    i_av <- length(start_v) + 1L
+    start_v <- c(start_v, 0)                    # alpha_v = 1, the symmetric case
+    par_names <- c(par_names, "alpha_v")
+    lower1 <- c(lower1, log(.GL_ALPHA[1L])); upper1 <- c(upper1, log(.GL_ALPHA[2L]))
+  }
+  if (has_cop) {
+    i_c <- length(start_v) + 1L
+    start_v <- c(start_v, cs$par0)
+    par_names <- c(par_names, cs$name)
+    lower1 <- c(lower1, cs$lo); upper1 <- c(upper1, cs$hi)
+  }
   if (isTRUE(start_val)) names(start_v) <- par_names
 
-  i_b <- seq_len(k); i_su <- k + 1L; i_sv <- k + 2L; i_c <- k + 3L
+  ## A large FINITE penalty, not .Machine$double.xmax. optim() differences the
+  ## objective to build its gradient, and differencing 1.8e308 overflows to a
+  ## non-finite value -- which aborts the final stage with "non-finite
+  ## finite-difference value" and costs the standard errors for the whole fit.
+  ## sfm()'s NGE, NLN and NW branches already use 1e12 for exactly this reason.
+  .PEN <- 1e12
 
   like.fn <- function(th) {
-    if (!all(is.finite(th))) return(cz$MAX_VALUE)
+    if (!all(is.finite(th))) return(.PEN)
     su <- exp(pmin(th[i_su], 12)); sv <- exp(pmin(th[i_sv], 12))
-    cpar <- th[i_c]
-    if (cpar < cs$lo || cpar > cs$hi) return(cz$MAX_VALUE)
+    ## CLAMPED, not rejected. The optimizers already hold th[i_av] inside these
+    ## bounds; returning a huge penalty for the last ulp of floating-point slop
+    ## at the bound is how the final optim() stage aborts with a non-finite
+    ## finite-difference value, which is exactly what it did.
+    av <- if (is.na(i_av)) 1 else {
+      exp(min(max(th[i_av], log(.GL_ALPHA[1L])), log(.GL_ALPHA[2L])))
+    }
+    ## CLAMPED, not rejected -- the same reasoning as alpha_v above, and it
+    ## matters more here because a dependence parameter routinely ENDS UP on
+    ## its bound (FGM's theta especially). A 1e12 cliff one finite-difference
+    ## step from the reported optimum costs the standard errors.
+    cpar <- if (has_cop) min(max(th[i_c], cs$lo), cs$hi) else NULL
     eps <- S * as.numeric(y - X %*% th[i_b])
-    ll <- .log_dens(eps, su, sv, cpar)
-    if (any(!is.finite(ll))) return(cz$MAX_VALUE)
+    ll <- .log_dens(eps, su, sv, av, cpar)
+    if (any(!is.finite(ll))) return(.PEN)
     ## The scaffold MINIMIZES; every likelihood here returns the negative sum.
     -sum(ll)
   }
-
-  span <- pmax(10 * abs(b0), 10)
-  lower1 <- c(b0 - span, log(1e-6), log(1e-6), cs$lo)
-  upper1 <- c(b0 + span, log(1e4), log(1e4), cs$hi)
 
   Opt.Bobyqa <- opt.bobyqa(fn = like.fn, start_v = start_v,
     lower.bobyqa = lower1, upper.bobyqa = upper1,
@@ -351,36 +495,42 @@ copsfm <- function(formula,
 
   th <- opt$par
   su <- exp(th[i_su]); sv <- exp(th[i_sv])
-  par <- c(th[i_b], su, sv, th[i_c])
-  se <- c(st_err[i_b], su * st_err[i_su], sv * st_err[i_sv], st_err[i_c])
+  av <- if (is.na(i_av)) 1 else exp(th[i_av])
+  cpar <- if (has_cop) th[i_c] else NA_real_
+  par <- c(th[i_b], su, sv)
+  se <- c(st_err[i_b], su * st_err[i_su], sv * st_err[i_sv])
+  ## alpha_v is estimated as log alpha_v and reported on its own scale, so its
+  ## standard error carries the same delta-method factor the two scales do.
+  if (!is.na(i_av)) { par <- c(par, av); se <- c(se, av * st_err[i_av]) }
+  if (has_cop) { par <- c(par, cpar); se <- c(se, st_err[i_c]) }
 
   out <- matrix(NA_real_, 3L, length(par))
   rownames(out) <- c("par", "st_err", "t-val")
   colnames(out) <- par_names
   out[1, ] <- par; out[2, ] <- se; out[3, ] <- par / se
 
-  ## E[u | eps] by the same quadrature the likelihood used, so the predictor and
-  ## the objective cannot disagree about the model.
+  ## The efficiency predictors, by the same quadrature -- and from the same
+  ## closure -- that the likelihood used.
   eps <- S * as.numeric(y - X %*% th[i_b])
   Um <- matrix(uu, nrow = n, ncol = length(uu), byrow = TRUE)
-  V <- eps + S * Um
-  lg <- stats::dnorm(V, 0, sv, log = TRUE) + log(2) + stats::dnorm(Um, 0, su, log = TRUE)
-  w1 <- pmin(pmax(stats::pnorm(V / sv), 1e-12), 1 - 1e-12)
-  w2 <- pmin(pmax(2 * stats::pnorm(Um / su) - 1, 1e-12), 1 - 1e-12)
-  lg <- lg + matrix(.cop_logc_rot(as.numeric(w1), as.numeric(w2), th[i_c], copula), nrow = n)
-  lg <- sweep(lg, 2, log(wt) + log(jac), "+")
+  lg <- .node_lg(eps, su, sv, av, cpar, Um)
   wts <- exp(lg - .log_row_sum_exp(lg))
   jlms <- as.numeric(rowSums(wts * Um))
+  ## Battese-Coelli, E[exp(-u) | eps]. Free here, and it is the quantity the
+  ## copula literature reports; exp(-jlms) is kept as `efficiency` because that
+  ## is what this function has always returned under that name.
+  exp_u_hat <- as.numeric(rowSums(wts * exp(-Um)))
 
   results <- list(
-    t(out), c(opt), End.Time, start_v, "COP", formula, copula, th[i_c],
-    jlms, exp(-jlms), S, n, as.integer(n_nodes),
+    t(out), c(opt), End.Time, start_v, "COP", formula, copula, cpar,
+    udist, vdist, av, jlms, exp(-jlms), exp_u_hat, S, n, as.integer(n_nodes),
     out["par", ], out["st_err", ], out["t-val", ], call
   )
   class(results) <- "sfareg"
   names(results) <- c(
     "out", "opt", "total_time", "start_v", "model_name", "formula", "copula",
-    "copula_par", "jlms", "efficiency", "S", "nobs", "n_nodes",
+    "copula_par", "udist", "vdist", "alpha_v", "jlms", "efficiency",
+    "exp_u_hat", "S", "nobs", "n_nodes",
     "coefficients", "std.errors", "t.values", "call"
   )
   results

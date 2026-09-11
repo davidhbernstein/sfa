@@ -4,7 +4,7 @@
 \description{Implementation of the cross-sectional stochastic frontier model across an array of distributional assumptions for both v and u (user specified). For panel models, see the psfm() call.}
 \usage{sfm(formula, model_name = c("NHN", "NHN_Z", "NE", "NE_Z", "NR",
     "THT", "NTN", "NG", "NNAK", "NU", "NGE", "NLN", "NW", "tHN",
-    "TSL"), data, maxit.bobyqa = 10000, maxit.nlminb = 500,
+    "TSL", "NB", "NGB2"), data, maxit.bobyqa = 10000, maxit.nlminb = 500,
     maxit.psoptim = 1000, maxit.optim = 1000, REPORT = 1, trace = 2,
     pgtol = 0, start_val = FALSE, PSopt = FALSE, use.nlminb = "auto",
     use.bobyqa = "auto", optHessian = TRUE, inefdec = TRUE, upper =
@@ -38,6 +38,8 @@ normal except where stated, and the one-sided inefficiency term \eqn{u} follows:
   \item{\code{"tHN"}}{half normal, with Student-\emph{t} noise.}
   \item{\code{"TSL"}}{truncated skew-Laplace.}
   \item{\code{"THT"}}{half \emph{t}, with Student-\emph{t} noise.}
+  \item{\code{"NGB2"}}{generalized beta of the second kind (Makiela and Mazur 2022), with scale \eqn{\sigma_u} and three shape parameters \eqn{(\nu, \psi, \tau)}. The most general one-sided family here: it nests \code{"NHN"}, \code{"NE"}, \code{"NG"} and \code{"NW"} as limits and the half-Student \eqn{t} exactly. Simulated maximum likelihood; see \sQuote{Details}.}
+  \item{\code{"NB"}}{binomial (Carree 2002). \bold{Corrected OLS only} -- call it with \code{estimator = "cols"}; \code{sfm()} refuses it under maximum likelihood. The only inefficiency distribution here that can be skewed \emph{either} way, which is the whole reason for it: see \sQuote{Details}.}
 } Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
 \item{data}{A data frame containing the variables named in \code{formula}.}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
@@ -117,6 +119,113 @@ These fits carry every positive quantity on the log scale, so the parameter vect
 \bold{Simulated-ML draws.} \code{"NLN"} and \code{"NW"} have no closed-form composed density and are fitted by maximum simulated likelihood, averaging over draws built by \code{sim_type}. Two properties are enforced whatever the sequence. Each observation receives its own \emph{contiguous block} of the sequence rather than a strided subsequence: a column-major fill hands observation \eqn{i} the elements \eqn{h_i, h_{i+n}, \ldots} of a van der Corput sequence, which is not equidistributed -- at \eqn{n = 500} and \code{Nsim = 100} the first observation's block spanned only \eqn{[0.50, 0.75]}, integrating over a quarter of the inefficiency distribution. And the draws are clamped away from 0 and 1, since \code{qnorm()} of an exact endpoint is infinite.
 
 Blocking by observation is also what makes the draws worth using: Train (2002, ch. 9) attributes the advantage of a low-discrepancy sequence to its coverage \emph{and} to the negative correlation it induces across observations, and the second only arises when observations receive different blocks. On draw counts, Bhat (2001) found 100 Halton draws more precise than 1000 pseudorandom ones, with 125 Halton draws giving half the simulation error of 1000 random draws; \code{Nsim = "auto"} scales the count with \eqn{n} and warns if a supplied count is too small.
+
+\bold{\code{"NGB2"}: the generalized beta of the second kind.} Makiela and
+Mazur (2022), section 3, with density
+\deqn{f(u) = \frac{\psi_u}{\sigma_u B(\tau/\psi_u, \nu_u/\psi_u)\,\nu_u^{\tau/\psi_u}}
+      \left(\frac{u}{\sigma_u}\right)^{\tau-1}
+      \left[1 + \frac{1}{\nu_u}\left(\frac{u}{\sigma_u}\right)^{\psi_u}\right]^{-(\tau+\nu_u)/\psi_u},}
+reported as \code{(sigv, sigu, nu, psi, tau)}. \eqn{\sigma_u} is a scale,
+\eqn{\nu_u} governs tail thickness (and so which moments exist, like the
+degrees of freedom of a \eqn{t}), and \eqn{\psi_u} and \eqn{\tau} are shape.
+
+\bold{The point of four parameters on one error component is what they nest.}
+The limits are most of the rest of this table, so one fit says which of them
+the data want rather than a column of separate fits saying it by their
+likelihoods:
+
+\tabular{ll}{
+ \bold{restriction} \tab \bold{distribution} \cr
+ \eqn{\nu_u \to \infty} \tab generalized gamma \cr
+ \eqn{\nu_u \to \infty}, \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half normal (\code{"NHN"}) \cr
+ \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u = 1} \tab exponential (\code{"NE"}) \cr
+ \eqn{\nu_u \to \infty}, \eqn{\psi_u = 1} \tab gamma (\code{"NG"}) \cr
+ \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u} \tab Weibull (\code{"NW"}), at scale \eqn{\sigma_u\psi_u^{1/\psi_u}} \cr
+ \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half Student \eqn{t} with \eqn{\nu_u} degrees of freedom
+}
+
+The half-\eqn{t} case is exact; the others are limits, and the tests check that
+the error against each falls like \eqn{1/\nu_u} rather than merely that it is
+small at one value.
+
+\bold{\eqn{\nu_u} has no interior maximum once the tail is not heavy, and a
+large fitted value is not an estimate.} Past a few hundred the density has
+stopped moving -- the discrepancy from the generalized-gamma limit is 2e-4 at
+\eqn{\nu_u = 10^6} and falls only as \eqn{1/\nu_u} -- so the likelihood is flat
+there. \code{sfm()} warns above 200; report that as \dQuote{generalized gamma,
+no heavy tail detected}, treat the standard error on \eqn{\nu_u} as
+meaningless, and read \eqn{\psi_u} and \eqn{\tau}, which still carry shape in
+that limit. Starting values are placed at the half-normal point of the family
+(\eqn{\tau = 1}, \eqn{\psi_u = 2}, \eqn{\nu_u = 30}), so a fit that moves away
+from it has moved for a reason.
+
+The composed density has no closed form and is evaluated by \bold{deterministic
+quadrature with two node sets}, one at the quantiles of \eqn{u} and one at the
+quantiles of the noise truncated to \eqn{u > 0}, combined by the balance
+heuristic. Either alone fails: the first misses a narrow noise, the second a
+concentrated \eqn{u}, and a four-parameter family can be either. Measured
+against adaptive integration over 243 parameter settings, at points where the
+density is not negligible (\eqn{\log f > -20}) the \emph{median} error in
+\eqn{\log f} is 1.2e-8 and the worst is 3.4e-2. The worst cases are one corner
+of the grid -- \eqn{\sigma_v = 0.15} against a spiky generalized gamma
+(\eqn{\psi_u = 8}) -- where adaptive integration disagrees with itself by up to
+0.9, so it is not a reference that would justify more nodes. A single node set
+on \eqn{u}'s probability scale was wrong by up to 12 at the \emph{peak} of the
+density on the same grid.
+
+It is \emph{not} estimated by simulated maximum likelihood, and the reason is
+worth knowing before reaching for simulation elsewhere. Written that way first,
+with 100 draws per proposal, the simulated likelihood was biased upward and the
+optimizer chased the bias: on \eqn{n = 400} generated from a half normal it
+walked to \eqn{\psi_u = 88}, \eqn{\tau = 0.22} -- a near point mass, where
+importance sampling from the inefficiency badly overstates the density -- and
+reported a log-likelihood of -336.9 where the exact value at those parameters
+is -458.7. Simulated ML rewards whatever parameters maximise its own simulation
+error, and four shape parameters give it room to find them.
+
+This is nonetheless the slowest \code{sfm()} model: about 0.08 s per likelihood
+evaluation at \eqn{n = 500}, so a fit takes minutes rather than seconds.
+
+\bold{\code{"NB"}: a binomial inefficiency, and what wrong skewness might
+mean.} Carree (2002). Every other one-sided distribution in this table is
+positively skewed, so a production frontier implies a \emph{negatively} skewed
+composed error, and a positive residual skew has nowhere to go: the maximum
+likelihood estimate is \eqn{\sigma_u = 0} (Waldman 1982), read as
+\dQuote{no inefficiency}. Carree's observation is that this is not the only
+reading. A binomial \eqn{b(n, p)} is negatively skewed for \eqn{p > 1/2}, and
+that says something quite different -- most firms carry considerable
+inefficiency and only a few sit near the frontier. Same sample moment,
+opposite economics.
+
+The estimator inverts the second, third and fourth central moments of the OLS
+residuals (his Eq. 7),
+\deqn{m_2 = \sigma_v^2 + np(1-p), \quad m_3 = -np(1-p)(1-2p), \quad
+      m_4 - 3m_2^2 = np(1-p)(1-6p+6p^2),}
+whose ratio \eqn{x = (m_4 - 3m_2^2)/m_3 = (6p^2-6p+1)/(2p-1)} is a quadratic in
+\eqn{p} with roots \eqn{p = \tfrac12 + \tfrac{x}{6} \pm \tfrac16\sqrt{x^2+3}}.
+Which root applies is settled by \eqn{x} outside \eqn{[-1,1]} and by the sign
+of \eqn{m_3} inside it. \code{n_bin} and \code{p_bin} are reported alongside
+\code{sigu}, which is \eqn{\sqrt{np(1-p)}} so that it is comparable with the
+other models.
+
+Three things to know. First, \bold{a positive \code{m3} is admissible here},
+which is exactly what it is for; \code{wrong_skew} is set only when the
+inversion genuinely fails. Second, it \bold{uses the fourth moment}, so it is
+markedly more fragile than the half-normal and exponential inversions -- as
+Greene's gamma estimator is, and for the same reason. Carree's infeasible
+region is \eqn{|m_4 - 3m_2^2| > |m_3| > 0}, where the implied \eqn{n} is
+negative; \code{sfm()} warns, reports no estimate, and that should be read as
+evidence against a binomial inefficiency rather than as a number. It also
+needs \eqn{\sigma_v} not to be small relative to \eqn{\sqrt{np(1-p)}}, since
+\eqn{\sigma_v^2} is then a small difference of large moments. Third, \bold{the
+support is the integers}: one unit of \eqn{u} is one unit of the dependent
+variable, so with a log dependent variable each \dQuote{inefficiency category}
+is a factor of \eqn{e}. A scale factor is not identified from three moments
+alongside \eqn{(n, p, \sigma_v)}, so there is none, and the implied efficiency
+levels should be read with that in mind. The efficiency predictor is the exact
+discrete posterior \eqn{P(u = j \mid \varepsilon) \propto \binom{n}{j}p^j
+(1-p)^{n-j}\phi(\varepsilon + j; 0, \sigma_v)}, with \eqn{n} rounded to an
+integer; \code{n_bin} keeps the unrounded moment estimate.
 
 \code{"TSL"} assumes a truncated skew-Laplace inefficiency (Wang 2012, eq. 3.7; the distribution is due to Aryal and Rao 2005, and the model was published as Nguyen, Gupta and Wang 2014), with density \eqn{f(u) = \frac{1+\lambda}{\sigma_u(2\lambda+1)}\left[2e^{-u/\sigma_u} - e^{-(1+\lambda)u/\sigma_u}\right]} for \eqn{u \ge 0}. This is a \emph{signed} mixture of two exponentials -- the second enters negatively -- so it nests the exponential model as \eqn{\lambda \to 0} while allowing a non-monotonic inefficiency density, and the composed density is the corresponding signed combination of two normal-exponential terms. It is evaluated as a difference in log space rather than by subtracting the raw terms: both carry \eqn{\sigma_v^2/(2\sigma_u^2)}, which overflows once \eqn{\sigma_u} becomes small relative to \eqn{\sigma_v}, a region the optimizer routinely visits. \code{lambda} is a shape parameter and is the least sharply identified of the three. \bold{This is a property of the family, not of the fit, and it is worth understanding before reporting \code{lambda} at all.} The shape parameter changes the standardised distribution remarkably little: \eqn{E[U]/\sigma_u} equals 1 in both limits \eqn{\lambda \to 0} and \eqn{\lambda \to \infty}, and its maximum over all \eqn{\lambda} is only \eqn{4-2\sqrt{2} \approx \bold{1.1716}}, attained at \eqn{\lambda = 1/\sqrt{2}}; the standardised skewness moves only from about 1.95 down to 1.79 and back. So the data identify the product \eqn{\sigma_u \times m(\lambda)} far better than they identify \eqn{\sigma_u} and \eqn{\lambda} separately, and the two trade off against each other.
 
@@ -202,8 +311,9 @@ An object of class \code{"sfareg"} containing the following components:
 \item{start_v}{The starting values used in the optimization.}
 \item{model_name}{The name of the stochastic frontier model estimated.}
 \item{formula}{The formula used in the model specification.}
-\item{exp_u_hat}{Predicted technical efficiency, E[exp(-u)|e]. Available for models: NHN, NHN_Z, NR, NG, NNAK, NE, NTN, NU, NGE, NLN, NW, THT and tHN.}
-\item{u_hat}{Predicted inefficiency, E[u|e] (Jondrow et al. 1982). Available for NE, NTN, NU, NGE, NLN, NW, THT and tHN.}
+\item{exp_u_hat}{Predicted technical efficiency, E[exp(-u)|e]. Available for models: NHN, NHN_Z, NR, NG, NNAK, NE, NTN, NU, NGE, NLN, NW, NGB2, THT and tHN, and for \code{estimator = "cols"} with NHN, NE, NG and NB. Each uses the posterior its own \eqn{u} implies.}
+\item{u_hat}{Predicted inefficiency, E[u|e] (Jondrow et al. 1982). Available for NE, NTN, NU, NGE, NLN, NW, NGB2, THT and tHN.}
+\item{n_bin, p_bin}{\code{model_name = "NB"} only, in \code{out} and \code{coefficients}: the moment estimates of the binomial's size and success probability. \code{n_bin} is a real number, not an integer.}
 \item{wrong_skew, sigma_u_at_bound, residual_m3}{Wrong-skewness diagnostics. \code{residual_m3} is the third central moment of the OLS residuals; \code{wrong_skew} is \code{TRUE} when that is non-negative, which for a production frontier means the moment equations admit no interior solution; \code{sigma_u_at_bound} is \code{TRUE} when the fitted one-sided scale has collapsed to the zero boundary. When both are \code{TRUE} the boundary \emph{is} the maximum likelihood estimate -- the Type I failure of Olson, Schmidt and Waldman (1980), studied by Waldman (1982) -- and not a numerical failure, so \code{sfm} reports it rather than bounding \eqn{\sigma_u} away from zero. Read it as no evidence of inefficiency in these data, and treat the efficiency scores as uninformative. A collapse with correctly skewed residuals would be a different matter and does not occur in testing.}
 \item{thn_sigma_u_at_bound}{Logical, \code{tHN} only. \code{TRUE} when the fitted \eqn{\sigma_u} collapsed onto zero, so the model reports essentially no inefficiency. Accompanied by a warning. Treat the efficiency scores as uninformative when this is set.}
 \item{thn_starts}{List, \code{tHN} only. Multi-start diagnostic: how many starting values were tried and converged, the log-likelihood reached from each, and \code{n_distinct}, the number of separate optima found. \code{n_distinct > 1} means the likelihood surface is multimodal for these data and the single returned fit is only the best of those found.}

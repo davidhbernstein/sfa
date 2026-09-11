@@ -101,6 +101,17 @@
            qf  = function(pr) stats::qweibull(pr, shape = k, scale = sc),
            closed = NULL)   # no closed form
     },
+    ## GB2 (Makiela and Mazur 2022). The density and the quantile are both
+    ## available in closed form, so this is the same two lines as the rest --
+    ## and the quantile is the one that matters, since every quantity here is
+    ## an integral over p.
+    NGB2 = {
+      su <- g("sigu"); nu <- g("nu"); ps <- g("psi"); ta <- g("tau")
+      list(dist = "GB2", par = c(sigma = su, nu = nu, psi = ps, tau = ta),
+           pdf = function(u) exp(.gb2_ld(u, su, nu, ps, ta)),
+           qf  = function(pr) .gb2_q(pr, su, nu, ps, ta),
+           closed = NULL)   # no closed form for E[exp(-u)]
+    },
     NNAK = {
       mm <- g("mu"); om <- g("sigu")^2
       ## u = sqrt(G) with G ~ Gamma(m, scale = Omega/m), so f(u) = 2u * g(u^2).
