@@ -1,392 +1,119 @@
 ## Submission
 
-This is an update to `sfa`, from the current CRAN version 1.1.5 to 1.2.0.
+An update to `sfa`, from CRAN's current 1.2.0 to 1.2.1. There are **no reverse
+dependencies on CRAN**, so no other package is affected.
 
-There are **no reverse dependencies on CRAN**, so no other package is affected
-by anything below.
+### Why so soon after 1.2.0
 
-### Why now, so soon after 1.1.5
+1.2.0 was published three days ago, and `R CMD check --as-cran` raises the
+"Days since last update" note accordingly. The reason is a defect in 1.2.0
+that returns wrong estimates without any error or warning.
 
-1.1.5 was published on 2026-08-23. `R CMD check --as-cran` no longer raises the
-"Days since last update" note, but the interval is still short by the spirit of
-the policy and I want to be explicit about the reason.
+`copsfm(inefdec = FALSE)` -- the cost-frontier orientation of the new copula
+entry point -- composed the density with the sign applied twice, so it
+maximised the density of `v - u` where it needed the density of `v + u`. The
+fit does not fail; it returns an ordinary-looking result with the frontier
+slopes intact and the scales wrong. On clean cost data with `sigma_u = 1` and
+`sigma_v = 0.4` it reported `sigma_u = 0.031` and `sigma_v = 0.69`, with the
+intercept 0.8 too high -- which reads as "no inefficiency found".
 
-**1.1.5 can silently return wrong results for two of its models.**
-`sfm(model_name = "NE")` and `"NGE"` can return a **positive** log-likelihood
-with `sigma_u` driven to zero, as an ordinary fitted object with no error and
-no warning. `log Phi(z)` and an exponential tilt both diverge like `z^2/2` with
-opposite signs as `sigma_u -> 0`, and at the scales the optimiser visits their
-sum is a catastrophic cancellation returning rounding noise -- which the
-optimiser then maximises by running `sigma_u` to its bound. Across a 12-cell
-design at 1,500 replications the rate was 0.74%, reaching 4.4% in the worst
-cell. 1.2.0 performs that cancellation analytically instead.
+Production fits, the default, were never affected, and are what the existing
+tests covered. The repair is one line; the regression test that pins it checks
+the composed density against its closed form in **both** orientations.
 
-Repairing it at one boundary opened the mirror image at the other, in this
-release's own development rather than in anything published: the closed form
-returns `log Phi(z) + z^2/2`, and for `eps < 0` with `sigma_v -> 0` the caller
-then subtracted a term of the same magnitude, ~5e15, where consecutive doubles
-are about 1 apart. That is fixed here too, by doing the second subtraction
-analytically as well. Both were found by the same root-n convergence study, and
-`"NE"` now passes it on the mean basis at 1000 replications per sample size
-(slopes -1.02 to -1.04 against a target of -1, every R-squared at least 0.989,
-no failures in 5000 fits) where before it did not. `NEWS.md` has the
-derivations.
+Two further defects in already-released code are fixed in the same submission,
+both silent:
 
-Two further corrections in the same release: `"NGE"` aborted outright on about
-7% of small samples, and `nobs()` returned rows **supplied** rather than rows
-**used**, which made `BIC()` wrong for any fit on data containing a missing
-value.
+* A parameter converging **onto a bound** cost `copsfm()` every standard error
+  in the fit. The likelihood refused out-of-range draws with
+  `.Machine$double.xmax`; `optim()` differences the objective to form its
+  gradient, and differencing 1.8e308 overflows, so the final stage aborted and
+  all standard errors came back `NA`. Now a large finite penalty.
+* `sfm(estimator = "cols")` used the normal/half-normal efficiency posterior
+  regardless of `model_name`, so `"NE"` and `"NG"` fits received the wrong
+  `exp_u_hat`. Parameter estimates were unaffected.
 
-I would rather 1.1.5 were the current version for weeks than for months, which
-is why the corrections and the new features are submitted together rather than
-the corrections alone.
-
-### A second correction, found in use after 1.1.5
-
-`psfm()` could fail outright on a perfectly ordinary specification. On an
-unbalanced panel with `factor(year)` among the regressors -- year dummies in a
-panel, about as common as specifications get -- the between-individual design
-that `plm`'s error-components step inverts is rank deficient, and estimation
-died inside `plm::ercomp()` with
-
-    Lapack routine dgesv: system is exactly singular
-
-1.1.5 added a guard for exactly this, and the guard **detected the problem and
-then did nothing**: it could only express its remedy by dropping whole formula
-*terms*, and when 11 of `factor(year)`'s 24 columns are the offending ones,
-there is no term to drop that does not also discard the 13 identified columns.
-So it warned accurately and passed the same singular design to `plm`. The
-remedy now works at column granularity. The guard was a no-op for every
-partly-collinear factor, which is the common case; a wholly collinear term was
-the only shape it could ever handle.
-
-Reported by a user fitting a 2000-2024 cost frontier, not found internally.
-
-### No intentional API-breaking changes in this version
-
-Nothing in this release changes the meaning of an existing argument or
-`model_name`. Every addition is a new argument defaulting to the previous
-behaviour, or a new `model_name` value.
-
-Existing calls can nonetheless return **different numbers**, and I would rather
-flag that than have it noticed. Two changes to the simulation draws used by the
-panel estimators move results for existing users:
-
-* `psfm()` gave every firm the **same** simulation draws -- one Halton block
-  was built once and recycled across all firms, so the negative correlation
-  across observations that is half of Halton's advantage was absent and each
-  firm's simulation error was the same realisation. Each firm now gets its own
-  block. Any simulated-ML panel fit changes slightly.
-* `rand.gtre` randomised the draws by a method that removed their point,
-  permuting one Halton column and so randomising the pairing. It now applies a
-  uniform shift modulo 1 (Tuffin 1996), which moves the lattice without
-  disturbing its structure. Results change for anyone who passed `rand.gtre`.
-
-`NEWS.md` gives the measurements behind both.
-
-One **new warning** fires on every call rather than in an edge case:
-`psfm(model_name = "GTRE_SEQ1")` and `"GTRE_SEQ2"` now state that they are
-large-T estimators and are not consistent for fixed T. This is a diagnosis, not
-a change of estimator -- both compute exactly what they computed before. Both
-hand `plm`'s random-effects output to a second stage that treats it as draws
-from the latent composite errors, when `alpha_hat` is a shrunken BLUP and
-`eps_hat` a quasi-demeaned residual; the resulting attenuation does not vanish
-as N grows with T fixed, so they converge to the wrong constants. Feeding the
-same two second stages the latent draws recovers the truth at the root-n rate,
-which locates the fault in the shared first stage. `?psfm` carries the algebra
-and the measured sizes of the bias.
-
-
-Two run-time warnings introduced in 1.1.5 -- for `psfm(model_name = "TFE")` and
-`psfm(model_name = "GTRE")`, whose estimators changed in that version -- are
-**retained** rather than removed, even though the one release cycle they were
-promised for has elapsed. 1.1.5 was the first release since 1.0.4 and is only
-two weeks old, so most users upgrading to 1.2.0 will be coming from 1.0.4 and
-meeting those changes for the first time.
-
-### What is new
-
-Summarised here; `NEWS.md` has the detail.
-
-**Four new model-fitting entry points**, each for a model the package could not
-previously express: `lcsfm()` (latent class, Greene 2005; Orea and Kumbhakar
-2004), `selsfm()` (sample selection, Greene 2010), `ivsfm()` (endogenous
-regressors, Amsler, Prokhorov and Schmidt 2016) and `copsfm()` (copula
-dependence between the two error components).
-
-**Five new panel estimators** in `psfm()`, all classical rather than maximum
-likelihood, and none assuming a distribution for the inefficiency term:
-`"CSS"` (Cornwell, Schmidt and Sickles 1990), `"LS"` (Lee and Schmidt 1993),
-`"KSS"` (Kneip, Sickles and Song 2012), and `"SSRE"` / `"SSCRE"`, the
-random-effects and correlated-random-effects members of the Schmidt and Sickles
-(1984) family whose within estimator the package already had as `"SSFE"`. Like
-`"SSFE"`, none is maximum likelihood, so they carry no optimisation object and
-`logLik()`/`AIC()`/`BIC()` return `NA` with a warning rather than a number that
-would not mean what it appears to.
-
-**Model selection and specification testing**, the largest addition by volume.
-The package offers fifteen cross-sectional inefficiency distributions and
-previously gave the user nothing but AIC/BIC to choose among them: `TIC()` and
-`vuong()`, `spec_test()`/`spec_test_all()`, `lcsfm_homogeneity()`, and `sfma()`
-for averaging over distributions rather than selecting one. The last three
-default to a **bootstrap** null rather than the published asymptotic one, and
-`?spec_test`, `?lcsfm_homogeneity` and `?sfma` give the measured size
-distortions that led to that choice -- in two cases the asymptotic null was
-badly mis-sized for the models this package fits, because the published limits
-are stated for restricted specifications the package does not impose.
-
-**A second sample-selection model.** `selsfm(model_name = "kts")` fits Kumbhakar,
-Tsionas and Sipilainen (2009): two technologies, each with its own frontier and
-scales, where the technology choice depends on inefficiency itself rather than
-on the noise. Estimated by single-step maximum likelihood, because neither
-two-step order is available -- the choice equation cannot be a probit when the
-inefficiency entering it is unobserved.
-
-**More copula families.** `copsfm()` offers fifteen where it offered two: Frank,
-Clayton, Gumbel and Joe with rotations, alongside Gaussian and FGM. Each density
-is checked against the second mixed partial of its own CDF. Most of them do not
-recover their dependence parameter -- 36 to 60 percent of fits return the
-independence boundary on data generated from that same family -- and `copsfm()`
-warns, quoting the measured rate, rather than leaving a user to infer it from an
-implausible estimate. `?copsfm` gives the table.
-
-**Testing the distributional assumptions themselves.** `gof_test()` implements
-Wang, Amsler and Schmidt (2011): holding the normality of the noise fixed, the
-assumed inefficiency distribution implies a distribution for the composed
-error, so a Kolmogorov-Smirnov or Pearson chi-square test of that is a test of
-the inefficiency assumption. Both default to the paper's parametric bootstrap,
-which copies the estimation step -- every replication refits and forms its own
-residuals -- because evaluating either statistic at an estimate changes its
-null distribution. Measured over 200 replications the two hold their size and
-the KS test dominates the chi-square test at every sample size, which is the
-paper's own conclusion; `?gof_test` gives the table. There is deliberately no
-asymptotic KS p-value: with parameters estimated the Kolmogorov distribution
-does not apply, Bai's (2003) correction is not implemented, and `NA` is
-returned rather than a number that would look valid.
-
-**And the range check that precedes the pair test.** `moment_range()` reports,
-for each of 25 pairs of noise and inefficiency distributions, the skewness and
-excess kurtosis the composed error can attain at all -- Papadopoulos and
-Parmeter (2021). Because the variance share lies in the unit interval, the
-composed error can never be more skewed than the inefficiency term itself, so
-residual moments outside that set refute a pair without any test statistic.
-Their Tables 1-5 replicate; the population rows exactly, three of the five
-tables cell for cell. The function is documented as a diagnostic and not a
-test, with the measured over-rejection rates in `?moment_range`, because that
-is the paper's own finding and the reason `spec_test()` exists.
-
-This needed a **composed-error CDF for every model**, `pcomposed_model()` and
-`composed_cdf()`, where `pcomposed()` covered the half-normal alone. All
-thirteen cross-sectional models are supported. It is verified against
-`pcomposed()` to 3.5e-15 relative for the half-normal, against a
-four-million-draw simulation for all thirteen, and -- the check that matters --
-against each model's own stored log-density, which is what caught that
-Tancredi's `"THT"` is a scale mixture rather than an independent convolution.
-
-**A frontier that tolerates the wrong skewness.** `esfm()` implements Hafner,
-Manner and Simar (2018). When the residual skewness comes out with the sign
-the model does not expect -- a small-sample accident rather than evidence
-against the model -- the classical MLE collapses to OLS and reports every firm
-as fully efficient. This model nests the classical one and lets the skewness
-go either way, so such a sample yields a well-defined fit instead of a
-degenerate one. Its LR test of "no inefficiency" is an ordinary chi-square(1)
-rather than a chi-bar-square mixture, because the null is an interior point
-here. Their size table is replicated, and `?esfm` states plainly where the
-model is NOT an improvement on the classical one.
-
-**Kim and Schmidt (2008).** `uhet_test()` tests whether inefficiency depends
-on firm characteristics from the two-step procedure applied work already uses,
-with the variance correction that makes it valid: the JLMS predictor is a
-generated dependent variable, so the first-step estimation error enters the
-second-step variance. Where the characteristics are correlated with the
-regressors the uncorrected standard error is 52% too large and the
-uncorrected test's size collapses to zero; the corrected one is calibrated.
-Its help page states plainly that the corrected test is conservative in
-simulation (size 0.024-0.036 against a nominal 0.05), that this gap against the
-paper's own figure is unexplained, and which two candidate explanations were
-tested and refuted. The naive branch does reproduce the paper's figure for the
-uncorrected test, and the entry is recorded as partial rather than done.
-
-**Chen and Wang (2012).** `cw_test()` tests the composed-error distribution
-without evaluating its density or distribution function at all: it compares
-the empirical characteristic function of the centred residuals with the value
-implied by the two components separately. Centring cancels the intercept,
-which is not identified separately from `E[u]`, so the test is valid off an
-ordinary least-squares fit. Size and power replicate the paper's Table 5, and
-`tau` defaults to a single frequency because combining several oversizes the
-test -- a point the authors make and which this package's own measurements
-confirm.
-
-**Coelli (1995).** `inefficiency_test()` tests the hypothesis of no technical
-inefficiency, reporting the one-sided likelihood ratio test, the naive LR test,
-the Wald ratio and the third-moment test together. The two most often reported
-in applied work are the two with the wrong size, because the null puts the
-parameter on a boundary: measured here at a nominal 5%, the one-sided LR and
-third-moment tests hold their size while the naive LR rejects about half as
-often as it should and the Wald test rejects three to four times too often
-*without improving as n grows*. Separately, `sfm(estimator = "cols")` now
-reports that paper's analytic standard errors for the variance parameters,
-which were `NA` unless bootstrapped; the OLS errors are not appropriate for
-them, and the analytic ones agree with the bootstrap to within 2% by n = 3200.
-
-**Robustness diagnostics** for the divergence estimators `sfm()` already
-offered: `hscore()`/`hscore_select()` and `calibrate_c()` to choose the tuning
-parameter rather than supply it by hand, `density_weights()` for the weight each
-observation receives, and `influence_sfa()` for the influence function of a fit.
-
-**Other additions**: heteroskedasticity in more than one error component via
-`vhet`/`uhet`/`muhet`; `z_link` for `sfm()` and `ttsfm()`; `efficiency()`,
-`meanefficiency()`, `efficiency_ci()`, `marginal_effects()`, `simulation_se()`,
-`pcomposed()`/`dcomposed()`; `weights`, `start_from`, `scaling` and an
-experimental `shapehet` on `sfm()`; `vcov(type = "bhhh")`; and `extract()`
-methods for \pkg{texreg}.
-
-### Dependencies
-
-Unchanged. No package was added to `Imports` or `Suggests` in this version, and
-none was removed.
-
-## Vignette build time
-
-Recorded here because it was the blocker on the 1.1.5 submission. The single
-vignette is unchanged in this release. `checking re-building of vignette
-outputs` reports **21s CPU / 29s elapsed** on this machine; the render itself
-is 13.9 seconds and the rest is R startup and package loading. The five new
-panel estimators are documented in `?psfm` with runnable examples rather than
-in the vignette, deliberately, to keep the build time where Uwe Ligges asked
-for it.
-
-## Check time, and where the expensive tests live
-
-The specification tests added in this release are validated by bootstraps and
-Monte Carlo studies that refit the model hundreds of times. Those are all
-behind `skip_on_cran()`, so **CRAN does not run them**: the nine test files
-added for the specification tests and the two fixes above run in **2.9 seconds**
-together under CRAN's conditions (measured 2026-09-07 with
-`testthat::test_file()` and `NOT_CRAN` unset -- the slowest is
-`test-moment-range.R` at 0.98s and six of the nine are under a fifth of a
-second), against 45 minutes for the whole suite with `NOT_CRAN=true`. The
-measured size and power tables they produce are recorded in the help pages and
-in `NEWS.md` rather than recomputed at check time.
-
-The stage as a whole is what that buys. Measured on this machine, the same
-tarball:
-
-\tabular{lll}{
- \tab `checking tests` \tab result \cr
- CRAN's conditions (`NOT_CRAN` unset) \tab **[65s/65s] OK** \tab
-   `FAIL 0 | WARN 3 | SKIP 289 | PASS 1929` \cr
- locally with `NOT_CRAN=true` \tab [45m/45m] OK \tab
-   `FAIL 0 | WARN 46 | SKIP 8 | PASS 3368`
-}
-
-So the validation work is real and is run here, and CRAN pays 65 seconds for
-the contract tests rather than 45 minutes for the Monte Carlo behind them.
-
-Examples are kept in proportion for the same reason. `?gof_test`'s bootstrap
-example uses `B = 39` at `n = 200` and runs in 2.2 seconds; the help text says
-to use `B = 999` for real work.
-
-## Test environments
-
-* local macOS 26.5 (aarch64-apple-darwin20), R 4.5.2
-* GitHub Actions: macOS-latest (release), windows-latest (release),
-  ubuntu-latest (devel, release, oldrel-1)
-* win-builder (R-devel and R-release)
+The release also adds three inefficiency/noise specifications and rewrites the
+package Description. Those are in `NEWS.md`; they are not the reason for the
+timing.
 
 ## R CMD check results
 
-`R CMD check --as-cran --run-donttest`, R 4.5.2 on macOS 26.5, on a tarball
-built WITH the vignette: **0 errors | 0 warnings | 1 note**, and that note is
-a property of the check machine rather than of the package.
+One command, run once, on the tarball being submitted:
 
-`checking HTML version of manual ... NOTE` --- HTML Tidy on this machine is
-not recent enough and package `V8` is unavailable, so the HTML-validation and
-math-rendering sub-checks are skipped rather than failed.
+```
+R CMD check --as-cran sfa_1.2.1.tar.gz
+```
 
-Every other stage is `OK`, including `checking CRAN incoming feasibility`,
-`checking top-level files`, `checking files in 'vignettes'`,
-`checking package vignettes` and
-`checking re-building of vignette outputs ... [21s/29s] OK`. The "Days since
-last update" note is **not** raised.
+with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5, on a tarball built **with**
+the vignette. Result: **0 errors | 0 warnings | 2 notes**.
 
-An earlier version of this file reported two further notes and two warnings,
-all four saying in different words that the vignette had not been built and
-that `README.md`/`NEWS.md` could not be checked. They were artefacts of
-checking with `--no-build-vignettes`, which was being used because pandoc was
-believed to be absent from this machine. It is present, and the checks above
-were run with the vignette built, so none of the four arises. The correction
-is recorded here rather than silently dropped because the earlier text asked
-the reviewer to discount four things that do not happen.
+1. `checking CRAN incoming feasibility ... NOTE` -- "Days since last update",
+   the interval explained above.
 
-`checking tests ... [45m/45m] OK` under `NOT_CRAN=true`, which runs the Monte
-Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 46 | SKIP 8 |
-PASS 3368`. Under CRAN's own conditions the same stage is **65 seconds** with
-3 warnings; see "Check time" above. The 46 warnings are deliberate
-diagnostics being exercised by the
-tests that exist to fire them --- boundary reports from Greene's true fixed
+2. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
+   not recent enough and package `V8` is unavailable, so the HTML-validation
+   and math-rendering sub-checks are skipped rather than failed. A property of
+   the check machine, not of the package.
+
+Every other stage is `OK`, including `checking examples`, `checking examples
+with --run-donttest`, `checking tests`, `checking top-level files`, `checking
+files in 'vignettes'`, `checking package vignettes`, `checking re-building of
+vignette outputs` and `checking PDF version of manual`.
+
+**A note on the command, because it changes the result.** `--as-cran` already
+runs the `\donttest{}` examples, as a separate `checking examples with
+--run-donttest` stage. Passing `--run-donttest` explicitly *in addition* folds
+them into `checking examples` instead, which then exceeds the 5-second
+guideline and raises a third note listing thirteen examples. That note is an
+artefact of the redundant flag: measured on this tarball, `--as-cran` alone
+gives `checking examples ... [15s/16s] OK` followed by `checking examples with
+--run-donttest ... [179s/176s] OK`, while `--as-cran --run-donttest` gives
+`checking examples ... [200s/197s] NOTE`. Same examples, same machine, same
+tarball. The command above is the one reported.
+
+## Check time
+
+`checking tests ... [33m/33m] OK` under `NOT_CRAN=true`, which runs the Monte
+Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 16 | SKIP 8 |
+PASS 3694`. Under CRAN's own conditions that stage is about a minute, because
+the tests needing a statistically meaningful sample size are behind
+`skip_on_cran()`. The 16 warnings are deliberate diagnostics being exercised by
+the tests that exist to fire them -- boundary reports from Greene's true fixed
 effects likelihood and from `GTRE`, the wrong-skew report from `npsfm("FLW")`,
-and the `model_name = "TFE"` rename notice --- together with warnings raised
-by `plm` and by `optim()`'s numerical Hessian stepping outside its own box.
-None accompanies a failed expectation.
+and the `model_name = "TFE"` rename notice -- together with warnings raised by
+`plm` and by `optim()`'s numerical Hessian stepping outside its own box. None
+accompanies a failed expectation.
 
-`checking examples ... OK` and `checking examples with --run-donttest ...
-[267s] OK`. The examples that dominate that stage, measured from
-`sfa-Ex.timings`:
+`checking examples` is 16 seconds and `checking examples with --run-donttest`
+is 176 seconds. The examples that dominate the second are `influence_sfa`
+(54.9s), `simulation_se` (28.5s) and `zsfm` (19.7s); all are inside
+`\donttest{}` because they fit models by simulated maximum likelihood over
+Halton draws, by quadrature, or by kernel regression with bandwidth
+cross-validation.
 
-\tabular{ll}{
- `influence_sfa` \tab 79 s \cr
- `simulation_se` \tab 37 s \cr
- `zsfm` \tab 20 s \cr
- `PL80_MVTN` \tab 19 s \cr
- `lcsfm_homogeneity` \tab 16 s
-}
+## Test environments
 
-All are inside `\donttest{}`. They fit models by simulated maximum likelihood
-over Halton draws, by quadrature per observation, or by bootstrap, which is
-what costs the time. `simulation_se()` estimates how much of a standard error
-is simulation noise by REFITTING the model K times with independent
-randomizations, so its example necessarily costs K + 1 simulated-ML fits; it
-was cut from 46 s by halving the sample and using the smallest K that still
-shows a spread. `influence_sfa`'s example fits a Student-t noise model, which
-is multi-start because that likelihood is bimodal in its degrees of freedom;
-below n = 120 its Hessian stops inverting, so that is the floor rather than a
-choice.
-
-Two examples were cut for this submission after measuring rather than
-estimating: `copsfm` from **239 s to 7 s**, by moving its example from n = 4000
-at the default 128 quadrature nodes to n = 600 at 64 -- the release notes
-already record that the quadrature is converged by 64, so nothing is lost --
-and `influence_sfa` from 116 s to 79 s. The whole `--run-donttest` stage falls
-from 511 s to 267 s as a result.
-
-One further note is expected on the submission machine and did not arise here:
-`checking for future file timestamps ... NOTE`, raised when the clock-check
-web service is unreachable.
-
+* local: R 4.5.2, macOS 26.5 (aarch64)
+* GitHub Actions: ubuntu-latest (release, devel, oldrel-1), macos-latest,
+  windows-latest
+* win-builder (R-devel and R-release)
 
 ## Notes for the reviewer
 
-* `NEWS.md` is long for one version, and deliberately so: this release adds
-  four entry points, five panel estimators and a number of arguments, and the
-  entries record the measurements behind the numerical fixes rather than only
-  naming them. Anything cut from this letter for length is there.
+* Examples are wrapped in `\donttest{}` where they fit models by simulated
+  maximum likelihood over Halton draws, by quadrature, or by kernel regression
+  with bandwidth cross-validation, and so exceed five seconds. They are checked
+  with `--run-donttest` before submission, as above.
 
 * Tests needing a statistically meaningful sample size are behind
-  `skip_on_cran()`, so the suite run during CRAN's checks is limited to fast
-  structural tests. One further model (`ttsfm(model_name = "TTHN")`) is
-  skipped unless `SFA_TEST_SLOW` is set, because it is much slower than the
-  other estimators.
+  `skip_on_cran()`. One model, `ttsfm(model_name = "TTHN")`, is skipped unless
+  `SFA_TEST_SLOW` is set, because a single fit can take an hour.
 
-* Several examples are wrapped in `\donttest{}` because they fit models by
-  simulated maximum likelihood over Halton draws, or by kernel regression with
-  bandwidth cross-validation, and take longer than the 5-second guideline.
-  They are checked with `--run-donttest` before submission, which takes 292 s.
-
-* Every example using `PSopt = TRUE` now passes `rand.psoptim`. The
-  particle-swarm stage draws from the session RNG, so without a seed the
-  printed results change from build to build.
+* Every example using `PSopt = TRUE` passes `rand.psoptim`. The particle-swarm
+  stage draws from the session RNG, so without a seed the printed results
+  change between builds.
 
 * `model_name = "KSS"` requires a balanced panel, which is what the estimator
-  is defined on; it stops with a message naming `"CSS"` and `"LS"` as the
+  is defined on. It stops with a message naming `"CSS"` and `"LS"` as the
   unbalanced-panel alternatives rather than silently fitting something else.
