@@ -1,6 +1,6 @@
 \name{psfm}
 \alias{psfm}
-\title{psfm}
+\title{Panel Stochastic Frontier Models}
 \description{Function to implement various panel data stochastic frontier estimators}
 \usage{psfm(formula, model_name = c("TRE_Z", "GTRE_Z", "TRE",
                     "GTRE", "GTRE_FML", "TFE", "TFE_WMLE", "FD",

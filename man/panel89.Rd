@@ -1,7 +1,7 @@
 \name{panel89}
 \alias{panel89}
 \docType{data}
-\title{Panel89}
+\title{Costs of U.S. commercial banks, 1989}
 \description{The dataset is a cross-section of U.S. commercial banks for 1989, extracted from the panel 
 dataset used by Kumbhakar, Parmeter and Tsionas (2013) and based on the Federal Reserve Bank of Chicago's Reports of  Condition and Income. It contains detailed cost data with inputs and outputs defined under the  intermediation approach, and input prices constructed as expense-quantity ratios.}
 \usage{data("panel89")}

@@ -1,9 +1,7 @@
 \name{FinnishElec}
 \alias{FinnishElec}
 \docType{data}
-\title{
-FinnishElec
-}
+\title{Expenditure and output of Finnish electricity distribution firms}
 \description{
 Cross-sectional data on Finnish electricity distribution firms, including annual averages of expenditure and output measures over a four-year regulatory period.
 }

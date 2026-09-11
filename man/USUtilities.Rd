@@ -1,7 +1,7 @@
 \name{USUtilities}
 \alias{USUtilities}
 \docType{data}
-\title{USUtilities}
+\title{U.S. fossil-fuel steam electric utilities, 1986-1997}
 \description{Panel data on U.S. investor-owned fossil fuel-fired steam electric utilities for the period 1986-1997. These data include measures of output, capital, labour and maintenance, and fuel.}
 \usage{data("USUtilities")}
 \format{

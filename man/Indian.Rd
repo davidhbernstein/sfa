@@ -1,7 +1,7 @@
 \name{Indian}
 \alias{Indian}
 \docType{data}
-\title{Indian}
+\title{Paddy farming in Aurepalle, India, 1975-76 to 1984-85}
 \description{Panel data on 34 paddy farmers from Aurepalle, India, collected over ten years (1975-76 to 1984-85). The panel is unbalanced: farmers are observed between 2 and 10 times. Includes farmer characteristics (age, schooling) and production variables (output, land, labor, bullocks, input costs).}
 \usage{data("Indian")}
 \format{
