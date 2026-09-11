@@ -528,8 +528,12 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
 }
 
 start.tfe <- function(formula_x, data, model_name, start_val, intercept, x_vars_vec, gamma, individual, N, y_var, n_x_vars) {
-  ## `index = individual` is REQUIRED here and must not be dropped.
-  plm_tfe <- plm(formula_x, data, effect = "individual", model = "within", index = individual)
+  ## `index = individual` is REQUIRED here and must not be dropped. The
+  ## muffling below is narrow and conditional; see notes/code_history/.
+  plm_tfe <- .quiet_time_index(
+    plm(formula_x, data, effect = "individual", model = "within", index = individual),
+    formula_x
+  )
   if (isTRUE(is.numeric(start_val))) {
     start_v <- start_val
   } else {

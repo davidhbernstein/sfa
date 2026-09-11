@@ -278,9 +278,14 @@
     )
   }
 
-  fit <- plm::plm(form, data,
+  ## Wrapped for the same reason as start.tfe(): `data` reaches here with the
+  ## leftover `time` column that .as_panel_data()'s pdata.frame conversion
+  ## created but data_proc2() did not strip, so plm re-indexes and warns about
+  ## a column the package made itself. Muffled only when `time` is not a
+  ## variable of the model -- if it is, plm really would clobber it.
+  fit <- .quiet_time_index(plm::plm(form, data,
     effect = "individual", model = "random", index = individual
-  )
+  ), form)
   cf <- stats::coef(fit)
   se <- summary(fit)$coefficients[, "Std. Error"]
 

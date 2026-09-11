@@ -1985,10 +1985,13 @@ psfm <- function(formula,
 
     like.tfe <- function(x) {
       x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
-      lambda_eff <- if (gamma == FALSE) x[1] else sqrt(x[1] / (1 - x[1]))
-
-      ## optim()'s numerical Hessian (hessian=TRUE) perturbs par via
-      ## unconstrained finite differences that ignore lower/upper entirely.
+      ## The domain test comes BEFORE the sqrt rather than after it. optim()'s
+      ## numerical Hessian (hessian=TRUE) perturbs par by unconstrained finite
+      ## differences that ignore lower/upper entirely, so gamma steps past 1
+      ## and the ratio goes negative; sqrt() then emits "NaNs produced" before
+      ## the guard below ever sees the value. Same 1e12 in exactly the same
+      ## cases, without 13 warnings per fit.
+      lambda_eff <- if (gamma == FALSE) x[1] else .gamma_to_lambda(x[1])
       if (!is.finite(lambda_eff)) {
         return(1e12)
       }
@@ -2128,7 +2131,7 @@ psfm <- function(formula,
     gid <- match(id_chr, indiv)
 
     like.tfe.greene <- function(x) {
-      lambda_eff <- if (gamma == FALSE) x[1] else sqrt(x[1] / (1 - x[1]))
+      lambda_eff <- if (gamma == FALSE) x[1] else .gamma_to_lambda(x[1])
       sig <- x[2]
       ## Same guard as like.tfe(): optim()'s numerical Hessian steps outside
       ## the optimizer's own bounds, so gamma can exceed 1 there.
@@ -2590,10 +2593,10 @@ psfm <- function(formula,
 
     ## index = individual is required: by this point `data` has been through
     ## data_proc2() and is a plain data.frame.
-    plm_ss <- plm(formula_x, data,
+    plm_ss <- .quiet_time_index(plm(formula_x, data,
       effect = "individual", model = "within",
       index = individual
-    )
+    ), formula_x)
 
     beta_hat_ss <- plm_ss$coefficients[x_vars_vec]
     beta_se_ss <- summary(plm_ss)$coefficients[x_vars_vec, "Std. Error"]

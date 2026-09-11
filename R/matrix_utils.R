@@ -2206,3 +2206,33 @@
     eu = sqrt(max(0, var_eu))
   )
 }
+
+
+## Suppress plm's "column 'time' overwritten by time index" -- but only when
+## `time` is not a variable of the model, in which case plm is overwriting a
+## column the package itself created and the warning carries no information.
+## See notes/code_history/matrix_utils.md.
+.quiet_time_index <- function(expr, formula_x) {
+  if ("time" %in% all.vars(formula_x)) {
+    return(expr)
+  }
+  withCallingHandlers(expr, warning = function(w) {
+    if (grepl("overwritten by time index", conditionMessage(w), fixed = TRUE)) {
+      invokeRestart("muffleWarning")
+    }
+  })
+}
+
+
+## gamma = sigma_u^2/sigma^2 in [0,1) -> lambda = sigma_u/sigma_v. Behaves
+## exactly as sqrt(g/(1-g)) did, minus the "NaNs produced" warning: the domain
+## is tested before the sqrt rather than after it. Note the interval is
+## HALF-OPEN. g = 0 has to return 0 rather than NaN, because sqrt(0/1) is 0
+## and finite, so the old code carried on with lambda = 0 there; returning NaN
+## would have turned that into an infeasible point and changed the fit. Every
+## other input the old form sent to NaN, Inf or NA -- g <= -0, g >= 1, NA,
+## NaN, Inf -- still comes back non-finite, which is the only property the
+## callers test.
+.gamma_to_lambda <- function(g) {
+  if (isTRUE(g >= 0 && g < 1)) sqrt(g / (1 - g)) else NaN
+}
