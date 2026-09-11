@@ -1,5 +1,18 @@
 # sfa 1.2.1
 
+## Documentation
+
+* **`?endogeneity_test` now carries a size and power table.** The test shipped
+  in 1.2.0 with a theoretical argument for why it should be well calibrated at
+  the null -- `ivsfm()` parameterises `rho = t/sqrt(1 + t't)`, so `rho = 0` is
+  an interior point and the delta-method Jacobian is the identity there -- but
+  with no simulation behind it. Measured over 1,000 replications per cell at
+  n = 500, 1000, 2000 and 4000: size is 0.043-0.053 against a nominal 5% and
+  power rises monotonically to one. The variance estimate was checked directly,
+  not inferred from the rejection rate -- the mean reported standard error of
+  `rho` over the actual sampling spread of `rho-hat` is 0.95 to 1.05 across
+  every cell. No code changed; the claim is simply now supported.
+
 ## A wrong-skewness suite
 
 Four approaches to the Waldman (1982) boundary now sit together under one help
