@@ -96,6 +96,67 @@
   list(opt = cands[[k]], which = names(cands)[k], values = vals)
 }
 
+## Report the three scales on their NATURAL scale, with names that tell the two
+## one-sided components apart.  Chris Parmeter, 2026-09-11.
+##
+## ttsfm() used to put RAW OPTIMIZER VALUES in out[, "par"]: the row labelled
+## "sigv" held log sigma_v, and the two variance-determinant rows were BOTH
+## labelled "(Intercept)" in the homoskedastic case, so a reader could not tell
+## u from w and none of the three numbers was on the scale the label implied.
+## Reading that table without exponentiating is how one TTHN diagnosis went
+## wrong.
+##
+## Where determinants ARE present there is no single sigma_u to report, so
+## those rows stay as COEFFICIENTS and take the Zu./Zw. prefixes that sfm()'s
+## heteroskedastic path already uses -- which also makes the two blocks
+## distinguishable when both carry the same covariate names.
+##
+## The t-value stays par/se, as everywhere else in the package. Note that a
+## t-statistic on a scale parameter is testing a BOUNDARY null and is not a
+## conventional test; ?ttsfm says so.
+.tt_report <- function(par, se, nr, nzu, nzw, x_vars_vec, z_vars, zp_vars,
+                       z_link = "sd") {
+  zs <- if (identical(z_link, "sd")) {
+    function(e) exp(e)
+  } else {
+    function(e) sqrt(exp(e))
+  }
+  ## d sigma / d eta is sigma under the "sd" link and sigma/2 under "var".
+  dfac <- if (identical(z_link, "sd")) 1 else 0.5
+
+  i_v <- nr + 1L
+  i_u <- (nr + 2L):(nr + nzu + 1L)
+  i_w <- (nr + nzu + 2L):(nr + nzu + nzw + 1L)
+
+  p2 <- par
+  s2 <- se
+  sv <- exp(par[i_v])
+  p2[i_v] <- sv
+  s2[i_v] <- sv * se[i_v]
+
+  hom_u <- nzu == 1L && identical(as.character(z_vars), "(Intercept)")
+  hom_w <- nzw == 1L && identical(as.character(zp_vars), "(Intercept)")
+  if (hom_u) {
+    su <- zs(par[i_u])
+    p2[i_u] <- su
+    s2[i_u] <- su * dfac * se[i_u]
+  }
+  if (hom_w) {
+    sw <- zs(par[i_w])
+    p2[i_w] <- sw
+    s2[i_w] <- sw * dfac * se[i_w]
+  }
+
+  list(
+    par = p2, se = s2, tval = p2 / s2,
+    names = c(x_vars_vec, "sigma_v",
+      if (hom_u) "sigma_u" else paste0("Zu.", z_vars),
+      if (hom_w) "sigma_w" else paste0("Zw.", zp_vars)
+    )
+  )
+}
+
+
 ttsfm <- function(formula,
                   model_name = c("TTNE", "TTHN", "TTNLS"),
                   data,
@@ -381,9 +442,14 @@ ttsfm <- function(formula,
         suppressWarnings(sqrt(diag(solve(opt$hessian))))
       }
     }
-    t_val <- opt$par / st_err
-    out[1, ] <- opt$par
-    out[2, ] <- st_err
+    ## Natural scale and distinct names; see .tt_report() above.
+    RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
+      x_vars_vec, z_vars, zp_vars, z_link
+    )
+    colnames(out) <- RP$names
+    t_val <- RP$tval
+    out[1, ] <- RP$par
+    out[2, ] <- RP$se
     out[3, ] <- t_val
 
     ## metrics
@@ -669,9 +735,14 @@ ttsfm <- function(formula,
         suppressWarnings(sqrt(diag(solve(opt$hessian))))
       }
     }
-    t_val <- opt$par / st_err
-    out[1, ] <- opt$par
-    out[2, ] <- st_err
+    ## Natural scale and distinct names; see .tt_report() above.
+    RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
+      x_vars_vec, z_vars, zp_vars, z_link
+    )
+    colnames(out) <- RP$names
+    t_val <- RP$tval
+    out[1, ] <- RP$par
+    out[2, ] <- RP$se
     out[3, ] <- t_val
 
     ## Information-deficiency metrics, generalized to a parameter-vector input
@@ -911,9 +982,14 @@ ttsfm <- function(formula,
     opt$par[nls_unident] <- NA_real_
     st_err[nls_unident] <- NA_real_
 
-    t_val <- opt$par / st_err
-    out[1, ] <- opt$par
-    out[2, ] <- st_err
+    ## Natural scale and distinct names; see .tt_report() above.
+    RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
+      x_vars_vec, z_vars, zp_vars, z_link
+    )
+    colnames(out) <- RP$names
+    t_val <- RP$tval
+    out[1, ] <- RP$par
+    out[2, ] <- RP$se
     out[3, ] <- t_val
 
     ## Information-deficiency metrics: unlike TTNE/TTHN these are direct

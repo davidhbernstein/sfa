@@ -58,14 +58,18 @@ test_that("the two-tier likelihood has the right sign", {
   expect_true(is.finite(as.numeric(logLik(fit))))
   ## Positions 4-6 are the scale parameters (positions 1-3 are the frontier
   ## betas -- an earlier version of this test checked those by mistake and so
-  ## asserted nothing). They are reported on the LOG scale (ttsfm.R's fn()
-  ## exponentiates them), so the check is that they exponentiate to something
-  ## finite and positive, not that they are positive themselves.
-  scales <- exp(fit$coefficients[4:6])
+  ## asserted nothing). Since 1.2.1 they are reported on their NATURAL scale
+  ## and named, so no exponentiating: read them by name and check them
+  ## directly, which is a stronger assertion than the old one.
+  expect_identical(names(fit$coefficients)[4:6],
+    c("sigma_v", "sigma_u", "sigma_w"))
+  scales <- fit$coefficients[4:6]
   expect_true(all(is.finite(scales) & scales > 0))
   ## The DGP has sig_v = 0.3 and sig_u = sig_w = 1; a sign flip in the
   ## likelihood destroys these rather than merely loosening them.
-  expect_equal(unname(scales[1]), 0.3, tolerance = 0.5)
+  expect_equal(unname(scales[["sigma_v"]]), 0.3, tolerance = 0.5)
+  expect_equal(unname(scales[["sigma_u"]]), 1, tolerance = 0.5)
+  expect_equal(unname(scales[["sigma_w"]]), 1, tolerance = 0.5)
 })
 
 ## ---------------------------------------------------------------------------

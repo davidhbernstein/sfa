@@ -89,3 +89,89 @@ test_that("a non-zero convergence code with an IMPROVED value is kept", {
   expect_identical(res$opt$convergence, 52L)
   expect_lt(res$opt$value, fn(p0))
 })
+
+test_that("ttsfm reports the three scales on their natural scale, named", {
+  ## Chris Parmeter, 2026-09-11. Before 1.2.1 out[, "par"] held RAW OPTIMIZER
+  ## VALUES: "sigv" was log sigma_v and the two one-sided scales were BOTH
+  ## labelled "(Intercept)", so u and w could not be told apart and none of the
+  ## three was on the scale its label implied. Reading that table without
+  ## exponentiating is how one TTHN diagnosis went wrong.
+  skip_on_cran()
+  d <- data_gen_cs(N = 800, rand = 5, sig_u = 1, sig_v = 0.3, cons = 0.5,
+    beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0, sig_w = 0.5)
+  f <- ttsfm(y_ttne ~ x1 + x2, data = d, model_name = "TTNE")
+
+  expect_identical(rownames(f$out),
+    c("(Intercept)", "x1", "x2", "sigma_v", "sigma_u", "sigma_w"))
+  s <- f$out[c("sigma_v", "sigma_u", "sigma_w"), "par"]
+  expect_true(all(s > 0))
+  ## on the natural scale these sit near the truth; on the log scale they
+  ## would be negative, which is the regression this pins
+  expect_equal(unname(s[["sigma_v"]]), 0.3, tolerance = 0.25)
+  expect_equal(unname(s[["sigma_u"]]), 1.0, tolerance = 0.25)
+  expect_equal(unname(s[["sigma_w"]]), 0.5, tolerance = 0.25)
+  ## standard errors carry the delta-method factor, so they are positive and
+  ## finite on the same scale
+  expect_true(all(is.finite(f$out[c("sigma_v", "sigma_u", "sigma_w"), "st_err"])))
+  expect_true(all(f$out[c("sigma_v", "sigma_u", "sigma_w"), "st_err"] > 0))
+})
+
+test_that("determinants stay coefficients and carry Zu./Zw. prefixes", {
+  ## There is no single sigma_u to report once sigma_u varies with a covariate,
+  ## so those rows remain deltas. The prefixes are what makes the two blocks
+  ## distinguishable when they share a covariate name -- which is the case the
+  ## old labelling could not express at all.
+  skip_on_cran()
+  d <- data_gen_cs(N = 600, rand = 11, sig_u = 1, sig_v = 0.3, cons = 0.5,
+    beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0, sig_w = 0.5)
+  d$zz <- rnorm(nrow(d))
+  g <- suppressWarnings(
+    ttsfm(y_ttne ~ x1 + x2 | zz | zz, data = d, model_name = "TTNE")
+  )
+  nm <- rownames(g$out)
+  expect_true(all(c("Zu.(Intercept)", "Zu.zz", "Zw.(Intercept)", "Zw.zz") %in% nm))
+  expect_false(any(duplicated(nm)))
+  ## sigma_v is still a single homoskedastic scale and is still exponentiated
+  expect_gt(g$out[["sigma_v", "par"]], 0)
+  ## the intercept delta exponentiates back to roughly the right scale
+  expect_equal(exp(g$out[["Zu.(Intercept)", "par"]]), 1.0, tolerance = 0.4)
+  expect_equal(exp(g$out[["Zw.(Intercept)", "par"]]), 0.5, tolerance = 0.4)
+})
+
+test_that("tt_boundary_report compares likelihoods and calls it nothing more", {
+  ## Chris Parmeter, 2026-09-11: a likelihood comparison is fine as a
+  ## diagnostic, but it must not be dressed up as a likelihood-ratio test --
+  ## the null is on the boundary and no reference distribution is established.
+  skip_on_cran()
+  d <- data_gen_cs(N = 1200, rand = 5, sig_u = 1, sig_v = 0.3, cons = 0.5,
+    beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0, sig_w = 0.5)
+  f <- ttsfm(y_ttne ~ x1 + x2, data = d, model_name = "TTNE")
+  r <- tt_boundary_report(f, data = d, sigma_v_starts = c(0.05, 0.8))
+
+  expect_s3_class(r, "sfa_tt_boundary")
+  expect_identical(nrow(r$table), 3L)
+  ## Nothing that could be mistaken for a test. The disclaimer itself says
+  ## "no p-value is reported", so the check is for a p-value being GIVEN --
+  ## a number presented as one, or a chi-square reference -- not for the
+  ## words appearing at all.
+  txt <- utils::capture.output(print(r))
+  expect_false(any(grepl("p.?value\\s*[:=]\\s*[0-9.]|chi|LR test|likelihood.ratio test",
+    txt, ignore.case = TRUE)))
+  expect_null(r$p.value)
+  expect_null(r$statistic)
+  expect_output(print(r), "NOT A TEST")
+
+  ## This design is well behaved, so no restart should beat the returned fit.
+  ## Ties must go to the returned fit: restarts landing on the same optimum
+  ## differ in the last digits, and a naive which.max() reports a "higher"
+  ## likelihood of 0 log units -- which is what this printed on its first run.
+  expect_true(r$returned_is_best)
+  expect_output(print(r), "No restart found a higher likelihood")
+  expect_false(r$collapsed)
+  ## and the frontier beats the plain linear model by a wide margin
+  expect_gt(r$lm_gap, 0)
+
+  expect_error(tt_boundary_report(f), "data")
+  expect_error(tt_boundary_report(lm(y_ttne ~ x1, d), data = d), "ttsfm")
+  expect_error(tt_boundary_report(f, data = d, sigma_v_starts = -1), "positive")
+})

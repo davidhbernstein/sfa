@@ -36,11 +36,19 @@ Like the other composed-error models in this package, all three two-tier likelih
 Note on default iteration counts: like \code{sfm()}/\code{zsfm()}, \code{ttsfm()}'s likelihoods are closed-form, so its optimization defaults are set much higher than \code{psfm()}'s (which uses simulated maximum likelihood for several models and defaults to far fewer iterations for speed). See \code{\link{psfm}}'s Details for more.}
 \references{Polachek, S. and Yoon, B.J. (1987). A Two-Tiered Earnings Frontier Estimation of Employer and Employee Information in the Labor Market. \emph{The Review of Economics and Statistics}.}
 \author{David H. Bernstein and Christopher F. Parmeter}
-\note{Standard errors require optHessian set to TRUE}
+\note{Standard errors require optHessian set to TRUE.
+
+\bold{\code{"TTHN"} will drive \eqn{\sigma_v} to zero when \eqn{\sigma_u} and \eqn{\sigma_w} are close, and that is the maximum likelihood estimate rather than a failure of the optimizer.} With \eqn{\sigma_u = \sigma_w} the difference \eqn{w - u} is already symmetric and heavy-tailed, so a small normal \eqn{v} underneath it is very nearly invisible: on a 2,000-observation draw at \eqn{\sigma_u = \sigma_w = 1} the \eqn{\sigma_v} profile is flat to 0.000 log units from \eqn{10^{-6}} upward and decreasing above 0.01, with no interior maximum, and the collapsed fit beats the true parameter values by 1.29 log units. The two-tier structure is identified; the noise underneath two equal and opposite tiers is not. Asymmetric \eqn{(\sigma_u, \sigma_w)} does not show this.}
 \value{
 An object of class \code{"sfareg"} containing the following components:
 
-\item{out}{A matrix with parameter estimates, standard errors, and t-values.}
+\item{out}{A matrix with parameter estimates, standard errors, and t-values, one row per parameter.
+
+\bold{Scale parameters are reported on their natural scale and named, as of 1.2.1.} The rows are \code{sigma_v}, \code{sigma_u} and \code{sigma_w}. Before 1.2.1 this matrix held raw optimizer values -- the row labelled \code{sigv} was \eqn{\log\sigma_v}, and in the homoskedastic case the two one-sided scales were \emph{both} labelled \code{(Intercept)}, so \eqn{u} and \eqn{w} could not be told apart. Code that exponentiated these rows must stop doing so.
+
+Where \eqn{\sigma_u} or \eqn{\sigma_w} carries determinants there is no single scale to report, so those rows stay as \emph{coefficients} on the link and take the prefixes \code{Zu.} and \code{Zw.} -- which is also what makes the two blocks distinguishable when they share a covariate name. \code{sigma_v} is homoskedastic in every case and is always reported directly.
+
+\bold{A t-value on a scale parameter is not a conventional test.} The null it corresponds to sits on the boundary of the parameter space, where the usual normal reference distribution does not apply. The column is reported for consistency with the rest of the package; read it as a rough magnitude, not as a p-value.}
 \item{opt}{A list containing the optimization results from the final optimization procedure.}
 \item{total_time}{The total computation time for model estimation.}
 \item{start_v}{The starting values used in the optimization.}

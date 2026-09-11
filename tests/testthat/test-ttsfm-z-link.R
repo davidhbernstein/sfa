@@ -48,10 +48,13 @@ test_that("the default is the SD link and is unchanged", {
     expect_equal(as.numeric(logLik(sd_l)), as.numeric(logLik(vr_l)),
                  tolerance = 1e-4, info = m)
     ## sigma = exp(eta) against exp(eta/2): the SD-link delta is HALF.
-    expect_equal(unname(coef(sd_l)[["z"]]) / unname(coef(vr_l)[["z"]]), 0.5,
+    ## Names carry the Zu./Zw. prefixes since 1.2.1 -- without them the two
+    ## determinant blocks are indistinguishable whenever they share a covariate,
+    ## which is exactly the case this file does NOT cover.
+    expect_equal(unname(coef(sd_l)[["Zu.z"]]) / unname(coef(vr_l)[["Zu.z"]]), 0.5,
                  tolerance = 0.02, info = m)
     ## The second tier moves the same way.
-    expect_equal(unname(coef(sd_l)[["zp"]]) / unname(coef(vr_l)[["zp"]]), 0.5,
+    expect_equal(unname(coef(sd_l)[["Zw.zp"]]) / unname(coef(vr_l)[["Zw.zp"]]), 0.5,
                  tolerance = 0.02, info = m)
     ## The frontier is untouched by the reparameterization.
     expect_equal(unname(coef(sd_l)[["x1"]]), unname(coef(vr_l)[["x1"]]),
