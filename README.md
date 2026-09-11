@@ -405,6 +405,9 @@ defensible at all.
 | `uhet_test()` | Does inefficiency depend on firm characteristics (validly, from a two-step fit) |
 | `endogeneity_test()` | Was the endogeneity correction needed — is `rho` different from zero |
 | `esfm()`, `symmetry_test()` | Fit a frontier when the residual skewness has the *wrong* sign |
+| `sfm(estimator = "acols")`, `sfm(estimator = "cmle")` | Two more answers to the same problem: corrected OLS without the third moment, and maximum likelihood under moment constraints. See `?sfa-wrongskew` for the whole suite |
+| `skewness_decomp()` | Where the composed error's skewness comes from — inefficiency, noise, or the dependence between them |
+| `tt_boundary_report()` | Is a two-tier fit's collapsed `sigma_v` the maximum, or did the optimizer stop short |
 | `influence_sfa()` | Which observations move the fit, and can any single one move it without bound |
 | `hscore_select()`, `calibrate_c()`, `density_weights()` | Choosing and reading the robust-divergence tuning parameter |
 | `efficiency()`, `meanefficiency()`, `efficiency_ci()` | Efficiency predictions, model-implied means, and Horrace–Schmidt intervals |

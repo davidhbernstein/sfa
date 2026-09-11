@@ -1,5 +1,151 @@
 # sfa 1.2.1
 
+## A wrong-skewness suite
+
+Four approaches to the Waldman (1982) boundary now sit together under one help
+topic, `?sfa-wrongskew`, which says what each does and when to prefer it. Two
+of them are new estimators; the third is a new diagnostic; the fourth
+(`esfm()`) shipped in 1.2.0.
+
+* **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter
+  and Zhao (2023, *Empirical Economics* 64:2831). Corrected OLS with the first
+  absolute moment `E|eps|` in place of the third central moment -- the third
+  moment is the only ingredient that can drive `sigma_u` to the boundary, so
+  removing it removes the failure. Implemented for `NHN` and `NE`, which are
+  the two the paper covers.
+
+  Replicated against the paper's own Monte Carlo. At `n = 200` every COLS
+  figure matches to 0.005 or better, and the ACOLS Type I failure rates match
+  too: `lambda = 0.2` gives 0.162 against the paper's 0.160, `lambda = 0.4`
+  gives 0.151 against 0.146, `lambda = 1.5` gives 0.026 against 0.022. The
+  Normal-Exponential table is reproduced essentially exactly.
+
+  One thing the paper leaves open had to be settled. Its recipe is to minimize
+  the squared moment equation from many starting values, but that equation has
+  **more than one exact root in 18 to 36 per cent of samples**, and every root
+  attains the same objective of zero. `sfa` keeps the root with the highest
+  profile likelihood -- a tiebreak, never an optimization -- which reproduces
+  the paper's failure rates and, unlike "always the first" or "always the
+  last", is never far off its mean squared errors at either end of the lambda
+  range.
+
+  The `NE` moment equation is also written through `log Phi` rather than
+  `2 exp(lam^2/2) Phi(-lam)`, which overflows above `lam = 37`. That overflow
+  is why the paper had to treat `sigma_u < 0.03` as zero; here the equation
+  stays finite to `lam = 200`.
+
+* **`sfm(estimator = "cmle")`** is the moment-constrained maximum likelihood of
+  Zhao and Parmeter (2022, *Economics Letters* 221:110901). The same
+  likelihood `estimator = "mle"` maximizes, subject to two equality
+  constraints the assumed density implies. Nothing is respecified, and the two
+  estimators are asymptotically identical; the constraints simply do not hold
+  at the OLS stationary point, so the search cannot settle there.
+
+  The implementation does not need a constrained optimizer. Given `beta` the
+  two constraints pin both variance parameters -- in closed form for `NHN`, by
+  one scalar root-find for `NE` -- so the problem is a profile over `beta`
+  alone. Clamping at the edge of the admissible set rather than rejecting keeps
+  that profile continuous, and a fit that ends up clamped is flagged through a
+  new `$boundary` component and a warning.
+
+  On wrong-skew samples, `sigma_u` collapses to zero in 95 to 97 per cent of
+  standard ML fits and 2.5 to 4.5 per cent of constrained ones, against the
+  paper's claim of a reduction "over 90 per cent". Its `beta0` mean-squared
+  error ratios of 2.07 to 3.40 bracket the paper's 2.15 to 2.76.
+
+* **`skewness_decomp()`** implements the third-moment decomposition of Bonanno,
+  De Giovanni and Domma (2017, *JPA* 47:49), the paper behind `copsfm()`. It
+  splits `E[(eps - E eps)^3]` into the part from the asymmetry of `u`, the part
+  from the asymmetry of `v`, and the part from the dependence between them,
+  and reports Zenga's median-based measure alongside -- the measure whose sign
+  says which way the density actually leans.
+
+  The point is what it says about the textbook model: a normal `v` zeroes the
+  second component and independence zeroes the third, so under the standard
+  specification the sign of the composed third moment *is* the sign of
+  `-E[(u - Eu)^3]` and nothing else. Run it on an `NHN` fit and two of the
+  three components come back identically zero.
+
+  The marginals are closed forms; the dependence term is Gauss-Legendre
+  quadrature on the unit square against the copula density, so it covers every
+  marginal and copula `copsfm()` supports rather than only the
+  exponential/generalized-logistic/FGM combination the paper writes out. It
+  also settles the two errors 1.2.1 already recorded in those papers' summary
+  moment formulas: the corrected expressions are now derived and pinned, and
+  `?copsfm` gives them.
+
+## Two-tier models: reporting, and a boundary diagnostic
+
+* **`ttsfm()` now reports the three scale parameters on their natural scale,
+  with names.** This is a **breaking change** to `$out` and `coef()`. The rows
+  are `sigma_v`, `sigma_u` and `sigma_w`. Previously the matrix held raw
+  optimizer values: the row labelled `sigv` was `log(sigma_v)`, and in the
+  homoskedastic case the two one-sided scales were *both* labelled
+  `(Intercept)`, so `u` and `w` could not be told apart and none of the three
+  numbers was on the scale its label implied. **Code that exponentiated those
+  rows must stop doing so.**
+
+  Where `sigma_u` or `sigma_w` carries determinants there is no single scale to
+  report, so those rows stay as coefficients on the link and take `Zu.` and
+  `Zw.` prefixes — which is also what makes the two blocks distinguishable when
+  they share a covariate name, something the old labelling could not express at
+  all. Standard errors on the converted rows carry the delta-method factor.
+
+* **`tt_boundary_report()`** refits a two-tier frontier from several starting
+  values of `sigma_v`, scores every solution on the same likelihood, and says
+  which is highest. Use it when `ttsfm()` returns `sigma_v` at essentially zero
+  and you need to know whether that is the maximum likelihood estimate or an
+  optimizer that stopped short.
+
+  **It is a likelihood comparison, not a test, and reports no p-value.** The
+  hypothesis a reader would attach to it sits on the boundary of the parameter
+  space, where the usual chi-square reference distribution does not apply, and
+  no appropriate null distribution has been established for this model. The
+  ordinary linear model on the same data is reported alongside, because a
+  collapsed `sigma_v` is not the same claim as "there is no frontier here".
+
+* **`?ttsfm` now documents the `"TTHN"` boundary behaviour**: when `sigma_u`
+  and `sigma_w` are close the fit drives `sigma_v` to zero, and that collapse
+  *is* the maximum likelihood estimate. With `sigma_u = sigma_w` the difference
+  `w - u` is already symmetric and heavier-tailed than a normal, so a small
+  normal `v` underneath it is very nearly invisible. On a 2,000-observation
+  draw the profile in `sigma_v` is flat to 0.000 log units from `1e-6` upward
+  and decreasing above 0.01, with no interior maximum. Asymmetric
+  `(sigma_u, sigma_w)` does not show this. The two-tier structure is
+  identified; the noise underneath two equal and opposite tiers is not.
+
+## A third bug in already-released code
+
+* **`sfm(estimator = "cols")` returned the frontier coefficients with the wrong
+  sign on a COST frontier** (`inefdec = FALSE`), in 1.2.0 as released. The
+  moment path fits on `Yc = inefdec_n * Y`, which is the production orientation
+  whatever the caller asked for: a cost frontier `y = x'b + v + u` is fitted as
+  `-y = x'(-b) + (-v) - u`, so what came back was `-b`. The scale parameters
+  were right -- `v` is symmetric and `u` is the same `u` -- which is why it went
+  unnoticed. On a fit with a true intercept of 1 and slope 0.8 it reported
+  -1.112 and -0.744 where maximum likelihood on the same data gave 1.103 and
+  0.751. Fixed, and `fitted() + residuals() == y` is now pinned in both
+  orientations. Any cost-frontier `estimator = "cols"` fit made with 1.2.0
+  should be re-run.
+
+## DEA
+
+* **`npsfm(method = "SZ")`'s DEA step now runs from the `DEA` package** rather
+  than from a linear program built here on `lpSolve`. `DEA` moves into
+  `Suggests` and `lpSolve` moves out; the guard and the error message that
+  names the missing package are unchanged. The two agreed to **6e-12** across
+  all four returns-to-scale settings and one and two inputs before the swap,
+  and `tests/testthat/test-dea.R` now pins the contract `sfa` needs from `DEA`
+  -- orientation, the returns-to-scale spelling, the invariants
+  `method = "SZ"` relies on -- rather than re-testing linear algebra that
+  belongs to `DEA`.
+
+## Documentation
+
+* The four data sets, and `sfm()` and `psfm()` themselves, had titles that were
+  just their own names, so the manual's index read `FinnishElec  FinnishElec`.
+  All six now describe what they are.
+
 ## Three new distributional specifications
 
 * **`copsfm()` gains skewed noise and a choice of inefficiency marginal**, via

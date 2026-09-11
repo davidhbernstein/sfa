@@ -32,10 +32,25 @@ both silent:
 * `sfm(estimator = "cols")` used the normal/half-normal efficiency posterior
   regardless of `model_name`, so `"NE"` and `"NG"` fits received the wrong
   `exp_u_hat`. Parameter estimates were unaffected.
+* `sfm(estimator = "cols")` returned the frontier coefficients with the wrong
+  **sign** on a cost frontier (`inefdec = FALSE`). The moment path fits on the
+  production orientation, so a cost frontier is fitted as `-y = x'(-b) + ...`
+  and `-b` was reported. Scale parameters were unaffected, which is why it was
+  not caught. Cost-frontier `"cols"` fits made with 1.2.0 should be re-run.
 
-The release also adds three inefficiency/noise specifications and rewrites the
+The release also adds three inefficiency/noise specifications, a
+wrong-skewness suite of two estimators and a diagnostic, and rewrites the
 package Description. Those are in `NEWS.md`; they are not the reason for the
 timing.
+
+### One dependency change
+
+`lpSolve` leaves `Suggests` and `DEA` enters it. `npsfm(method = "SZ")` solved
+its own output-oriented envelopment on `lpSolve`; it now calls `DEA::dea()`,
+which the maintainer of this package also maintains. Both are `Suggests` and
+the code path is guarded by `requireNamespace()`, so nothing in `sfa` requires
+either package to be present. The two implementations agreed to 6e-12 across
+every returns-to-scale setting before the swap.
 
 ## R CMD check results
 
@@ -46,12 +61,17 @@ R CMD check --as-cran sfa_1.2.1.tar.gz
 ```
 
 with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5, on a tarball built **with**
-the vignette. Result: **0 errors | 0 warnings | 2 notes**.
+the vignette. Result: **0 errors | 0 warnings | 3 notes**, all three properties
+of the check machine or of the submission interval rather than of the package.
 
 1. `checking CRAN incoming feasibility ... NOTE` -- "Days since last update",
    the interval explained above.
 
-2. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
+2. `checking for future file timestamps ... NOTE` -- "unable to verify current
+   time". The check tries to reach an external clock service and this machine
+   cannot; no file in the tarball carries a future timestamp.
+
+3. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
    not recent enough and package `V8` is unavailable, so the HTML-validation
    and math-rendering sub-checks are skipped rather than failed. A property of
    the check machine, not of the package.
