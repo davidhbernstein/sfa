@@ -5,8 +5,10 @@
 * **`?endogeneity_test` now carries a size and power table.** The test shipped
   in 1.2.0 with a theoretical argument for why it should be well calibrated at
   the null -- `ivsfm()` parameterises `rho = t/sqrt(1 + t't)`, so `rho = 0` is
-  an interior point and the delta-method Jacobian is the identity there -- but
-  with no simulation behind it. Measured over 1,000 replications per cell at
+  an interior point and the delta-method Jacobian is the identity there -- and
+  a rejection rate measured at a single sample size. Size at one `n` shows
+  neither convergence to nominal nor its absence, so the table is a sweep.
+  Measured over 1,000 replications per cell at
   n = 500, 1000, 2000 and 4000: size is 0.043-0.053 against a nominal 5% and
   power rises monotonically to one. The variance estimate was checked directly,
   not inferred from the rejection rate -- the mean reported standard error of
