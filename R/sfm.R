@@ -42,7 +42,7 @@ sfm <- function(formula,
                 sim_seed = NULL,
                 rand.psoptim = NULL,
                 keep_objective = FALSE,
-                estimator = c("mle", "cols", "mols"),
+                estimator = c("mle", "cols", "mols", "acols", "cmle"),
                 cols_boot = 0,
                 rand.cols = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes().
@@ -158,9 +158,19 @@ sfm <- function(formula,
       )
     }
     if (estimator != "mle") {
-      stop("sfm(): `vhet`/`muhet` are maximum-likelihood specifications; ",
-        "the moment estimator has no heteroskedastic form. Call with ",
-        "estimator = \"mle\".",
+      ## "cmle" IS a likelihood estimator, so the reason differs: its two
+      ## moment constraints are written for a single sigma_u and a single
+      ## sigma_v, and there is no version of them that carries a covariate.
+      stop("sfm(): `vhet`/`muhet` cannot be combined with estimator = \"",
+        estimator, "\". ",
+        if (identical(estimator, "cmle")) {
+          paste0("The moment constraints of Zhao and Parmeter (2022) are ",
+            "written for homoskedastic scale parameters and have no ",
+            "heteroskedastic form.")
+        } else {
+          "The moment estimators have no heteroskedastic form."
+        },
+        " Call with estimator = \"mle\".",
         call. = FALSE
       )
     }
@@ -197,6 +207,9 @@ sfm <- function(formula,
   ## "mols" and "cols" select the same estimator, and the literature's name
   ## for it is MOLS.
   estimator <- if (estimator == "mols") "cols" else estimator
+  ## "acols" runs the same corrected-OLS scaffold on a different pair of
+  ## moment conditions, so it shares the branch and differs only in `moment`.
+  cols_moment <- if (estimator == "acols") "absolute" else "third"
 
   ## Carree's binomial is a MOMENT model, not a likelihood one. Its inefficiency
   ## is discrete, so there is no density to maximize in the shape that sfm()'s
@@ -211,10 +224,10 @@ sfm <- function(formula,
     )
   }
 
-  if (estimator == "cols" && robust != "mle") {
+  if (estimator %in% c("cols", "acols") && robust != "mle") {
     stop("`robust` applies to the maximum-likelihood estimator only. ",
-      "estimator = \"cols\" is a moment estimator and has no divergence to ",
-      "robustify; call it with robust = \"mle\".",
+      "estimator = \"", estimator, "\" is a moment estimator and has no ",
+      "divergence to robustify; call it with robust = \"mle\".",
       call. = FALSE
     )
   }
@@ -422,8 +435,8 @@ sfm <- function(formula,
     return(results)
   }
 
-  ## Corrected ordinary least squares.
-  if (estimator == "cols") {
+  ## Corrected ordinary least squares, in either of its two moment forms.
+  if (estimator %in% c("cols", "acols")) {
     Start.Time <- start.time()
     Xc <- as.matrix(data_i_vars)
     Yc <- inefdec_n * as.numeric(Y)
@@ -434,7 +447,9 @@ sfm <- function(formula,
       .const <- which(apply(Xc, 2, function(z) length(unique(z)) == 1L))
       icol <- if (length(.const)) .const[[1]] else NA_integer_
     }
-    CF <- .cols_fit(Yc, Xc, model_name, intercept_col = icol)
+    CF <- .cols_fit(Yc, Xc, model_name, intercept_col = icol,
+      moment = cols_moment
+    )
 
     if (isTRUE(CF$wrong_skew) && identical(model_name, "NB")) {
       ## For a binomial u a positive residual skew is not "wrong" -- it is
@@ -450,6 +465,19 @@ sfm <- function(formula,
         "distributions, a positive m3 is admissible here and means p > 1/2.",
         call. = FALSE
       )
+    } else if (isTRUE(CF$wrong_skew) && identical(cols_moment, "absolute")) {
+      ## ACOLS never looks at m3, so the failure is not "wrong skew": it is
+      ## that the absolute-moment equation has no root on the admissible
+      ## interval, and the reported parameters sit at whichever end of it
+      ## comes closest.
+      warning("sfm(estimator = \"acols\"): the absolute-moment equation of ",
+        "Parmeter and Zhao (2023) has no solution in these data, so the ",
+        "reported sigma_u is the closest admissible value rather than a root. ",
+        "The residual third moment (", signif(CF$moments[["m3"]], 3), ") is ",
+        "reported for reference but is not used by this estimator. Read this ",
+        "as no evidence of inefficiency rather than as an estimate.",
+        call. = FALSE
+      )
     } else if (isTRUE(CF$wrong_skew)) {
       warning("sfm(estimator = \"cols\"): the OLS residuals are skewed the WRONG ",
         "way (third central moment ", signif(CF$moments[["m3"]], 3), " >= 0). ",
@@ -462,12 +490,19 @@ sfm <- function(formula,
       )
     }
 
-    par_v <- c(CF$sigma_v, CF$sigma_u, CF$extra, CF$beta)
+    ## The moment path fits on Yc = inefdec_n * Y, which is the PRODUCTION
+    ## orientation whatever the user asked for. For a cost frontier
+    ## y = x'b + v + u that means fitting -y = x'(-b) + (-v) - u, so the
+    ## coefficients that come back are -b and have to be flipped to report b.
+    ## The scale parameters are unaffected -- v is symmetric and u is the same
+    ## u -- which is why this was invisible: only the frontier coefficients
+    ## were wrong, and only under inefdec = FALSE. Released that way in 1.2.0.
+    par_v <- c(CF$sigma_v, CF$sigma_u, CF$extra, inefdec_n * CF$beta)
     ## Coelli (1995, Appendix 1): analytic delta-method errors for the variance
     ## parameters, which are NOT the OLS ones -- sigma_u and sigma_v are
     ## non-linear functions of the residual moments, not regression
     ## coefficients. Half-normal only; NE and NG keep NA and the bootstrap.
-    .cse <- if (identical(model_name, "NHN")) {
+    .cse <- if (identical(model_name, "NHN") && identical(cols_moment, "third")) {
       .cols_se_nhn(CF$sigma_u, CF$sigma_v, length(Yc))
     } else {
       c(sigma_v = NA_real_, sigma_u = NA_real_, eu = NA_real_)
@@ -501,10 +536,11 @@ sfm <- function(formula,
       for (bb in seq_len(as.integer(cols_boot))) {
         idx <- sample.int(nobs, nobs, replace = TRUE)
         bfit <- tryCatch(.cols_fit(Yc[idx], Xc[idx, , drop = FALSE], model_name,
-          intercept_col = icol
+          intercept_col = icol, moment = cols_moment
         ), error = function(e) NULL)
         if (!is.null(bfit)) {
-          boot_mat[bb, ] <- c(bfit$sigma_v, bfit$sigma_u, bfit$extra, bfit$beta)
+          boot_mat[bb, ] <- c(bfit$sigma_v, bfit$sigma_u, bfit$extra,
+            inefdec_n * bfit$beta)
         }
       }
       se_v <- apply(boot_mat, 2, function(z) stats::sd(z, na.rm = TRUE))
@@ -574,7 +610,7 @@ sfm <- function(formula,
     End.Time <- end.time(Start.Time)
     results <- list(
       t(out), NULL, End.Time, NULL, model_name, formula, exp_u_hat,
-      CF$wrong_skew, CF$moments, boot_mat, "cols",
+      CF$wrong_skew, CF$moments, boot_mat, estimator,
       out["par", ], out["st_err", ], out["t-val", ], call
     )
     class(results) <- "sfareg"
@@ -582,6 +618,78 @@ sfm <- function(formula,
       "out", "opt", "total_time", "start_v", "model_name", "formula",
       "exp_u_hat", "wrong_skew", "residual_moments", "cols_boot_draws",
       "estimator", "coefficients", "std.errors", "t.values", "call"
+    )
+    results$nobs <- length(Yc)
+    return(results)
+  }
+
+  ## Moment-constrained maximum likelihood (Zhao and Parmeter 2022).
+  if (estimator == "cmle") {
+    Start.Time <- start.time()
+    Xc <- as.matrix(data_i_vars)
+    Yc <- inefdec_n * as.numeric(Y)
+    icol <- match("(Intercept)", x_vars_vec)
+    if (is.na(icol)) {
+      .const <- which(apply(Xc, 2, function(z) length(unique(z)) == 1L))
+      icol <- if (length(.const)) .const[[1]] else NA_integer_
+    }
+    MF <- .cmle_fit(Yc, Xc, model_name, intercept_col = icol,
+      maxit.bobyqa = maxit.bobyqa, maxit.optim = maxit.optim, verbose = verbose
+    )
+
+    if (isTRUE(MF$boundary)) {
+      warning("sfm(estimator = \"cmle\"): the fit sits on the edge of the ",
+        "admissible set -- the two moment constraints of Zhao and Parmeter ",
+        "(2022) cannot both hold in the interior for these data, so one of ",
+        "sigma_u, sigma_v is at its boundary. The constraints make this ",
+        "outcome much rarer than under plain maximum likelihood but, as the ",
+        "paper notes, they do not rule it out.",
+        call. = FALSE
+      )
+    }
+
+    ## Same orientation flip as the corrected-OLS branch above, and for the
+    ## same reason: .cmle_fit() works on Yc, which is always production form.
+    par_v <- c(MF$sigma_v, MF$sigma_u, inefdec_n * MF$beta)
+    se_v <- c(MF$se_sigma_v, MF$se_sigma_u, MF$se_beta)
+    nm_v <- c("sigv", "sigu", x_vars_vec)
+
+    out <- matrix(NA_real_, nrow = 3, ncol = length(par_v))
+    rownames(out) <- c("par", "st_err", "t-val")
+    colnames(out) <- nm_v
+    out[1, ] <- par_v
+    out[2, ] <- se_v
+    out[3, ] <- par_v / se_v
+
+    eps_c <- inefdec_n * MF$residuals
+    exp_u_hat <- if (MF$sigma_u > 0 && MF$sigma_v > 0) {
+      s2u <- MF$sigma_u^2
+      s2v <- MF$sigma_v^2
+      switch(model_name,
+        "NHN" = .te_battese_coelli(
+          mu_star = -eps_c * s2u / (s2u + s2v),
+          sigma_star = MF$sigma_u * MF$sigma_v / sqrt(s2u + s2v)
+        ),
+        "NE" = .te_battese_coelli(
+          mu_star = -eps_c - s2v / MF$sigma_u,
+          sigma_star = rep_len(MF$sigma_v, length(eps_c))
+        )
+      )
+    } else {
+      rep(NA_real_, length(eps_c))
+    }
+
+    End.Time <- end.time(Start.Time)
+    results <- list(
+      t(out), list(value = -MF$loglik, convergence = 0L), End.Time, NULL,
+      model_name, formula, exp_u_hat, MF$boundary, MF$moments, "cmle",
+      out["par", ], out["st_err", ], out["t-val", ], call
+    )
+    class(results) <- "sfareg"
+    names(results) <- c(
+      "out", "opt", "total_time", "start_v", "model_name", "formula",
+      "exp_u_hat", "boundary", "residual_moments", "estimator",
+      "coefficients", "std.errors", "t.values", "call"
     )
     results$nobs <- length(Yc)
     return(results)

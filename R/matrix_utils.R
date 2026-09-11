@@ -1099,8 +1099,82 @@
 }
 
 
+## Parmeter and Zhao (2023), "An alternative corrected ordinary least squares
+## estimator for the stochastic frontier model", Empirical Economics 64:2831.
+## Gap L29.  See notes/code_history/matrix_utils.md for why the root selection
+## below is what it is.
+.abs_mom_nhn <- function(su, e, r2) {
+  mean(abs(sqrt(pi / 2) * e - su)) - sqrt(r2 + (2 / pi) * su^2)
+}
+
+.abs_mom_ne <- function(lam, e, r2) {
+  mean(abs(e * sqrt((1 + lam^2) / r2) - 1)) -
+    2 * exp(lam^2 / 2 + stats::pnorm(-lam, log.p = TRUE)) - sqrt(2 / pi) * lam
+}
+
+## Profile log-likelihoods at the OLS slopes, used ONLY to break ties between
+## multiple exact roots of the moment equation -- never optimized.
+.abs_mom_ll_nhn <- function(su, e, r2) {
+  sv2 <- r2 - su^2 * (1 - 2 / pi)
+  if (!is.finite(sv2) || sv2 <= 0) return(-Inf)
+  sg <- sqrt(sv2 + su^2)
+  ep <- (e - sqrt(2 / pi) * su) / sg
+  sum(stats::dnorm(ep, log = TRUE) +
+    stats::pnorm(-(su / sqrt(sv2)) * ep, log.p = TRUE)) - length(e) * log(sg)
+}
+
+.abs_mom_ll_ne <- function(lam, e, r2) {
+  su <- sqrt(r2 / (1 + lam^2))
+  sv <- lam * su
+  if (!is.finite(su) || su <= 0 || sv <= 0) return(-Inf)
+  ep <- e - su
+  sum(-log(su) + ep / su + sv^2 / (2 * su^2) +
+    stats::pnorm(-ep / sv - sv / su, log.p = TRUE))
+}
+
+## Solve g(t) = 0 on [lo, hi] by a grid sweep and bracketed refinement.
+##
+## The moment equation has more than one root in roughly a quarter of samples
+## (measured: 18% at lambda = 0.2 up to 36% at lambda = 1.5, n = 200), and the
+## paper's recipe -- minimize g^2 from many starting values -- does not say
+## which to keep, because every root attains the same objective of zero. The
+## rule here is to keep the root with the highest profile likelihood. It
+## reproduces the paper's failure rates and, unlike "always the first" or
+## "always the last", is never far off its mean squared errors at either end
+## of the lambda range.
+##
+## No sign change at all means the moment equation has no solution; the
+## minimizer of g^2 is returned instead, exactly as the paper does, and
+## `n_roots` is 0 so the caller can report the boundary.
+.abs_mom_solve <- function(g, ll, e, r2, lo, hi, ngrid = 257L) {
+  gr <- seq(lo, hi, length.out = ngrid)
+  gv <- vapply(gr, g, 0, e = e, r2 = r2)
+  gv[!is.finite(gv)] <- NA_real_
+  s <- which(diff(sign(gv)) != 0 & !is.na(gv[-ngrid]) & !is.na(gv[-1L]))
+  if (!length(s)) {
+    j <- which.min(gv^2)
+    if (!length(j)) return(list(root = lo, n_roots = 0L))
+    a <- gr[max(1L, j - 1L)]
+    b <- gr[min(ngrid, j + 1L)]
+    r <- if (b <= a) gr[j] else {
+      stats::optimize(function(z) g(z, e, r2)^2, c(a, b), tol = 1e-10)$minimum
+    }
+    return(list(root = r, n_roots = 0L))
+  }
+  rt <- vapply(s, function(i) {
+    stats::uniroot(g, c(gr[i], gr[i + 1L]), e = e, r2 = r2, tol = 1e-10)$root
+  }, 0)
+  r <- if (length(rt) == 1L) rt else {
+    rt[which.max(vapply(rt, ll, 0, e = e, r2 = r2))]
+  }
+  list(root = r, n_roots = length(rt))
+}
+
+
 ## Helper: corrected ordinary least squares (COLS)
-.cols_fit <- function(Y, X, model_name, intercept_col = 1L) {
+.cols_fit <- function(Y, X, model_name, intercept_col = 1L,
+                      moment = c("third", "absolute")) {
+  moment <- match.arg(moment)
   Y <- as.numeric(Y)
   X <- as.matrix(X)
   fit <- stats::lm.fit(X, Y)
@@ -1118,91 +1192,133 @@
   ## m3 has no admissible solution; for the binomial it merely means p > 1/2,
   ## and the flag is set below from whether the inversion actually succeeded.
   wrong <- !is.finite(m3) || m3 >= 0
-  pars <- switch(model_name,
-    "NHN" = {
-      su <- if (wrong) 0 else (m3 / (sqrt(2 / pi) * (1 - 4 / pi)))^(1 / 3)
-      list(
+  n_roots <- NA_integer_
+
+  ## ACOLS (Parmeter and Zhao 2023): the same second moment, but the FIRST
+  ## absolute moment of the composed error in place of the third. The third
+  ## moment is what fails in small samples -- it is the only ingredient that
+  ## can send sigma_u to the boundary -- and E|eps| carries the same
+  ## information about the mix without cubing the residuals.
+  if (identical(moment, "absolute")) {
+    if (!model_name %in% c("NHN", "NE")) {
+      stop("estimator = \"acols\" is implemented for model_name \"NHN\" and ",
+        "\"NE\" only; Parmeter and Zhao (2023) give the absolute-moment ",
+        "condition for those two. Got \"", model_name, "\".",
+        call. = FALSE
+      )
+    }
+    if (model_name == "NHN") {
+      ## Eq. (8): sigma_u in [0, (pi m2 / (pi - 2))^(1/2)], the interval on
+      ## which sigma_v^2 stays non-negative.
+      sol <- .abs_mom_solve(.abs_mom_nhn, .abs_mom_ll_nhn, e, m2,
+        0, sqrt(pi * m2 / (pi - 2))
+      )
+      su <- sol$root
+      pars <- list(
         sigma_v = sqrt(max(m2 - su^2 * (1 - 2 / pi), .Machine$double.eps)),
         sigma_u = su, extra = NULL, eu = su * sqrt(2 / pi)
       )
-    },
-    "NE" = {
-      su <- if (wrong) 0 else (-m3 / 2)^(1 / 3)
-      list(
-        sigma_v = sqrt(max(m2 - su^2, .Machine$double.eps)),
-        sigma_u = su, extra = NULL, eu = su
+    } else {
+      ## Eq. (13), solved for lambda_I = sigma_v / sigma_u rather than for
+      ## sigma_u, which is how the paper writes it. The upper end of 200
+      ## corresponds to sigma_u below half a percent of the residual scale.
+      sol <- .abs_mom_solve(.abs_mom_ne, .abs_mom_ll_ne, e, m2, 0, 200)
+      lam <- sol$root
+      su <- sqrt(m2 / (1 + lam^2))
+      pars <- list(sigma_v = lam * su, sigma_u = su, extra = NULL, eu = su)
+    }
+    ## "Wrong" for ACOLS is not the sign of m3 -- that moment is not used. It
+    ## is the absence of any solution to the moment equation, which is where
+    ## the Type I and Type II failures of this estimator live.
+    wrong <- sol$n_roots == 0L
+    n_roots <- sol$n_roots
+  } else {
+    pars <- switch(model_name,
+      "NHN" = {
+        su <- if (wrong) 0 else (m3 / (sqrt(2 / pi) * (1 - 4 / pi)))^(1 / 3)
+        list(
+          sigma_v = sqrt(max(m2 - su^2 * (1 - 2 / pi), .Machine$double.eps)),
+          sigma_u = su, extra = NULL, eu = su * sqrt(2 / pi)
+        )
+      },
+      "NE" = {
+        su <- if (wrong) 0 else (-m3 / 2)^(1 / 3)
+        list(
+          sigma_v = sqrt(max(m2 - su^2, .Machine$double.eps)),
+          sigma_u = su, extra = NULL, eu = su
+        )
+      },
+      "NG" = {
+        k4 <- m4 - 3 * m2^2
+        bad <- wrong || !is.finite(k4) || k4 <= 0
+        su <- if (bad) 0 else -k4 / (3 * m3)
+        sh <- if (bad || su <= 0) 1 else -m3 / (2 * su^3)
+        list(
+          sigma_v = sqrt(max(m2 - sh * su^2, .Machine$double.eps)),
+          sigma_u = su, extra = c(mu = sh), eu = sh * su
+        )
+      },
+      ## Carree (2002): u ~ Binomial(n, p). Gap L19.
+      ##
+      ## The only inefficiency distribution in the package that can be skewed
+      ## EITHER way, and the reason it is here. Every other one-sided law -- half
+      ## normal, exponential, gamma, truncated normal -- is positively skewed, so
+      ## a production frontier implies a negatively skewed composed error and a
+      ## positive residual skew has nowhere to go but sigma_u = 0. Carree's point
+      ## is that "no inefficiency" is not the only reading of that: a binomial
+      ## with p > 1/2 is negatively skewed, which says most firms carry
+      ## considerable inefficiency and only a few sit near the frontier. Same
+      ## sample moment, opposite economics.
+      ##
+      ## Inverting the second, third and fourth central moments (his Eq. 7):
+      ##
+      ##   m2 = sigma_v^2 + n p (1-p)
+      ##   m3 = -n p (1-p) (1 - 2p)
+      ##   m4 - 3 m2^2 = n p (1-p) (1 - 6p + 6p^2)
+      ##
+      ## whose ratio x = (m4 - 3 m2^2) / m3 = (6p^2 - 6p + 1)/(2p - 1) is a
+      ## quadratic in p with the two roots of his Eq. (8). This uses the FOURTH
+      ## moment, so it is markedly more fragile than the NHN and NE inversions
+      ## above -- as Greene's gamma estimator is, and for the same reason.
+      "NB" = {
+        k4 <- m4 - 3 * m2^2
+        xr <- if (is.finite(m3) && m3 != 0) k4 / m3 else NA_real_
+        pp <- NA_real_
+        if (is.finite(xr)) {
+          rt <- sqrt(xr^2 + 3) / 6
+          p1 <- 0.5 + xr / 6 + rt
+          p2 <- 0.5 + xr / 6 - rt
+          ## Outside [-1, 1] only one root lands in (0, 1); inside it, the sign
+          ## of the residual skew picks the branch.
+          pp <- if (xr < -1) p1 else if (xr > 1) p2 else if (m3 > 0) p1 else p2
+        }
+        nb <- if (is.finite(pp) && pp > 0 && pp < 1 && pp != 0.5) {
+          -m3 / (pp * (1 - pp) * (1 - 2 * pp))
+        } else {
+          NA_real_
+        }
+        ## The infeasible region is Carree's: k4 > |m3| > 0 drives n negative.
+        ## Reported as "no admissible solution", never as an estimate of zero.
+        bad <- !is.finite(nb) || nb <= 0 || !is.finite(pp) ||
+          m2 <= nb * pp * (1 - pp)
+        if (bad) {
+          list(sigma_v = sqrt(max(m2, .Machine$double.eps)), sigma_u = 0,
+            extra = c(n_bin = NA_real_, p_bin = NA_real_), eu = 0)
+        } else {
+          list(sigma_v = sqrt(max(m2 - nb * pp * (1 - pp), .Machine$double.eps)),
+            sigma_u = sqrt(nb * pp * (1 - pp)),
+            extra = c(n_bin = nb, p_bin = pp), eu = nb * pp)
+        }
+      },
+      stop("COLS is implemented for model_name \"NHN\", \"NE\", \"NG\" and ",
+        "\"NB\" only. The moment inversion is distribution-specific and no ",
+        "closed form is available for \"", model_name, "\".",
+        call. = FALSE
       )
-    },
-    "NG" = {
-      k4 <- m4 - 3 * m2^2
-      bad <- wrong || !is.finite(k4) || k4 <= 0
-      su <- if (bad) 0 else -k4 / (3 * m3)
-      sh <- if (bad || su <= 0) 1 else -m3 / (2 * su^3)
-      list(
-        sigma_v = sqrt(max(m2 - sh * su^2, .Machine$double.eps)),
-        sigma_u = su, extra = c(mu = sh), eu = sh * su
-      )
-    },
-    ## Carree (2002): u ~ Binomial(n, p). Gap L19.
-    ##
-    ## The only inefficiency distribution in the package that can be skewed
-    ## EITHER way, and the reason it is here. Every other one-sided law -- half
-    ## normal, exponential, gamma, truncated normal -- is positively skewed, so
-    ## a production frontier implies a negatively skewed composed error and a
-    ## positive residual skew has nowhere to go but sigma_u = 0. Carree'''s point
-    ## is that "no inefficiency" is not the only reading of that: a binomial
-    ## with p > 1/2 is negatively skewed, which says most firms carry
-    ## considerable inefficiency and only a few sit near the frontier. Same
-    ## sample moment, opposite economics.
-    ##
-    ## Inverting the second, third and fourth central moments (his Eq. 7):
-    ##
-    ##   m2 = sigma_v^2 + n p (1-p)
-    ##   m3 = -n p (1-p) (1 - 2p)
-    ##   m4 - 3 m2^2 = n p (1-p) (1 - 6p + 6p^2)
-    ##
-    ## whose ratio x = (m4 - 3 m2^2) / m3 = (6p^2 - 6p + 1)/(2p - 1) is a
-    ## quadratic in p with the two roots of his Eq. (8). This uses the FOURTH
-    ## moment, so it is markedly more fragile than the NHN and NE inversions
-    ## above -- as Greene'''s gamma estimator is, and for the same reason.
-    "NB" = {
-      k4 <- m4 - 3 * m2^2
-      xr <- if (is.finite(m3) && m3 != 0) k4 / m3 else NA_real_
-      pp <- NA_real_
-      if (is.finite(xr)) {
-        rt <- sqrt(xr^2 + 3) / 6
-        p1 <- 0.5 + xr / 6 + rt
-        p2 <- 0.5 + xr / 6 - rt
-        ## Outside [-1, 1] only one root lands in (0, 1); inside it, the sign
-        ## of the residual skew picks the branch.
-        pp <- if (xr < -1) p1 else if (xr > 1) p2 else if (m3 > 0) p1 else p2
-      }
-      nb <- if (is.finite(pp) && pp > 0 && pp < 1 && pp != 0.5) {
-        -m3 / (pp * (1 - pp) * (1 - 2 * pp))
-      } else {
-        NA_real_
-      }
-      ## The infeasible region is Carree'''s: k4 > |m3| > 0 drives n negative.
-      ## Reported as "no admissible solution", never as an estimate of zero.
-      bad <- !is.finite(nb) || nb <= 0 || !is.finite(pp) ||
-        m2 <= nb * pp * (1 - pp)
-      if (bad) {
-        list(sigma_v = sqrt(max(m2, .Machine$double.eps)), sigma_u = 0,
-          extra = c(n_bin = NA_real_, p_bin = NA_real_), eu = 0)
-      } else {
-        list(sigma_v = sqrt(max(m2 - nb * pp * (1 - pp), .Machine$double.eps)),
-          sigma_u = sqrt(nb * pp * (1 - pp)),
-          extra = c(n_bin = nb, p_bin = pp), eu = nb * pp)
-      }
-    },
-    stop("COLS is implemented for model_name \"NHN\", \"NE\", \"NG\" and ",
-      "\"NB\" only. The moment inversion is distribution-specific and no ",
-      "closed form is available for \"", model_name, "\".",
-      call. = FALSE
     )
-  )
 
-  if (identical(model_name, "NB")) wrong <- !is.finite(pars$extra[["n_bin"]])
+    if (identical(model_name, "NB")) wrong <- !is.finite(pars$extra[["n_bin"]])
+  }
 
   ## The only coefficient COLS corrects. OLS slopes are already consistent.
   b_cols <- b
@@ -1223,7 +1339,7 @@
     beta = b_cols, se_beta = se_b, sigma_v = pars$sigma_v,
     sigma_u = pars$sigma_u, extra = pars$extra, eu = pars$eu,
     residuals = as.numeric(Y - X %*% b_cols), wrong_skew = wrong,
-    moments = c(m2 = m2, m3 = m3, m4 = m4)
+    moments = c(m2 = m2, m3 = m3, m4 = m4), moment = moment, n_roots = n_roots
   )
 }
 
@@ -2478,4 +2594,162 @@
 ## callers test.
 .gamma_to_lambda <- function(g) {
   if (isTRUE(g >= 0 && g < 1)) sqrt(g / (1 - g)) else NaN
+}
+
+
+## Zhao and Parmeter (2022), "The 'wrong skewness' problem: Moment constrained
+## maximum likelihood estimation of the stochastic frontier model", Economics
+## Letters 221:110901.  Gap L30.
+##
+## The two constraints pin the variance parameters GIVEN beta, so the
+## constrained problem is a profile over beta alone and needs no augmented
+## Lagrangian: for the half normal both sigmas are closed forms of the residual
+## moments, for the exponential one scalar root-find supplies them. Clamping at
+## the edge of the admissible set rather than rejecting keeps the profile
+## continuous in beta, which is what the minimizer scaffold needs; a fit that
+## ends up clamped is a boundary solution and is flagged as such.
+
+## Eq. (2.2) and (2.3): E|eps| = sigma sqrt(2/pi) and
+## Var(eps) = sigma_v^2 + (pi-2)/pi sigma_u^2.
+.cmle_sig_nhn <- function(m1, s2) {
+  sg2 <- pi * m1^2 / 2
+  raw <- (pi / 2) * (sg2 - s2)
+  su2 <- min(max(raw, 0), sg2)
+  list(sigma_u = sqrt(su2), sigma_v = sqrt(max(sg2 - su2, .Machine$double.eps)),
+    bind = !is.finite(raw) || raw < 0 || raw > sg2
+  )
+}
+
+## Eq. (2.7) and (2.8), written in lambda_I = sigma_v / sigma_u after
+## substituting sigma_u = (Var(eps) / (1 + lambda_I^2))^(1/2).
+.cmle_g_ne <- function(lam, m1, s2) {
+  m1 * sqrt((1 + lam^2) / s2) -
+    2 * exp(lam^2 / 2 + stats::pnorm(-lam, log.p = TRUE)) - sqrt(2 / pi) * lam
+}
+
+.cmle_sig_ne <- function(m1, s2, lam_max = 200) {
+  gr <- c(0, exp(seq(log(1e-3), log(lam_max), length.out = 128L)))
+  gv <- vapply(gr, .cmle_g_ne, 0, m1 = m1, s2 = s2)
+  s <- which(diff(sign(gv)) != 0)
+  if (!length(s)) {
+    ## No root: the constraint cannot be met, so sit on whichever end of the
+    ## lambda range comes closest and report a boundary solution.
+    lam <- gr[which.min(abs(gv))]
+    bind <- TRUE
+  } else {
+    ## The smallest root, always -- a rule that does not switch branches as
+    ## beta moves, so the profile stays continuous.
+    i <- s[1L]
+    lam <- stats::uniroot(.cmle_g_ne, c(gr[i], gr[i + 1L]),
+      m1 = m1, s2 = s2, tol = 1e-10
+    )$root
+    bind <- FALSE
+  }
+  su <- sqrt(s2 / (1 + lam^2))
+  list(sigma_u = su, sigma_v = max(lam * su, .Machine$double.eps), bind = bind)
+}
+
+.cmle_sig <- function(model_name, m1, s2) {
+  if (identical(model_name, "NHN")) .cmle_sig_nhn(m1, s2) else .cmle_sig_ne(m1, s2)
+}
+
+## Unconstrained log-likelihoods, shared by the profile and by the standard
+## errors. eps is already in production orientation (v - u).
+.cmle_ll <- function(model_name, eps, su, sv) {
+  if (!is.finite(su) || !is.finite(sv) || su <= 0 || sv <= 0) return(-Inf)
+  if (identical(model_name, "NHN")) {
+    sg <- sqrt(su^2 + sv^2)
+    z <- eps / sg
+    sum(stats::dnorm(z, log = TRUE) +
+      stats::pnorm(-(su / sv) * z, log.p = TRUE)) +
+      length(eps) * (log(2) - log(sg))
+  } else {
+    sum(stats::pnorm(-eps / sv - sv / su, log.p = TRUE)) +
+      sum(eps) / su + length(eps) * (sv^2 / (2 * su^2) - log(su))
+  }
+}
+
+.cmle_fit <- function(Y, X, model_name, intercept_col = 1L,
+                      maxit.bobyqa = 10000, maxit.optim = 1000,
+                      verbose = FALSE) {
+  Y <- as.numeric(Y)
+  X <- as.matrix(X)
+  n <- length(Y)
+  if (!model_name %in% c("NHN", "NE")) {
+    stop("estimator = \"cmle\" is implemented for model_name \"NHN\" and ",
+      "\"NE\" only; Zhao and Parmeter (2022) give the moment constraints for ",
+      "those two. Got \"", model_name, "\".",
+      call. = FALSE
+    )
+  }
+
+  PEN <- 1e12
+  nll <- function(bb) {
+    if (!all(is.finite(bb))) return(PEN)
+    eps <- as.numeric(Y - X %*% bb)
+    m1 <- mean(abs(eps))
+    s2 <- mean((eps - mean(eps))^2)
+    if (!is.finite(m1) || !is.finite(s2) || s2 <= 0) return(PEN)
+    sg <- .cmle_sig(model_name, m1, s2)
+    v <- .cmle_ll(model_name, eps, sg$sigma_u, sg$sigma_v)
+    if (!is.finite(v)) PEN else -v
+  }
+
+  ## Start from ACOLS, which already satisfies the same two moment conditions
+  ## at the OLS slopes and is therefore inside the admissible set.
+  st <- .cols_fit(Y, X, model_name, intercept_col = intercept_col,
+    moment = "absolute"
+  )$beta
+  st[!is.finite(st)] <- 0
+
+  o1 <- tryCatch(
+    minqa::bobyqa(par = st, fn = nll,
+      control = list(iprint = if (verbose) 2 else 0, maxfun = maxit.bobyqa)
+    ),
+    error = function(e) NULL
+  )
+  b <- if (!is.null(o1) && all(is.finite(o1$par)) && o1$fval < nll(st)) o1$par else st
+  o2 <- tryCatch(
+    stats::optim(b, nll, method = "Nelder-Mead",
+      control = list(maxit = maxit.optim, reltol = 1e-12)
+    ),
+    error = function(e) NULL
+  )
+  if (!is.null(o2) && all(is.finite(o2$par)) && o2$value <= nll(b)) b <- o2$par
+
+  eps <- as.numeric(Y - X %*% b)
+  m1 <- mean(abs(eps))
+  s2 <- mean((eps - mean(eps))^2)
+  sg <- .cmle_sig(model_name, m1, s2)
+
+  ## Standard errors from the UNCONSTRAINED information at the constrained
+  ## estimate. Zhao and Parmeter show the two estimators are asymptotically
+  ## identical, so this is the right large-sample variance; it is not a
+  ## finite-sample variance for the constrained problem, and the constraints
+  ## themselves are not differenced.
+  th <- c(b, log(sg$sigma_v), log(sg$sigma_u))
+  fn2 <- function(tt) {
+    -.cmle_ll(model_name, as.numeric(Y - X %*% tt[seq_len(ncol(X))]),
+      exp(tt[length(tt)]), exp(tt[length(tt) - 1L])
+    )
+  }
+  se <- rep(NA_real_, length(th))
+  H <- tryCatch(stats::optimHess(th, fn2), error = function(e) NULL)
+  if (!is.null(H) && all(is.finite(H))) {
+    V <- tryCatch(solve(H), error = function(e) NULL)
+    if (!is.null(V) && all(is.finite(diag(V))) && all(diag(V) >= 0)) {
+      se <- sqrt(diag(V))
+      ## delta method back from log sigma to sigma
+      se[length(se) - 1L] <- se[length(se) - 1L] * sg$sigma_v
+      se[length(se)] <- se[length(se)] * sg$sigma_u
+    }
+  }
+
+  list(beta = b, se_beta = se[seq_len(ncol(X))],
+    sigma_v = sg$sigma_v, sigma_u = sg$sigma_u,
+    se_sigma_v = se[length(se) - 1L], se_sigma_u = se[length(se)],
+    eu = if (identical(model_name, "NHN")) sg$sigma_u * sqrt(2 / pi) else sg$sigma_u,
+    residuals = eps, boundary = isTRUE(sg$bind), loglik = -nll(b),
+    moments = c(m1 = m1, m2 = s2, m3 = mean((eps - mean(eps))^3))
+  )
 }

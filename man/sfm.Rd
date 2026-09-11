@@ -1,6 +1,6 @@
 \name{sfm}
 \alias{sfm}
-\title{sfm}
+\title{Cross-Sectional Stochastic Frontier Models}
 \description{Implementation of the cross-sectional stochastic frontier model across an array of distributional assumptions for both v and u (user specified). For panel models, see the psfm() call.}
 \usage{sfm(formula, model_name = c("NHN", "NHN_Z", "NE", "NE_Z", "NR",
     "THT", "NTN", "NG", "NNAK", "NU", "NGE", "NLN", "NW", "tHN",
@@ -16,7 +16,7 @@
     "torus", "uniform"), antithetics = FALSE, sim_burn = NULL,
     sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
     rand.psoptim = NULL, keep_objective = FALSE, estimator = c("mle",
-    "cols", "mols"), cols_boot = 0, rand.cols = NULL)
+    "cols", "mols", "acols", "cmle"), cols_boot = 0, rand.cols = NULL)
 }
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
@@ -78,7 +78,16 @@ divergence) power parameter, used only when \code{robust = "mdpd"}.}
 \item{Nsim}{Total number of simulation draws per observation for the simulated-maximum-likelihood models (\code{"NLN"}, \code{"NW"}); ignored by every closed-form model. \code{"auto"} (the default) uses \code{max(200, ceiling(3*sqrt(n)))}. Half the draws are taken from each of the two proposals described under \sQuote{Details}. Simulated ML is consistent only if the draw count grows with the sample size -- at a fixed \code{Nsim} the simulation bias does not vanish and every parameter except the frontier slopes converges to the wrong value. The previous fixed default of \code{100} did exactly that: at \eqn{n = 3000} it returned \code{(0.362, 0.821, 1.284, 0.328)} against a truth of \code{(0.3, 1.0, 1.5, 0.5)} for \code{"NW"}. A numeric value below the automatic floor warns. Earlier versions warned that \code{"NLN"} needed far more draws than \code{"NW"}; that was a property of the old integration scheme, not of the model. Both now behave alike: at \eqn{n = 3000}, measured against quadrature at the true parameters, total simulation error is 3.4 log-likelihood units for \code{"NLN"} and 3.0 for \code{"NW"} at the default, falling to 0.07 and 0.06 at \code{Nsim = 6400}. The comparable figure for the old scheme was 226.8.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
   \item{keep_objective}{Logical. Store the likelihood function on the fitted object, so that \code{\link{sfa_diagnostics}} can compute the gradient at the optimum and draw likelihood slices. Defaults to \code{FALSE}: a closure carries its enclosing environment, so a fit saved with one serializes the estimation data too -- on a 200-observation example the object grows from about 38 KB to 1.7 MB. Everything else \code{sfa_diagnostics()} reports works without it.}
-\item{estimator}{\code{"mle"} (default), or \code{"cols"}/\code{"mols"} -- two names for the same thing, see \sQuote{Details} -- which select the modified ordinary least squares moment estimator instead of maximum likelihood: OLS slopes are kept as they are, the second and third central moments of the OLS residuals are inverted for the scale parameters, and the intercept is shifted up by the implied \eqn{E[u]}. Closed form, no optimizer, deterministic. Implemented for \code{"NHN"}, \code{"NE"} and \code{"NG"}; other models error, because the moment inversion is distribution-specific. See \sQuote{Details}.}
+\item{estimator}{\code{"mle"} (default), or \code{"cols"}/\code{"mols"} -- two names for the same thing, see \sQuote{Details} -- which select the modified ordinary least squares moment estimator instead of maximum likelihood: OLS slopes are kept as they are, the second and third central moments of the OLS residuals are inverted for the scale parameters, and the intercept is shifted up by the implied \eqn{E[u]}. Closed form, no optimizer, deterministic. Implemented for \code{"NHN"}, \code{"NE"} and \code{"NG"}; other models error, because the moment inversion is distribution-specific.
+
+Two further values belong to the wrong-skewness suite (see \link{sfa-wrongskew}) and are implemented for \code{"NHN"} and \code{"NE"} only:
+
+\describe{
+  \item{\code{"acols"}}{The alternative corrected OLS of Parmeter and Zhao (2023). Identical to \code{"cols"} except that the FIRST ABSOLUTE moment \eqn{E|\varepsilon|} replaces the third central moment. The third moment is what fails in small samples -- it is the only ingredient that can drive \eqn{\sigma_u} to zero -- and \eqn{E|\varepsilon|} carries the same information about the mix without cubing the residuals. There is no closed form, so the moment equation is solved numerically. Standard errors need \code{cols_boot}: the analytic errors reported for \code{"cols"} are Coelli's delta method for the third-moment inversion and do not apply.}
+  \item{\code{"cmle"}}{The moment-constrained maximum likelihood of Zhao and Parmeter (2022). Ordinary maximum likelihood subject to two equality constraints that the assumed density implies: \eqn{E|\varepsilon| = \sigma\sqrt{2/\pi}} and \eqn{\mathrm{Var}(\varepsilon) = \sigma_v^2 + \frac{\pi-2}{\pi}\sigma_u^2} for \code{"NHN"}, and the analogues of their Proposition 2.1 and Eq. (2.8) for \code{"NE"}. The constraints keep the search away from the Waldman (1982) boundary at which OLS is a stationary point of the likelihood, without changing the model. Nothing is respecified: the density is the same one \code{estimator = "mle"} maximizes, and the two estimators are asymptotically identical.}
+}
+
+See \sQuote{Details}.}
   \item{z_link}{Scale on which the variance-determinant linear predictor is placed, for the \code{_Z} models. \code{"sd"} (the default, and \code{sfm}'s historical convention) sets \eqn{\sigma_u = \exp(z'\delta)}; \code{"var"} sets \eqn{\sigma_u = \sqrt{\exp(z'\delta)}}, which is what \code{\link{psfm}} and the competing packages use. The two are reparameterizations of the same model -- they reach the same maximised log-likelihood and the same \code{\link{marginal_effects}} -- but \eqn{\delta} itself differs by a factor of two, so a \eqn{\delta} from \code{sfm} is not comparable with one from \code{psfm} or from \pkg{sfaR} unless the same convention is used. Set \code{z_link = "var"} to put them on one footing. See \sQuote{Details}.}
 \item{vhet}{One-sided formula for the determinants of the \emph{noise} scale, e.g. \code{vhet = ~ z1 + z2}, giving \eqn{\sigma_v = \exp(z_v'\delta_v)} under the SD link. \code{NULL} (the default) leaves \eqn{\sigma_v} constant. Available for \code{"NHN"}, \code{"NHN_Z"}, \code{"NE"}, \code{"NE_Z"} and \code{"NTN"}.}
 \item{uhet}{One-sided formula for the determinants of \eqn{\sigma_u}. This is the same specification as the \code{| z} segment of \code{formula}, and it is an error to give both; \code{uhet} exists so that \code{"NTN"}, which takes no pipe segment, can still have a heteroskedastic \eqn{\sigma_u}.}
@@ -89,7 +98,7 @@ divergence) power parameter, used only when \code{robust = "mdpd"}.}
   \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}. Non-zero gives a scrambled sequence.}
   \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
   \item{sim_seed}{Seed for the draws, for reproducibility. The caller's random-number stream is restored afterwards.}
-  \item{cols_boot}{Integer. Number of nonparametric bootstrap resamples used to obtain standard errors under \code{estimator = "cols"}. Zero (the default) skips the bootstrap, in which case only the OLS slope standard errors are reported and the scale parameters and corrected intercept carry \code{NA}. Ignored when \code{estimator = "mle"}.}
+  \item{cols_boot}{Integer. Number of nonparametric bootstrap resamples used to obtain standard errors under \code{estimator = "cols"} or \code{"acols"}. Zero (the default) skips the bootstrap, in which case only the OLS slope standard errors are reported and the scale parameters and corrected intercept carry \code{NA}. Ignored when \code{estimator = "mle"}.}
   \item{rand.cols}{Integer. Seed for the COLS bootstrap, for reproducibility. The caller's random-number stream is restored afterwards. Default \code{NULL}.}
 }
 \details{The options include the Normal-Half Normal (NHN), Normal-exponential (NE), Student's t-Half t (THT), the Normal-Truncated Normal (NTN), the Normal-Uniform (NU), the Normal-Generalized Exponential (NGE), the Normal-Lognormal (NLN), the Normal-Weibull (NW), the Student's t-half normal (tHN) and the Normal-Truncated Skew-Laplace (TSL).  NHN_Z and NE_Z are extensions for the NHN and NE models that allow for modeling the u-component of those models with determinants of inefficiency.
@@ -295,13 +304,26 @@ including the sandwich SE's own verification (the c -> 0 limit against the
 ordinary MLE Hessian SE, and a Monte Carlo check against the empirical
 spread of repeated fits). Currently only implemented for
 \code{model_name = "NHN"} -- other models will error clearly if
-\code{robust != "mle"} is requested.}
+\code{robust != "mle"} is requested.
+
+\bold{The wrong-skewness suite (\code{estimator = "acols"} and \code{"cmle"}).} Both address the same defect from opposite directions, and neither changes the model. Waldman (1982) showed that when the OLS residuals of a Normal-Half Normal frontier are skewed the \emph{wrong} way -- positively, for a production frontier -- the OLS fit is a local maximum of the likelihood at \eqn{\hat\sigma_u = 0}, so the estimate says there is no inefficiency anywhere in the industry. Nothing is wrong with the data when this happens: Simar and Wilson (2009) point out that wrong skew arises routinely when \eqn{\sigma_u} is small relative to \eqn{\sigma_v}, entirely within the assumed model. \code{"acols"} removes the third moment from the moment estimator, since that is the only ingredient which can produce the boundary; \code{"cmle"} keeps the likelihood but adds two constraints the assumed density implies, which the boundary does not satisfy. See \link{sfa-wrongskew} for the other options the package offers and how they differ.
+}
 \author{David H. Bernstein and Alexander Stead}
 \note{Standard errors require optHessian set to TRUE. When
 \code{robust != "mle"} (\code{model_name = "NHN"} only), a sandwich-form SE
 is reported instead of the ordinary Hessian-inverse one -- see Details.}
 
-\seealso{\code{\link{psfm}} for panel models, \code{\link{zsfm}} for zero-inefficiency models, \code{\link{ttsfm}} for two-tier models, \code{\link{data_gen_cs}} for simulating data with known true parameters, and \code{\link{sfareg-methods}} for extracting results.}
+\references{
+Parmeter, C. F. and Zhao, S. (2023). An alternative corrected ordinary least squares estimator for the stochastic frontier model. \emph{Empirical Economics} 64(6), 2831-2857. \doi{10.1007/s00181-023-02401-1}
+
+Zhao, S. and Parmeter, C. F. (2022). The \dQuote{wrong skewness} problem: Moment constrained maximum likelihood estimation of the stochastic frontier model. \emph{Economics Letters} 221, 110901. \doi{10.1016/j.econlet.2022.110901}
+
+Waldman, D. M. (1982). A stationary point for the stochastic frontier likelihood. \emph{Journal of Econometrics} 18(2), 275-279. \doi{10.1016/0304-4076(82)90041-0}
+
+Simar, L. and Wilson, P. W. (2009). Inferences from cross-sectional, stochastic frontier models. \emph{Econometric Reviews} 29(1), 62-98. \doi{10.1080/07474930903324523}
+}
+
+\seealso{\link{sfa-wrongskew} for the full wrong-skewness suite, \code{\link{psfm}} for panel models, \code{\link{zsfm}} for zero-inefficiency models, \code{\link{ttsfm}} for two-tier models, \code{\link{data_gen_cs}} for simulating data with known true parameters, and \code{\link{sfareg-methods}} for extracting results.}
 \value{
 An object of class \code{"sfareg"} containing the following components:
 
@@ -317,8 +339,10 @@ An object of class \code{"sfareg"} containing the following components:
 \item{wrong_skew, sigma_u_at_bound, residual_m3}{Wrong-skewness diagnostics. \code{residual_m3} is the third central moment of the OLS residuals; \code{wrong_skew} is \code{TRUE} when that is non-negative, which for a production frontier means the moment equations admit no interior solution; \code{sigma_u_at_bound} is \code{TRUE} when the fitted one-sided scale has collapsed to the zero boundary. When both are \code{TRUE} the boundary \emph{is} the maximum likelihood estimate -- the Type I failure of Olson, Schmidt and Waldman (1980), studied by Waldman (1982) -- and not a numerical failure, so \code{sfm} reports it rather than bounding \eqn{\sigma_u} away from zero. Read it as no evidence of inefficiency in these data, and treat the efficiency scores as uninformative. A collapse with correctly skewed residuals would be a different matter and does not occur in testing.}
 \item{thn_sigma_u_at_bound}{Logical, \code{tHN} only. \code{TRUE} when the fitted \eqn{\sigma_u} collapsed onto zero, so the model reports essentially no inefficiency. Accompanied by a warning. Treat the efficiency scores as uninformative when this is set.}
 \item{thn_starts}{List, \code{tHN} only. Multi-start diagnostic: how many starting values were tried and converged, the log-likelihood reached from each, and \code{n_distinct}, the number of separate optima found. \code{n_distinct > 1} means the likelihood surface is multimodal for these data and the single returned fit is only the best of those found.}
-\item{estimator}{\code{"cols"} for a corrected-OLS fit; absent for maximum-likelihood fits.}
-\item{wrong_skew}{Logical, \code{estimator = "cols"} only. \code{TRUE} when the OLS residuals were skewed the wrong way and the moment equations had no admissible solution.}
+\item{estimator}{\code{"cols"}, \code{"acols"} or \code{"cmle"}, naming the estimator that ran; absent for ordinary maximum-likelihood fits.}
+\item{wrong_skew}{Logical, \code{estimator = "cols"} and \code{"acols"} only. For \code{"cols"}, \code{TRUE} when the OLS residuals were skewed the wrong way and the moment equations had no admissible solution. For \code{"acols"} the third moment is never consulted, so it is \code{TRUE} when the absolute-moment equation has no root on the admissible interval.}
+
+\item{boundary}{Logical, \code{estimator = "cmle"} only. \code{TRUE} when the two moment constraints could not both be met in the interior and one of \eqn{\sigma_u}, \eqn{\sigma_v} sits on its boundary.}
 \item{residual_moments}{The second, third and fourth central moments of the OLS residuals, \code{estimator = "cols"} only.}
 \item{cols_boot_draws}{The matrix of bootstrap replicates (\code{cols_boot} rows, one column per parameter) when \code{cols_boot > 0}; \code{NULL} otherwise.}
 \item{ng_starts}{Returned by \code{NG} only. A record of the starting-value search: how many candidates were built (\code{n_tried}), how many were polished before choosing (\code{n_polished}), the log-likelihood at each candidate (\code{loglik_at_start}), and the best value reached (\code{best}). \code{NULL} when \code{start_val} was supplied. The normal-gamma likelihood determines \eqn{E[u] = \mu\sigma_u} far better than it determines either factor -- the weak identification Ritter and Simar (1997) describe -- so the candidates hold \eqn{E[u]} at a moment estimate and sweep the shape along that ridge rather than searching across it. Inspect this if a normal-gamma fit looks implausible: widely differing log-likelihoods among the candidates indicate the surface is more awkward than usual for that data set.}

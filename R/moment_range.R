@@ -1,5 +1,5 @@
 ## moment_range(): what skewness and excess kurtosis can this pair PRODUCE?
-## Gap L19, from Papadopoulos and Parmeter (2021), EJOR 293:990-1001, sections
+## Gap L26, from Papadopoulos and Parmeter (2021), EJOR 293:990-1001, sections
 ## 2.1-2.3. See notes/code_history/moment_range.md.
 ##
 ## spec_test() (gap L2) is the formal test from the same authors. This is the

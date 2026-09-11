@@ -312,3 +312,53 @@ test_that("the COLS efficiency predictor is the one that model implies", {
   expect_equal(g$exp_u_hat, pmin(pmax(wantg, 0), 1), tolerance = 1e-12)
   expect_true(all(is.finite(g$exp_u_hat)))
 })
+
+test_that("the moment path reports COST coefficients in the right orientation", {
+  ## Released 1.2.0 returned -b for estimator = "cols" with inefdec = FALSE.
+  ## The moment path fits on Yc = inefdec_n * Y, which is production form
+  ## whatever the caller asked for: a cost frontier y = x'b + v + u is fitted
+  ## as -y = x'(-b) + (-v) - u, so what comes back is -b. Only the frontier
+  ## coefficients were affected -- v is symmetric and u is the same u, so the
+  ## scale parameters were right, which is why it went unnoticed.
+  set.seed(9)
+  n <- 600
+  d <- data.frame(x = rnorm(n))
+  d$y <- 1 + 0.8 * d$x + rnorm(n, 0, 0.6) + abs(rnorm(n, 0, 1))
+
+  ml <- sfm(y ~ x, d, model_name = "NHN", estimator = "mle", inefdec = FALSE)
+  for (e in c("cols", "acols", "cmle")) {
+    f <- sfm(y ~ x, d, model_name = "NHN", estimator = e, inefdec = FALSE)
+    p <- f$out[, "par"]
+    ## the signs must match maximum likelihood, not oppose it
+    expect_gt(p[["(Intercept)"]], 0, label = paste(e, "intercept"))
+    expect_gt(p[["x"]], 0, label = paste(e, "slope"))
+    expect_equal(p[["x"]], ml$out[["x", "par"]], tolerance = 0.05, info = e)
+    expect_equal(p[["(Intercept)"]], ml$out[["(Intercept)", "par"]],
+      tolerance = 0.1, info = e)
+    ## and the identity that makes the orientation checkable at all
+    expect_equal(as.numeric(fitted(f, data = d) + residuals(f, data = d)),
+      d$y, tolerance = 1e-10, info = e)
+  }
+
+  ## Production is unchanged: inefdec_n is +1 there and the flip is a no-op.
+  d$yp <- 1 + 0.8 * d$x + rnorm(n, 0, 0.6) - abs(rnorm(n, 0, 1))
+  for (e in c("cols", "acols", "cmle")) {
+    p <- sfm(yp ~ x, d, model_name = "NHN", estimator = e)$out[, "par"]
+    expect_equal(p[["x"]], 0.8, tolerance = 0.12, info = e)
+    expect_equal(p[["(Intercept)"]], 1, tolerance = 0.2, info = e)
+  }
+})
+
+test_that("cols bootstrap draws carry the same orientation as the estimates", {
+  skip_on_cran()
+  set.seed(9)
+  n <- 300
+  d <- data.frame(x = rnorm(n))
+  d$y <- 1 + 0.8 * d$x + rnorm(n, 0, 0.6) + abs(rnorm(n, 0, 1))
+  f <- sfm(y ~ x, d, model_name = "NHN", estimator = "cols", inefdec = FALSE,
+    cols_boot = 50, rand.cols = 1)
+  cm <- colMeans(f$cols_boot_draws, na.rm = TRUE)
+  ## the draws must bracket the estimate, not its negative
+  expect_equal(unname(cm[["x"]]), unname(f$out[["x", "par"]]), tolerance = 0.15)
+  expect_gt(cm[["(Intercept)"]], 0)
+})

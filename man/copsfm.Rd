@@ -123,6 +123,28 @@ term is \eqn{-2\delta_u^3} where an exponential's third central moment is
 \eqn{+2\delta_u^3}. Simulation follows the appendix. The density theorems --
 which are what is implemented here -- are correct.
 
+The same two slips appear in Eq. (10) and Eq. (11) of the earlier production
+paper (Bonanno, De Giovanni and Domma 2017), and the corrected expressions have
+since been derived and pinned. Writing \eqn{D = \psi(2\alpha_v) -
+\psi(\alpha_v)}, the covariance is \eqn{\mathrm{cov}(u,v) = \theta
+\delta_u \delta_v D / 2} -- twice the published value -- so for a production
+frontier
+\deqn{\mathrm{Var}(\epsilon) = \delta_u^2 + \delta_v^2[\psi'(\alpha_v) +
+\psi'(1)] - \theta \delta_u \delta_v D}
+and
+\deqn{E[(\epsilon - E\epsilon)^3] = -2\delta_u^3 +
+\delta_v^3[\psi''(\alpha_v) - \psi''(1)] + \tfrac{3}{2}\theta \delta_u
+\delta_v \{\delta_u D + \delta_v[\psi'(\alpha_v) - \psi'(2\alpha_v) -
+D^2]\}.}
+The published dependence bracket carries an extra \eqn{\psi'(\alpha_v) +
+\psi'(1)} on top of the factor of two. Both corrections rest on the FGM
+copula's exact factorization \eqn{E[g(v)h(u)] = E[g]E[h] + \theta\,
+E[g(v)(1-2G_v)]\, E[h(u)(1-2F_u)]}, whose two generalized-logistic weights are
+\eqn{-\delta_v D} and \eqn{\delta_v^2[\psi'(\alpha_v) -
+\psi'(2\alpha_v) - D^2]}; those are verified to \eqn{10^{-9}} in
+\code{test-wrongskew-suite.R}. \code{\link{skewness_decomp}} computes the
+three pieces for any fit.
+
 \bold{\eqn{\alpha_v} is consistent but noisy, and below about \eqn{n = 2000} it
 can return its upper bound.} Measured over 12 replications at each size, data
 generated at \eqn{\alpha_v = 2.5}, \eqn{\sigma_u = 0.9}, \eqn{\delta_v = 0.4}
