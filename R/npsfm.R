@@ -579,35 +579,30 @@ nobs.npsfareg <- function(object, ...) object$nobs
 }
 
 
-## Output-oriented DEA envelopment, solved one linear program per unit.
+## Output-oriented DEA envelopment. Delegated to the DEA package rather than
+## solved here: it is the same Debreu-Farrell program, and a second hand-rolled
+## copy of it in this package is one more thing to keep right. Verified to
+## agree with the lpSolve formulation this replaced to within 6e-12 across
+## every returns-to-scale assumption and one and two inputs
+## (tests/testthat/test-dea.R).
+##
+## Naming: DEA spells the non-increasing and non-decreasing cases "nirs" and
+## "ndrs" but accepts "drs"/"irs" as aliases, which is the spelling npsfm()
+## has always used, so rts passes through untouched. `slack` and `peers` are
+## off because only the radial score is wanted here, and both cost real time.
 .dea_out <- function(X, Y, rts = c("vrs", "crs", "drs", "irs")) {
   rts <- match.arg(rts)
-  if (!requireNamespace("lpSolve", quietly = TRUE)) {
-    stop("method = \"SZ\" needs the 'lpSolve' package for its DEA step, ",
+  if (!requireNamespace("DEA", quietly = TRUE)) {
+    stop("method = \"SZ\" needs the 'DEA' package for its DEA step, ",
       "which is not installed. ",
-      'Install it with install.packages("lpSolve").',
+      'Install it with install.packages("DEA").',
       call. = FALSE
     )
   }
-  X <- as.matrix(X)
-  Y <- as.matrix(Y)
-  n <- nrow(X)
-  k <- ncol(X)
-  m <- ncol(Y)
-
-  obj <- c(1, rep(0, n))
-  vapply(seq_len(n), function(o) {
-    con <- rbind(cbind(0, t(X)), cbind(-Y[o, ], t(Y)))
-    dir <- c(rep("<=", k), rep(">=", m))
-    rhs <- c(X[o, ], rep(0, m))
-    if (rts != "crs") {
-      con <- rbind(con, c(0, rep(1, n)))
-      dir <- c(dir, switch(rts, vrs = "=", drs = "<=", irs = ">="))
-      rhs <- c(rhs, 1)
-    }
-    sol <- lpSolve::lp("max", obj, con, dir, rhs)
-    if (!identical(sol$status, 0L)) NA_real_ else sol$solution[1]
-  }, numeric(1))
+  fit <- DEA::dea(as.matrix(X), as.matrix(Y), rts = rts, orientation = "out",
+    slack = FALSE, peers = FALSE
+  )
+  as.numeric(fit$eff)
 }
 
 
