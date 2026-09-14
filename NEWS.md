@@ -24,6 +24,13 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`ttsfm(model_name = "TTNE")` reported a wrong `Eemu.cond` and M6 metric
+  whenever `sigma_v` was not 1.** The exponent in E[exp(-u) | eps] used
+  `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`. At `sigma_v = 0.3`
+  the reported value was 10.9% too high (0.522 against an exact 0.471). The
+  square is restored; all six conditional expectations now agree with numerical
+  integration to about 1e-11. Parameter estimates were not affected.
+
 * **`psfm(model_name = "FD")` could report a log-likelihood that was not the
   likelihood.** Two terms of the Wang-Ho likelihood floored `pnorm()` at machine
   epsilon inside `log()`, so wherever `mu*/sigma*` or `mu/sigma_u` fell below

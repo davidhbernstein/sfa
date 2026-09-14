@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Thirteen further defects in already-released code are fixed in the same submission,
+Fourteen further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -79,6 +79,9 @@ all silent -- each returns a wrong or irreproducible result without an error:
   in two likelihood terms, so the reported log-likelihood could differ from the
   likelihood (-165.41 against an exact -166.10 on one simulated panel). Now
   `pnorm(log.p = TRUE)`.
+* `ttsfm(model_name = "TTNE")`'s E[exp(-u) | eps], and so its M6 metric, used
+  `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`: 10.9% too high at
+  `sigma_v = 0.3`. Corrected; checked against numerical integration.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

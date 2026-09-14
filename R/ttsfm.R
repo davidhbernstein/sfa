@@ -495,7 +495,7 @@ ttsfm <- function(formula,
         exp(0.5 * ((b1 + sig.v)^2 - b2^2)) * pnorm(b1 + sig.v))
 
       Eemu.cond <- (lambda / (chi1 * (1 + lambda))) * (pnorm(b2) +
-        exp(a1 - a2 - b1 * sig.v + 0.5 * sig.v) * pnorm(b1 - sig.v))
+        exp(a1 - a2 - b1 * sig.v + 0.5 * sig.v^2) * pnorm(b1 - sig.v))
 
       Eewmu.cond <- (exp((1 + sig.u) * (a1 + sig.v^2 / 2 / sig.u)) * pnorm(b1 - sig.v) +
         exp((1 - sig.w) * (a2 - sig.v^2 / 2 / sig.w)) *
