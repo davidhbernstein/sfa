@@ -223,3 +223,28 @@ test_that("GTRE_Z and TRE_Z fit a panel whose random-effects start has zero firm
   expect_true(all(is.finite(f1$coefficients)))
   expect_true(all(is.finite(f2$coefficients)))
 })
+
+## Gap A35. bobyqa() refuses a start outside its bounds, and a boundary
+## random-effects start put TRE's sigma_r below its 1e-7 bound on the CI
+## platforms. opt.bobyqa() now moves only such coordinates just inside.
+test_that("opt.bobyqa() fits from a start below its lower bound and leaves valid starts alone", {
+  fn <- function(x) sum((x - c(1, 2))^2)
+  r <- opt.bobyqa(fn, start_v = c(-1e-9, 2), lower.bobyqa = c(0, -Inf),
+    maxit.bobyqa = 500, bob.TF = TRUE, verbose = FALSE)
+  expect_equal(r$start_v, c(1, 2), tolerance = 1e-4)
+  seen <- NULL
+  g <- function(x) { if (is.null(seen)) seen <<- x; sum((x - c(1, 2))^2) }
+  opt.bobyqa(g, start_v = c(0.5, 1.5), lower.bobyqa = c(0, -Inf),
+    maxit.bobyqa = 500, bob.TF = TRUE, verbose = FALSE)
+  expect_identical(seen, c(0.5, 1.5))
+})
+
+test_that("TRE fits when its sigma_r start is below the bound", {
+  skip_on_cran()
+  d <- as.data.frame(data_gen_p(t = 5, N = 30, rand = 42, sig_u = 1, sig_v = 0.3,
+    sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5))
+  f <- suppressWarnings(psfm(y_tre ~ x1 + x2, model_name = "TRE", data = d,
+    individual = "name", halton_num = 30, rand.gtre = 4, maxit.bobyqa = 100,
+    maxit.optim = 50, start_val = c(4.79, 1.095, 1e-9, 0.9349, 0.4239, 0.474)))
+  expect_true(all(is.finite(f$coefficients)))
+})

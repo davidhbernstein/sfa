@@ -111,6 +111,15 @@
   help. `psfm()` now warns when the argument has no effect, and the message
   says which models retain their likelihood.
 
+* **A starting value just outside its bound stopped the fit** with "Starting
+  values violate bounds" from `bobyqa()`. On a panel whose random-effects start
+  puts the firm-effect scale at essentially zero, `psfm(model_name = "TRE")`
+  began with `sigma_r` a hair above its `1e-7` bound on one platform and below
+  it on another, so the same call fitted on macOS and failed on Linux and
+  Windows. The internal `bobyqa()` stage now moves only coordinates that lie
+  strictly outside their bounds to just inside; every start already inside is
+  used unchanged, so fits that ran before are identical.
+
 * **`psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with
   "0 < ctrl$rhoend is not TRUE"** when the random-effects regression that seeds
   them put the firm-effect variance on its boundary. Its firm effects are then

@@ -34,6 +34,17 @@ opt.nlminb <- function(fn, start_v, lower.nlminb, upper.nlminb = Inf,
 }
 
 opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.bobyqa, bob.TF, rhobeg = NA, rhoend = NA, verbose = verbose) {
+  if (isTRUE(bob.TF == TRUE)) {
+    ## bobyqa() stops on a start outside its bounds, and a boundary
+    ## random-effects start can put a scale below its 1e-7 bound on some
+    ## platforms (gap A35). Only coordinates strictly outside are moved.
+    lo_v <- rep_len(lower.bobyqa, length(start_v))
+    up_v <- rep_len(upper.bobyqa, length(start_v))
+    below <- is.finite(lo_v) & start_v < lo_v
+    above <- is.finite(up_v) & start_v > up_v
+    start_v[below] <- lo_v[below] + 1e-6 * pmax(1, abs(lo_v[below]))
+    start_v[above] <- up_v[above] - 1e-6 * pmax(1, abs(up_v[above]))
+  }
   start_feval <- fn(start_v)
   bob1 <- NULL
   if (isTRUE(bob.TF == TRUE)) {

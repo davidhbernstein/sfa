@@ -79,7 +79,7 @@ all silent -- each returns a wrong or irreproducible result without an error:
   `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`: 10.9% too high at
   `sigma_v = 0.3`. Corrected; checked against numerical integration.
 
-Four further defects in released code made a call fail rather than return a
+Five further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -99,6 +99,11 @@ wrong answer:
   is not TRUE" when the random-effects regression seeding them estimated zero
   firm-effect variance: the starting step then began at zero scale, leaving
   `bobyqa()` no trust region. It now starts from a small positive scale.
+* A starting value just outside its bound stopped a fit with "Starting values
+  violate bounds" from `bobyqa()`; `psfm(model_name = "TRE")` on a boundary
+  random-effects start fitted on macOS and failed on Linux and Windows. Only
+  coordinates strictly outside their bounds are now moved inside; fits from
+  valid starts are unchanged.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
