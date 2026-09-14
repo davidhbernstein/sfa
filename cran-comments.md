@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Four further defects in already-released code are fixed in the same submission,
+Five further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -41,8 +41,14 @@ all silent -- each returns a wrong or irreproducible result without an error:
   starting-value fit drew unseeded `runif()` starting values; two fits of
   identical data could differ by up to about 3e-4 in relative terms. The draws
   now use a fixed local seed and the caller's RNG state is restored.
+* `psfm(model_name = "GTRE")` by simulated ML and `"GTRE_Z"` reported
+  efficiency scores that differed between two fits of identical data, by up to
+  0.4%, and advanced the caller's random-number stream. The scores come from
+  `tmvtnorm::ptmvnorm()`, a randomized quasi-Monte Carlo integrator, which drew
+  from the session RNG. It now runs under a fixed local seed and the caller's
+  RNG state is restored. Parameter estimates were unaffected.
 
-Three further defects in released code made a call fail rather than return a
+Four further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -58,6 +64,10 @@ wrong answer:
   on a singular random-effects fit. They now name the collinear columns, or,
   for `"SSCRE"` on an unbalanced panel, explain that this is a current
   limitation of that estimator and point to `"SSFE"`.
+* `psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with "0 < ctrl$rhoend
+  is not TRUE" when the random-effects regression seeding them estimated zero
+  firm-effect variance: the starting step then began at zero scale, leaving
+  `bobyqa()` no trust region. It now starts from a small positive scale.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the

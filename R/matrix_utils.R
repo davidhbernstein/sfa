@@ -259,7 +259,11 @@
     ll <- log(2) - 0.5 * log(2 * pi) - 0.5 * log(sigmaSq) - (eps * eps) / (2 * sigmaSq) + pnorm(z, log.p = TRUE)
     -sum(ll[is.finite(ll)])
   }
-  start_v <- c(sd(y) / sqrt(2), sd(y) / sqrt(2), mean(y))
+  ## A constant y (all-zero firm effects from a boundary random-effects fit)
+  ## gave bobyqa a zero trust region and an error (gap A24).
+  s0 <- sd(y) / sqrt(2)
+  if (!is.finite(s0) || s0 < 1e-6) s0 <- 1e-3 * max(1, abs(mean(y)))
+  start_v <- c(s0, s0, mean(y))
   lower_v <- c(.SFA_CONSTANTS$MIN_POSITIVE, .SFA_CONSTANTS$MIN_POSITIVE, -Inf)
 
   Opt.Bobyqa <- opt.bobyqa(
@@ -2214,27 +2218,20 @@
 ## lattice without disturbing its structure: same measurement, 0.0250.
 .gtre_halton_draws <- function(N, R, rand.gtre = NULL,
                                burn = .SFA_CONSTANTS$HALTON_DISCARD,
-                               clamp = 1e-6) {
-  n_pt <- as.integer(N) * as.integer(R)
-  U <- randtoolbox::halton(n_pt + burn, 2, start = 1, normal = FALSE)
-  U <- U[-seq_len(burn), 1:2, drop = FALSE]
-
-  ## Randomize by SHIFTING, not by permuting: a shift preserves the lattice
-  ## structure that the sequence exists for.
-  if (!is.null(rand.gtre)) {
-    .rng_state <- .rng_snapshot()
-    on.exit(.rng_restore(.rng_state), add = TRUE)
-    set.seed(rand.gtre)
-    sh <- stats::runif(2L)
-    U[, 1] <- (U[, 1] + sh[1]) %% 1
-    U[, 2] <- (U[, 2] + sh[2]) %% 1
-  }
-  ## qnorm() of an exact endpoint is infinite, and a shift can land on one.
-  U[] <- pmin(pmax(U, clamp), 1 - clamp)
-
-  Z <- cbind(stats::qnorm(U[, 1]), sqrt(2) * pracma::erfinv(U[, 2]))
-  ## Firm ii takes rows ((ii-1)R+1):(ii R) -- a contiguous block, as sfm() does.
-  lapply(seq_len(N), function(ii) Z[((ii - 1L) * R + 1L):(ii * R), , drop = FALSE])
+                               clamp = 1e-6, sim_type = "halton",
+                               antithetics = FALSE, scrambling = 0L,
+                               prime = NULL) {
+  ## Same uniforms as .sml_draws(dim = 2) -- contiguous per-firm blocks, a shift
+  ## by runif(2) under rand.gtre, clamped -- so the panel models share the
+  ## cross-sectional draw controls (gap H10). Defaults reproduce the previous
+  ## draws exactly; see notes/code_history/matrix_utils.md.
+  UU <- .sml_draws(n_units = N, n_draws = R, dim = 2L, sim_type = sim_type,
+                   antithetics = antithetics, burn = burn,
+                   scrambling = scrambling, prime = prime, seed = rand.gtre,
+                   clamp = clamp)
+  lapply(seq_len(N), function(ii) {
+    cbind(stats::qnorm(UU[[1]][ii, ]), sqrt(2) * pracma::erfinv(UU[[2]][ii, ]))
+  })
 }
 
 ## A persistent scale sitting on the zero boundary in a panel fit.

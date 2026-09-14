@@ -21,7 +21,8 @@
 
 ## Second data cleaning for missing values
 data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
-                       x_vars_vec, halton_num, individual, N, model_name, rand.gtre) {
+                       x_vars_vec, halton_num, individual, N, model_name, rand.gtre,
+                       sim_ctrl = list()) {
   data <- data[rownames(data_x), ]
 
   if (isTRUE(length(fancy_vars) > 0)) {
@@ -50,7 +51,7 @@ data_proc2 <- function(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
     ## rather than by permutation. See .gtre_halton_draws() for why both
     ## changed (gaps J1 and J2). R_H is kept for the returned object, which
     ## reports the draws actually used; it is now firm 1's block.
-    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    draw_list <- do.call(.gtre_halton_draws, c(list(N = N, R = R, rand.gtre = rand.gtre), sim_ctrl))
     R_H <- draw_list[[1L]]
 
     # print(paste( "Primes 2 and 3 are in use, with 1,000 discards.  Correlation between R and H draws is:", round(cor(R_H)[1,2],10), sep = "" ))

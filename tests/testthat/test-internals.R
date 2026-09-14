@@ -201,3 +201,25 @@ test_that(".SFA_CONSTANTS keeps exp() and pnorm() arguments in a safe range", {
   expect_true(is.finite(pnorm(.SFA_CONSTANTS$CLIP_Z1_UPPER)))
   expect_equal(pnorm(.SFA_CONSTANTS$CLIP_Z1_UPPER), 1)
 })
+
+## Gap A24. A boundary random-effects start returns all-zero firm effects; the
+## intercept-only NHN fit on that constant vector gave bobyqa a zero trust
+## region and stopped psfm("GTRE_Z") and psfm("TRE_Z") with "0 < ctrl$rhoend".
+test_that(".fit_nhn_intercept() survives a constant input", {
+  fit <- .fit_nhn_intercept(rep(0, 40))
+  expect_length(fit$par, 3)
+  expect_true(all(is.finite(fit$par)))
+  expect_true(all(fit$par[1:2] > 0))
+})
+
+test_that("GTRE_Z and TRE_Z fit a panel whose random-effects start has zero firm effects", {
+  skip_on_cran()
+  d <- as.data.frame(data_gen_p(t = 5, N = 40, rand = 8, sig_u = 1, sig_v = 0.3,
+    sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5))
+  f1 <- suppressWarnings(psfm(y_gtre_z ~ x1 + x2 | z_gtre | zp_gtre, model_name = "GTRE_Z",
+    data = d, individual = "name", halton_num = 30, rand.gtre = 7))
+  f2 <- suppressWarnings(psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
+    data = d, individual = "name", halton_num = 30, rand.gtre = 7))
+  expect_true(all(is.finite(f1$coefficients)))
+  expect_true(all(is.finite(f2$coefficients)))
+})

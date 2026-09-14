@@ -33,12 +33,28 @@ psfm <- function(formula,
                  kss_L = "auto",
                  kss_smooth = "auto",
                  kss_L_max = 7L,
-                 mundlak = NULL) {
+                 mundlak = NULL,
+                 sim_type = c("halton", "sobol", "torus", "uniform"),
+                 antithetics = FALSE,
+                 sim_burn = NULL,
+                 sim_scrambling = 0L,
+                 sim_prime = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   collinear_action <- match.arg(collinear_action)
+  ## Draw controls for the simulated-ML models, validated as sfm() does.
+  sim_type <- match.arg(sim_type)
+  if (is.null(sim_burn)) sim_burn <- .SFA_CONSTANTS$HALTON_DISCARD
+  if (!is.numeric(sim_burn) || length(sim_burn) != 1L || sim_burn < 0) {
+    stop("`sim_burn` must be a single non-negative number.", call. = FALSE)
+  }
+  if (!is.logical(antithetics) || length(antithetics) != 1L || is.na(antithetics)) {
+    stop("`antithetics` must be TRUE or FALSE.", call. = FALSE)
+  }
+  sim_ctrl <- list(sim_type = sim_type, antithetics = antithetics,
+                   burn = sim_burn, scrambling = sim_scrambling, prime = sim_prime)
 
   ## `estimator` selects HOW the four-component GTRE model is estimated.
   estimator_supplied <- !missing(estimator)
@@ -398,7 +414,8 @@ psfm <- function(formula,
 
     DR2 <- data_proc2(
       data, data_x, fancy_vars, fancy_vars_z, data_z, y_var,
-      x_vars_vec, halton_num, individual, N, model_name, rand.gtre
+      x_vars_vec, halton_num, individual, N, model_name, rand.gtre,
+      sim_ctrl = sim_ctrl
     )
 
     data <- DR2$data
@@ -609,6 +626,10 @@ psfm <- function(formula,
 
     ## TE Measurements : GTRE
     if (model_name == "GTRE") {
+      ## ptmvnorm() integrates by randomized quasi-Monte Carlo: fix its draws
+      ## and restore the caller's stream (notes/code_history/psfm.md, gap A23).
+      .rng_state <- .rng_snapshot()
+      set.seed(20260914L)
       beta <- opt$par[-c(1:4)]
       lamb <- opt$par[1]
       sig <- opt$par[2]
@@ -710,6 +731,7 @@ psfm <- function(formula,
 
       U <- unlist(lapply(seq(1, n, 1), U_fn))
       U <- pmin(U, rep(1, length(U)))
+      .rng_restore(.rng_state)
     }
     ## TE Measurements : TRE
     if (model_name == "TRE") {
@@ -807,7 +829,7 @@ psfm <- function(formula,
     ## One INDEPENDENT block of draws per firm, randomized by shift rather
     ## than by permutation -- see .gtre_halton_draws() for why both changed
     ## (gaps J1 and J2). R_H is firm 1's block, kept for the returned object.
-    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    draw_list <- do.call(.gtre_halton_draws, c(list(N = N, R = R, rand.gtre = rand.gtre), sim_ctrl))
     R_H <- draw_list[[1L]]
 
     ## Build firm-level lists
@@ -1025,6 +1047,10 @@ psfm <- function(formula,
 
     ## Post-estimation GTRE technical efficiency recovery
     .gtre_te <- function(opt, prep, inefdec_n) {
+      ## Fixed draws for ptmvnorm(), caller's stream restored (gap A23).
+      .rng_state <- .rng_snapshot()
+      on.exit(.rng_restore(.rng_state), add = TRUE)
+      set.seed(20260914L)
       ## Basic dimensions and indexing
       n <- sum(t)
       id_obs <- rep(seq_len(N), t)
@@ -1603,7 +1629,7 @@ psfm <- function(formula,
 
     ## One INDEPENDENT block of draws per firm, randomized by shift rather than
     ## by permutation -- see .gtre_halton_draws() (gaps J1 and J2).
-    draw_list <- .gtre_halton_draws(N = N, R = R, rand.gtre = rand.gtre)
+    draw_list <- do.call(.gtre_halton_draws, c(list(N = N, R = R, rand.gtre = rand.gtre), sim_ctrl))
     R_H <- draw_list[[1L]]
 
     # if(verbose){print(paste( "Primes 2 and 3 are in use, with 1,000 discards.  Correlation between R and H draws is:", round(cor(R_H)[1,2],10), sep = "" ),quote = FALSE) }

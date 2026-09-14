@@ -18,7 +18,10 @@
                     collinear_action = c("start_only", "error", "warn_drop"),
                     time = NULL, tfe_lambda_max = 100,
                     keep_objective = FALSE, kss_L = "auto",
-                    kss_smooth = "auto", kss_L_max = 7L, mundlak = NULL)}
+                    kss_smooth = "auto", kss_L_max = 7L, mundlak = NULL,
+                    sim_type = c("halton", "sobol", "torus", "uniform"),
+                    antithetics = FALSE, sim_burn = NULL,
+                    sim_scrambling = 0L, sim_prime = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -50,7 +53,7 @@
   \item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
   \item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
   \item{individual}{individual unit in the regression model}
-  \item{halton_num}{number of Halton draws to use in SML models}
+  \item{halton_num}{Number of simulation draws per firm for the simulated-ML models (\code{"GTRE"} with \code{estimator = "sml"}, \code{"TRE"}, \code{"GTRE_Z"}, \code{"TRE_Z"}). Despite the name, it counts draws of whichever sequence \code{sim_type} selects. \code{NULL} uses \eqn{\lceil\sqrt{n}\rceil + 100}.}
   \item{start_val}{starting value (optional)}
   \item{gamma}{Logical. Report the variance parameters in the \eqn{\gamma = \sigma_u^2/(\sigma_u^2 + \sigma_v^2)} parameterization instead of the default. Defaults to \code{FALSE}.}
   \item{PSopt}{use psoptim optimization routine (T or F)}
@@ -77,6 +80,11 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took
 \item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
 \item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
 \item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is capped internally at \eqn{\lfloor T/2 \rfloor} as well, for the reason given in \sQuote{Details}, and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
+\item{sim_type}{Sequence used to build the draws for the simulated-ML models listed under \code{halton_num}; ignored by every other model. \code{"halton"} (default) reproduces previous behaviour exactly. \code{"sobol"} accepts \code{sim_scrambling}; \code{"torus"} accepts \code{sim_prime}; \code{"uniform"} is pseudorandom, a baseline rather than a recommendation. The same options as \code{\link{sfm}}, built by the same code, so see \sQuote{Details} there. Each firm receives its own block of the sequence, and \code{rand.gtre} randomizes it by a shift modulo 1 (by the seed, for \code{"sobol"} and \code{"uniform"}).}
+\item{antithetics}{Logical. If \code{TRUE}, half of each firm's draws are taken from the sequence and the other half created as their mirror images. Default \code{FALSE}.}
+\item{sim_burn}{Number of leading elements of the sequence discarded. Default \code{NULL}, meaning 1000.}
+\item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
+\item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
 }
 \details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.

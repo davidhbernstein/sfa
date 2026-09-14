@@ -13,6 +13,25 @@
   unchanged, but results will differ slightly from fits made with 1.2.0, which
   were themselves random.
 
+* **`psfm(model_name = "GTRE")` by simulated ML, and `"GTRE_Z"`, reported
+  efficiency scores that were not reproducible, and changed the caller's
+  random-number stream.** The persistent and transient efficiencies (`H`,
+  `U`) are ratios of multivariate normal orthant probabilities from
+  `tmvtnorm::ptmvnorm()`, which integrates by randomized quasi-Monte Carlo.
+  Two fits of identical data differed by up to 0.4% in `U` and 0.2% in `H`.
+  Parameter estimates and standard errors were never affected, nor were
+  `estimator = "fiml"` and `"TRE"`. The integration now runs under a fixed
+  local seed and the caller's RNG state is restored; the scores still carry
+  the integrator's own error of about 1e-3, now the same error every time.
+
+* **`psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with
+  "0 < ctrl$rhoend is not TRUE"** when the random-effects regression that seeds
+  them put the firm-effect variance on its boundary. Its firm effects are then
+  all zero, and the intercept-only fit that turns them into starting values was
+  started at zero scale, which leaves `bobyqa()` no trust region. It now starts
+  from a small positive scale; inputs with any spread are handled exactly as
+  before.
+
 * **`psfm()` died with "system is exactly singular" for `PL80`, `BC92`,
   `K1990`, `K1990modified` and `SSFE` on a between-rank-deficient design**,
   such as `factor(year)` in an unbalanced panel. None of these models uses the
@@ -35,6 +54,15 @@
   Balanced panels are unaffected.
 
 ## New features
+
+* **`psfm()` gains the simulated-ML draw controls `sfm()` has had since 1.2.0**
+  (gap H10): `sim_type` (`"halton"`, `"sobol"`, `"torus"`, `"uniform"`),
+  `antithetics`, `sim_burn`, `sim_scrambling` and `sim_prime`, for `"GTRE"`
+  with `estimator = "sml"`, `"TRE"`, `"GTRE_Z"` and `"TRE_Z"`. The seed remains
+  `rand.gtre`. The panel draws are now built by the same code as the
+  cross-sectional ones, keeping one block per firm and the shift
+  randomization. At the defaults the draws and the fits are bitwise identical
+  to 1.2.0's.
 
 * **Score-based diagnostics now work for `psfm()`'s simulated-ML panel models**
   (`"GTRE"`, `"TRE"`, `"GTRE_Z"`, `"TRE_Z"`). `keep_objective = TRUE` was

@@ -42,3 +42,25 @@ test_that("TFE_WMLE fits are reproducible", {
     individual = "name", time = "year"))
   expect_identical(coef(f1), coef(f2))
 })
+
+## Gap A23. GTRE's and GTRE_Z's efficiency scores come from ptmvnorm(), which
+## integrates by randomized quasi-Monte Carlo: U and H differed between two
+## identical fits by up to 0.4%, and every fit advanced the caller's RNG.
+test_that("GTRE (sml) and GTRE_Z efficiency scores are reproducible and leave the RNG alone", {
+  skip_on_cran()
+  d <- .repro_panel()
+  fit <- function(...) suppressWarnings(psfm(data = d, individual = "name",
+    halton_num = 30, rand.gtre = 7, maxit.bobyqa = 100, maxit.optim = 50, ...))
+  for (spec in list(
+    list(y_gtre ~ x1 + x2, model_name = "GTRE", estimator = "sml"),
+    list(y_gtre_z ~ x1 + x2 | z_gtre | zp_gtre, model_name = "GTRE_Z")
+  )) {
+    set.seed(1); before <- .Random.seed
+    f1 <- do.call(fit, spec)
+    expect_identical(.Random.seed, before, info = spec$model_name)
+    set.seed(999)
+    f2 <- do.call(fit, spec)
+    expect_identical(f1$U, f2$U, info = spec$model_name)
+    expect_identical(f1$H, f2$H, info = spec$model_name)
+  }
+})
