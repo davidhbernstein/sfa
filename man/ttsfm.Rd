@@ -20,14 +20,14 @@ Method = "L-BFGS-B", logit = TRUE, verbose = FALSE, rand.psoptim = NULL)}
 \item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
 \item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
 \item{start_val}{starting value (optional)}
-\item{PSopt}{use psoptim optimization routine (T or F)}
+\item{PSopt}{Logical. Run the particle-swarm stage (\code{pso::psoptim}) between \code{bobyqa} and \code{optim}. \code{FALSE} by default. The swarm is the only stochastic step in \code{ttsfm()}: with the default, a fit is fully deterministic given the data and does not depend on the session's random-number state. See \code{rand.psoptim}.}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
 \item{inefdec}{Production or cost function}
 \item{upper}{Vector of upper values for the optim package.}
 \item{Method}{The method to be used for optim. See 'Details' within optim.}
 \item{logit}{Choice of using logit function}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
-\item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
+\item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}
 }
 \details{The two-tier stochastic frontier model (Polachek and Yoon, 1987) models the composed error as \eqn{v + u - w}, where \code{v} is a symmetric normal noise term and \code{u}, \code{w} are independent one-sided components. \code{"TTNE"} assumes \code{u} and \code{w} are exponential; \code{"TTHN"} assumes they are half-normal; \code{"TTNLS"} makes no distributional assumption and instead estimates \eqn{\sigma_u}/\eqn{\sigma_w} by nonlinear least squares via the scaling property. Determinants of \code{u} and \code{w} can be included via the second and third parts of a two-pipe formula, which parameterize \eqn{\sigma_u} and \eqn{\sigma_w} through a log link.
 
