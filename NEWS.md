@@ -24,6 +24,16 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`sfm(model_name = "NU")`'s log-likelihood, and `"NHN"`/`"NHN_Z"`'s at
+  extreme parameters, were floored rather than computed.** NU took
+  `log(pnorm(b) - pnorm(a))` as a difference floored at `.Machine$double.xmin`:
+  for a residual more than about 9 noise standard deviations above the frontier
+  both CDFs round to 1, and the log-density came back as -708 where the truth
+  is -44. NHN and NHN_Z floored the density in levels, so any log-density below
+  -708 was reported as -708. Both now work in logs. Estimates move by less than
+  8e-8 (NHN), 5e-6 (NHN_Z) and, in flat cases, 3e-3 (NU) at the same maximum
+  likelihood.
+
 * **Battese-Coelli efficiencies could come back as 0 for firms well above the
   frontier.** `sfm()`'s `"NHN"` and `"NHN_Z"` and `psfm()`'s `"TRE"` and
   `"TRE_Z"` computed `exp_u_hat` (`U`) as a ratio of `1 - pnorm()` terms, which

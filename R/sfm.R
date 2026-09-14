@@ -767,9 +767,8 @@ sfm <- function(formula,
         sigma_v_fun <- x[1]
         sigma_fun <- sqrt(sigma_v_fun^2 + sigma_u_fun^2)
         lamb_fun <- sigma_u_fun / sigma_v_fun
-        like <- log(pmax((2 / sigma_fun) *
-          dnorm(eps / sigma_fun) *
-          pnorm(-eps * lamb_fun / sigma_fun), .Machine$double.xmin))
+        like <- log(2) - log(sigma_fun) + dnorm(eps / sigma_fun, log = TRUE) +
+          pnorm(-eps * lamb_fun / sigma_fun, log.p = TRUE)
       }
 
       if (model_name == "NE_Z") {
@@ -782,9 +781,9 @@ sfm <- function(formula,
       }
 
       if (model_name == "NHN") {
-        like <- as.numeric(log(pmax((2 / x[2]) *
-          dnorm(eps / x[2]) *
-          pnorm(-eps * x[1] / x[2]), .Machine$double.xmin)))
+        ## Term by term in logs rather than floored in levels (A29).
+        like <- as.numeric(log(2) - log(x[2]) + dnorm(eps / x[2], log = TRUE) +
+          pnorm(-eps * x[1] / x[2], log.p = TRUE))
       }
 
       if (model_name == "NE") {
@@ -847,9 +846,8 @@ sfm <- function(formula,
         if (!is.finite(sigv) || !is.finite(theta) || sigv <= 0 || theta <= 0) {
           return(1e12)
         }
-        cdf_hi <- pnorm((eps + theta) / sigv)
-        cdf_lo <- pnorm(eps / sigv)
-        like <- log(pmax(cdf_hi - cdf_lo, .Machine$double.xmin)) - log(theta)
+        ## In logs: the floored CDF difference rounded to 0 above the frontier (A29).
+        like <- .log_pnorm_diff(eps / sigv, (eps + theta) / sigv) - log(theta)
       }
 
       if (model_name == "NGE") {

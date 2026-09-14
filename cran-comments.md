@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Seven further defects in already-released code are fixed in the same submission,
+Eight further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -55,6 +55,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
   `"TRE"`/`"TRE_Z"` were a ratio of `1 - pnorm()` terms that underflowed for
   firms well above the frontier, reporting them at 0 instead of near 1. Now in
   logs; ordinary fits agree to 3e-15.
+* `sfm(model_name = "NU")` floored a difference of normal CDFs that rounds to
+  0 above the frontier, returning a log-density of -708 where the truth is
+  -44; `"NHN"`/`"NHN_Z"` floored their density in levels. Both are now computed
+  in logs, with estimates unchanged to within 8e-8 (NHN).
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:
