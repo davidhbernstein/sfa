@@ -1245,8 +1245,9 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       sig_star <- sig_u * sig_v / sig
       inner <- (lamb * eps_hat) / sig
-      exp_u_hat <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / pmax((1 - pnorm(inner)), .Machine$double.xmin)) *
-        exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
+      ## In logs: the 1 - pnorm() ratio underflowed to 0 for firms far above
+      ## the frontier (gap A28).
+      exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)
       ## Median TE
@@ -1475,7 +1476,7 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       sig_star <- (sig_u * sig_v) / sig
       inner <- (lamb * eps_hat) / sig
-      exp_u_hat <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / pmax((1 - pnorm(inner)), .Machine$double.xmin)) * exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
+      exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)
       u_post <- list(

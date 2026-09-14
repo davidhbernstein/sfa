@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Six further defects in already-released code are fixed in the same submission,
+Seven further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -51,6 +51,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
   a difference of two nearly equal terms, which from z of about 7 overstated
   the log-density by up to about 7. It is now evaluated through the continued
   fraction for the Mills ratio, accurate to 1e-13; `exp_u_hat` likewise.
+* Battese-Coelli efficiencies for `sfm()`'s `"NHN"`/`"NHN_Z"` and `psfm()`'s
+  `"TRE"`/`"TRE_Z"` were a ratio of `1 - pnorm()` terms that underflowed for
+  firms well above the frontier, reporting them at 0 instead of near 1. Now in
+  logs; ordinary fits agree to 3e-15.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

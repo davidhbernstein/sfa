@@ -776,7 +776,7 @@ psfm <- function(formula,
       eps_hat <- pmin(inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)) - r_hat_m_exp), data[, y_var] * 0)
       sig_star <- sig_u * sig_v / sig
       inner <- (lamb * eps_hat) / sig
-      exp_u_hat <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / (1 - pnorm(inner))) * exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
+      exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
       U <- exp_u_hat
     }
 
@@ -1772,7 +1772,7 @@ psfm <- function(formula,
 
     sig_star <- (sig_u * sig_v) / sig
     inner <- (lamb * eps_hat) / sig
-    U <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / pmax(1 - pnorm(inner), .SFA_CONSTANTS$MIN_POSITIVE)) * exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
+    U <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
     U <- pmax(U, 0)
     U <- pmin(U, 1)
 
@@ -2140,7 +2140,7 @@ psfm <- function(formula,
     eps_hat <- pmin(inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)) - r_hat_m_exp), data[, y_var] * 0)
     sig_star <- sig_u * sig_v / sig
     inner <- (lamb * eps_hat) / sig
-    exp_u_hat <- ((1 - pnorm((sig_u * sig_v / sig) + inner)) / (1 - pnorm(inner))) * exp((sig_u^2 / sig^2) * (eps_hat + 0.5 * sig_v^2))
+    exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
 
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))

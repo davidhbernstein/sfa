@@ -24,6 +24,20 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **Battese-Coelli efficiencies could come back as 0 for firms well above the
+  frontier.** `sfm()`'s `"NHN"` and `"NHN_Z"` and `psfm()`'s `"TRE"` and
+  `"TRE_Z"` computed `exp_u_hat` (`U`) as a ratio of `1 - pnorm()` terms, which
+  underflow together once the scaled residual `lambda * eps / sigma` passes
+  about 8: at lambda = 10 a firm 0.8 above the frontier was reported at 0.83
+  instead of 0.988, and one 1.0 above at 0 instead of 0.990. A single NHN fit
+  tends to keep this out of reach, because such a point pulls lambda down; the
+  exposed cases are `"NHN_Z"` and `"TRE_Z"`, where lambda varies by observation.
+  They now use the log-space predictor the package already used elsewhere;
+  ordinary fits agree with the old values to 3e-15. `meanefficiency()`'s
+  closed forms for half-normal, truncated-normal and Rayleigh inefficiency,
+  which overflowed to `NaN` for a scale or truncation point near 40, are now
+  evaluated in logs too.
+
 * **`sfm(model_name = "NR")` evaluated its log-likelihood inaccurately for
   residuals far above the frontier.** The term `log(phi(z) - z * Phi(-z))` was
   computed as the difference of two nearly equal quantities through `erf()`:

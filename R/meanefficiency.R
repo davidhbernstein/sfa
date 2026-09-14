@@ -34,7 +34,7 @@
       list(dist = "half-normal", par = c(sigma_u = su),
            pdf = function(u) 2 * stats::dnorm(u, 0, su),
            qf  = function(pr) stats::qnorm((1 + pr) / 2, 0, su),
-           closed = function() 2 * exp(su^2 / 2) * stats::pnorm(-su))
+           closed = function() exp(log(2) + su^2 / 2 + stats::pnorm(-su, log.p = TRUE)))
     },
     NE = , NE_Z = {
       su <- g("sigu")
@@ -51,7 +51,8 @@
            pdf = function(u) stats::dnorm(u, mu, su) / Z,
            qf  = function(pr) stats::qnorm((1 - Z) + pr * Z, mu, su),
            closed = function() {
-             exp(-mu + su^2 / 2) * stats::pnorm(mu / su - su) / Z
+             exp(-mu + su^2 / 2 + stats::pnorm(mu / su - su, log.p = TRUE) -
+               stats::pnorm(mu / su, log.p = TRUE))
            })
     },
     NR = {
@@ -59,10 +60,8 @@
       list(dist = "Rayleigh", par = c(sigma_u = su),
            pdf = function(u) (u / su^2) * exp(-u^2 / (2 * su^2)),
            qf  = function(pr) su * sqrt(-2 * log(1 - pr)),
-           ## erfc(x) = 2 * pnorm(-x * sqrt(2)), so erfc(su/sqrt(2)) = 2*pnorm(-su).
-           closed = function() {
-             1 - su * sqrt(pi / 2) * exp(su^2 / 2) * 2 * stats::pnorm(-su)
-           })
+           ## 1 - su * Phi(-su) / phi(su), taken in logs through .log_nr_g().
+           closed = function() exp(.log_nr_g(su) - stats::dnorm(su, log = TRUE)))
     },
     NG = {
       sh <- g("mu"); sc <- g("sigu")   # sfm reports mu as SHAPE, sigu as SCALE
