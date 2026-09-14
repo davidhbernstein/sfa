@@ -12,7 +12,7 @@ Fits several inefficiency distributions to the same data and combines their firm
 \item{formula, data, inefdec, ...}{Passed to \code{\link{sfm}} for each candidate.}
 \item{models}{Two or more \code{model_name}s to average over. Candidates that fail to fit, or that report no \eqn{E[u \mid \varepsilon]}, are dropped with a message.}
 \item{weights}{How to weight the candidates. See \sQuote{Details}.}
-\item{quiet}{Suppress the messages about dropped candidates.}
+\item{quiet}{Suppress the messages about dropped candidates, including a candidate that gets no \code{"tic"} weight because its Takeuchi penalty is undefined (for instance with a parameter on its bound).}
 }
 \value{
 An object of class \code{"sfma"} with components \code{weights}, \code{u_hat} (the averaged \eqn{E[u \mid \varepsilon]}), \code{efficiency}, \code{u_by_model} (the \eqn{n \times S} matrix of per-candidate predictions), \code{fits}, \code{k}, \code{logLik} and, for \code{weights = "sfma"}, \code{criterion}.

@@ -201,6 +201,15 @@ test_that("TIC() refuses a fit whose Hessian is not positive definite, and sfma'
   d <- data.frame(y = 1 + 0.5 * x1 + 0.5 * x2 + rnorm(n, 0, 0.4) - ui, x1 = x1, x2 = x2)
   fe <- suppressWarnings(sfm(y ~ x1 + x2, model_name = "NE", data = d, keep_objective = TRUE))
   expect_true(is.finite(TIC(fe)) && TIC(fe) > 0)
-  a <- suppressWarnings(sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NR"), weights = "tic", quiet = TRUE))
+  msgs <- character(0)
+  a <- withCallingHandlers(
+    suppressWarnings(sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NR"), weights = "tic")),
+    message = function(cnd) {
+      msgs <<- c(msgs, conditionMessage(cnd))
+      invokeRestart("muffleMessage")
+    }
+  )
   expect_identical(names(which.max(a$weights)), "NE")
+  ## The excluded candidate is named rather than dropped silently.
+  expect_true(any(grepl("NR gets no TIC weight", msgs, fixed = TRUE)))
 })

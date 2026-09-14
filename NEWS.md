@@ -106,8 +106,8 @@
   `sfma(weights = "tic")` then gave that model all the weight: -2.64e14 for an
   NR fit with `sigma_v` on its bound, although another candidate fitted
   better. `TIC()` now stops when the Hessian is not positive definite or the
-  Takeuchi penalty is not positive; `sfma()` treats such a candidate as
-  unusable, and `vuong()` refuses it.
+  Takeuchi penalty is not positive; `sfma()` gives such a candidate no weight
+  and says which one and why (unless `quiet = TRUE`), and `vuong()` refuses it.
 
 * **`sfm(model_name = "NR")` evaluated its log-likelihood inaccurately for
   residuals far above the frontier.** The term `log(phi(z) - z * Phi(-z))` was

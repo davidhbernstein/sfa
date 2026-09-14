@@ -31,5 +31,8 @@ test_that("GTRE_Z returns its fit with NA efficiencies for a firm whose posterio
   expect_true(all(is.finite(f$coefficients)))
   expect_true(all(is.na(f$U[rows9])))
   expect_true(all(is.finite(f$U[-rows9])))
+  expect_length(f$H, 60L)
+  expect_true(is.na(f$H[9]))
+  expect_true(all(is.finite(f$H[-9])))
   expect_true(any(grepl("firm\\(s\\) 9", w)))
 })
