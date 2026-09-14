@@ -1,22 +1,7 @@
 ## Goodness of fit for the assumed inefficiency distribution.
 ## Wang, Amsler and Schmidt (2011), J Prod Anal 35:95-118.
-## See notes/code_history/gof_test.md.
-##
-## The distribution of u is the assumption in this model that is least often
-## defended and least often tested. It is testable: hold the normality of v
-## fixed, and the assumed u implies a distribution for the composed error, so a
-## rejection of that is a rejection of the assumed u.
-##
-## Wang, Amsler and Schmidt make the case for testing on eps rather than on
-## u-hat: u-hat = E[u | eps] is a MONOTONIC function of eps, so the KS test is
-## identical either way and the chi-square test is identical when the cells are
-## defined conformably -- but eps is far easier, and the distribution of u-hat
-## is not the distribution of u, which is the trap the paper opens by warning
-## about. Comparing the observed spread of u-hat with the assumed density of u
-## is a mistake, not a diagnostic.
-##
-## Both statistics are computed from the composed-error CDF, which is why this
-## needed pcomposed_model() first.
+## Tests on eps, not u-hat: u-hat is monotone in eps and its distribution is not that
+## of u. Needs pcomposed_model(). See notes/code_history/gof_test.md.
 
 ## Two-sided KS distance between the PIT values and uniform.
 .gof_ks <- function(pit) {

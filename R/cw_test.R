@@ -1,36 +1,11 @@
 ## Chen and Wang (2012), Econometric Reviews 31(6):625-653.
 ## Centered-residuals moment estimator and specification test.
+## Works from the components' moments and characteristic functions, never the
+## composed PDF/CDF; centred residuals make it valid off a plain LS fit.
 ## See notes/code_history/cw_test.md.
-##
-## The selling point over the goodness-of-fit tests in gof_test() is that this
-## one never touches the composed-error PDF or CDF. It works from the
-## ARITHMETIC MOMENTS and the CHARACTERISTIC FUNCTION of the two components
-## separately, which are in closed form for far more distributional pairs than
-## their convolution is -- the normal-gamma model being the standard example of
-## a pair with no closed-form composed density.
-##
-## Two things make it work:
-##
-##   * CENTERED residuals. The intercept of a frontier is not identified
-##     separately from E[u], so the LS intercept estimates alpha - E[u], not
-##     alpha. Centering the residuals cancels the inconsistent intercept
-##     entirely, which is why the test is valid off an ordinary LS fit and does
-##     not need maximum likelihood.
-##   * A variance that corrects for BOTH nuisances: estimating theta, and
-##     centering. The centering correction is the -E[d psi / d eps] * eps_c
-##     term in xi below; leaving it out understates the variance and oversizes
-##     the test.
 
-## Theoretical quantities for the centered composed error, all from the same
-## inefficiency quadrature the composed CDF uses.
-##
-##   E[cos(tau eps_c)] =  E[cos(tau v)] * hc(tau)
-##   E[sin(tau eps_c)] =  E[cos(tau v)] * hs(tau)
-##   hc(tau) = E[cos(tau u)] cos(tau mu1) + E[sin(tau u)] sin(tau mu1)
-##   hs(tau) = E[cos(tau u)] sin(tau mu1) - E[sin(tau u)] cos(tau mu1)
-##
-## which are Chen and Wang's (39) and (35). E[sin(tau v)] = 0 is what the
-## normality (strictly, symmetry) of the noise buys.
+## Theoretical moments, E[cos(tau eps_c)] and E[sin(tau eps_c)] of the centred composed
+## error (Chen and Wang eqs 35, 39), over the composed CDF's own u-quadrature.
 .cw_theory <- function(model_name, par, taus, kmax = 3L, n_nodes = 256L) {
   sp <- .composed_u_spec(model_name, par)
   if (!identical(sp$noise$type, "normal") || !is.null(sp$mix_df)) {
@@ -198,11 +173,8 @@ cw_test <- function(x, model_name = NULL, tau = 1,
   q <- length(tau)
 
   m_hat <- c(mean(ec^2), mean(ec^3))
-  ## The moment inversion needs a negatively skewed residual for a production
-  ## frontier: sigma_u solves sigma_u^3 = m3/k3 with k3 < 0. With m3 >= 0 there
-  ## is no admissible solution, and continuing would report a test statistic
-  ## computed at a meaningless parameter. This is the Type I failure of Olson,
-  ## Schmidt and Waldman (1980).
+  ## m3 >= 0 is the wrong skew for a production frontier (Olson, Schmidt and Waldman
+  ## 1980): the moment equations then have no admissible solution.
   if (!is.finite(m_hat[2]) || m_hat[2] >= 0) {
     stop("cw_test(): the third central moment of the residuals is ",
       format(m_hat[2], digits = 3), " >= 0, so the residuals are skewed the ",

@@ -1,35 +1,8 @@
 ## Hafner, Manner and Simar (2018), Econometric Reviews 37(4):380-400.
 ## The "wrong skewness" problem: a model that tolerates it.
-## See notes/code_history/esfm.md.
-##
-## The classical frontier implies a NEGATIVELY skewed composed error. When the
-## sample skewness comes out positive -- which happens often at small n or when
-## sigma_v/sigma_u is large, and is a small-sample accident rather than
-## evidence against the model -- the MLE collapses to OLS: sigma_u is exactly
-## zero, every firm is fully efficient, and the fit says nothing. That is the
-## Type I failure skewness_test() reports.
-##
-## Hafner, Manner and Simar keep the model but widen the distribution of u.
-## One parameter gamma does two jobs: its SIZE is the scale of inefficiency,
-## and its SIGN chooses the skewness direction.
-##
-##   gamma > 0  u has the classical density (half-normal or exponential),
-##              scale |gamma| -- exactly the usual model
-##   gamma < 0  take that density, mirror it about zero, shift right by
-##              B = a0|gamma| and truncate to [0, B]
-##   gamma = 0  u is degenerate at zero and w is just noise
-##
-## The truncation point a0 is FIXED, not estimated: it is chosen so that
-## E[u] = k1|gamma| whichever sign gamma takes. So the mean of u depends only
-## on |gamma|, which is what keeps this a one-parameter family and avoids the
-## identification trouble that bounded-inefficiency models run into.
-##
-## The payoff is that the classical model is NESTED (gamma > 0), so a wrongly
-## skewed sample no longer forces a degenerate answer -- it just estimates a
-## negative gamma. And because gamma = 0 is an interior point rather than a
-## boundary, the likelihood ratio test of "no inefficiency" is an ordinary
-## chi-square(1) rather than the chi-bar-square mixture inefficiency_test()
-## needs for the classical model.
+## One parameter gamma: its size is the inefficiency scale, its sign the skewness
+## direction. gamma > 0 is the classical model; gamma = 0 is interior, so the LR
+## test of no inefficiency is chi2(1). See notes/code_history/esfm.md.
 
 ## a0 solves E[u | h-] = E[u | h+]; both are quoted to ten digits in the paper
 ## for the half-normal, and derived here for the exponential from

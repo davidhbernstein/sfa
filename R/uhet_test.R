@@ -2,20 +2,8 @@
 ## Valid tests of whether technical inefficiency depends on firm characteristics.
 ## See notes/code_history/uhet_test.md.
 ##
-## The two-step procedure everyone actually runs is: fit the frontier, take the
-## JLMS predictor u-hat = E[u | eps], regress it on z, and test the slopes.
-## That test is INVALID as usually performed, and not by a little: u-hat is a
-## GENERATED dependent variable, so the first-step estimation error in psi
-## enters the second-step variance. The naive test omits it.
-##
-## Kim and Schmidt show the omitted term is E[z grad_psi b] * r_i, so the naive
-## test is valid only when G = E[z grad_psi b] = 0 -- which holds when z is
-## independent of x, and generally fails when z and x are correlated. That is
-## exactly the case applied work is usually in.
-##
-## There is no distribution-free correction: the form of G and of the score
-## depend on the assumed distribution of u. Implemented here for the two cases
-## the paper works through, NHN and NE.
+## The usual two-step test (regress JLMS u-hat on z) omits first-step estimation error
+## in psi and is invalid when z and x correlate; this corrects it, for NHN and NE.
 
 ## b(psi) = E[u | eps] - E[u], as an explicit function of the parameter vector,
 ## so its Jacobian in psi can be taken. Demeaning by the MODEL's E[u] rather
@@ -69,14 +57,8 @@ uhet_test <- function(object, z, data = NULL) {
       call. = FALSE
     )
   }
-  ## At the wrong-skew boundary sigma_u -> 0 there is no estimated
-  ## inefficiency to explain: b-hat = E[u|eps] - E[u] collapses to zero for
-  ## every firm, so "does inefficiency depend on z" has no content. Worse, the
-  ## information matrix is SINGULAR there (Waldman 1982), so the r_i in the
-  ## correction blow up and the variance with them. Measured over 400
-  ## replications this inflated the mean corrected standard error to 70 times
-  ## the true sampling spread while its median stayed near 1.1 -- a handful of
-  ## boundary fits, not a systematic error.
+  ## At the wrong-skew boundary b-hat is zero for every firm and the information
+  ## matrix is singular (Waldman 1982): nothing to test, and the variance blows up.
   if (isTRUE(object$wrong_skew) || isTRUE(object$sigma_u_at_bound)) {
     stop("uhet_test(): this fit sits on the wrong-skew boundary, where ",
       "sigma_u is zero, every E[u | eps] is identical and the information ",

@@ -3,13 +3,8 @@
 ## Section 3's tests of H0: no technical inefficiency, and the appendix's
 ## variance for the COLS estimator. See notes/code_history/inefficiency_test.md.
 ##
-## The point of the paper for us is that the two tests everybody actually runs
-## -- the Wald ratio and the ordinary LR test -- have the WRONG SIZE, because
-## H0 puts gamma on the boundary of the parameter space. Coelli's Monte Carlo
-## shows the one-sided LR test and the third-moment test are the ones with
-## correct size, and that the one-sided LR has the better power of the two.
-## skewness_test(test = "coelli") already provides the third moment test; this
-## file adds the likelihood-based ones so the comparison can be made in-package.
+## The Wald and naive LR tests are mis-sized because gamma = 0 is a boundary; the
+## one-sided LR and third-moment tests are not (Coelli's Monte Carlo).
 
 ## Battese-Corra gamma = sigma_u^2 / (sigma_u^2 + sigma_v^2), which is what
 ## Coelli tests, from the (lambda, sigma) pair sfm() reports. lambda =
@@ -41,13 +36,8 @@
   -0.5 * n * (log(2 * pi) + log(s2) + 1)
 }
 
-## p-value for a LR statistic whose null distribution is the Gourieroux, Holly
-## and Monfort (1982) chi-bar-square mixture. `q` is the number of restrictions
-## that sit ON the boundary.
-##   q = 1 (gamma = 0, half-normal):        0.5 chi2_0 + 0.5 chi2_1
-##   q = 2 (gamma = 0 and mu = 0, trunc.):  0.25 chi2_0 + 0.5 chi2_1 + 0.25 chi2_2
-## chi2_0 is a point mass at zero, so it contributes nothing to an upper-tail
-## probability at any positive statistic.
+## p-value under the Gourieroux, Holly and Monfort (1982) chi-bar-square mixture;
+## `q` restrictions sit on the boundary (1 for NHN, 2 for NTN).
 .chi_bar_p <- function(stat, q) {
   if (!is.finite(stat) || stat <= 0) {
     return(1)

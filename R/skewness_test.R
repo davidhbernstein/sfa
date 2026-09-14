@@ -1,16 +1,7 @@
 ## Formal tests for wrong skewness in the OLS residuals.
 ##
-## A production frontier implies e = v - u with u >= 0, so the composed error
-## is NEGATIVELY skewed. When the OLS residuals come back skewed the other way
-## there is no interior maximum: the ML estimate of sigma_u is exactly zero
-## (Waldman 1982) and every efficiency score is 1. That is the Type I failure
-## of Olson, Schmidt and Waldman (1980), and it is the single most common
-## reason an applied SFA fit is meaningless.
-##
-## sfm() already reports the condition ($wrong_skew, $sigma_u_at_bound, and a
-## warning). What it could not say is whether the skew is wrong by more than
-## sampling noise. These two tests answer that. See
-## notes/code_history/skewness_test.md.
+## sfm() flags wrong skew ($wrong_skew, a warning); these tests say whether it is wrong
+## by more than sampling noise. See notes/code_history/skewness_test.md.
 
 ## Central moments with the n-denominator, which is what both tests assume.
 .skew_moments <- function(e) {
@@ -33,21 +24,8 @@
        b1 = M$m3 / M$m2^1.5)
 }
 
-## D'Agostino (1970), which is the test Schmidt and Lin (1984) appeal to. It
-## transforms sqrt(b1) to approximate normality rather than leaning on the
-## asymptotic variance 6/n, and holds its size where Coelli's form does not.
-## Measured here, one-sided at a nominal 5% over 4000 replications of
-## symmetric residuals:
-##
-##   n      25     50    100    400
-##   coelli    0.031  0.037  0.043  0.050
-##   agostino  0.045  0.046  0.046  0.051
-##
-## Coelli's is conservative below about n = 100 and the two agree by n = 400.
-## Hence "agostino" is the default, which also matches sfaR.
-##
-## Checked against moments::agostino.test on the same residuals at
-## n = 30/60/200/1000: identical to within 1e-10.
+## D'Agostino (1970), as in Schmidt and Lin (1984): transforms sqrt(b1) to normality and
+## holds its size below n = 100, where Coelli's is conservative -- hence the default.
 .skew_agostino <- function(e) {
   M <- .skew_moments(e)
   n <- M$n

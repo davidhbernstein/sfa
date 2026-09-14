@@ -1,31 +1,13 @@
-## A composed-error CDF for EVERY cross-sectional model, not just half-normal.
-##
-## pcomposed() computes P(eps <= q) as an expectation over u,
-##
-##   F(q) = E_u[ F_v( (q + s*u) / sigma_v ) ],   s = +1 production, -1 cost,
-##
-## which is the right idea but is hard-wired to a half-normal u. Goodness-of-fit
-## testing (Wang, Amsler and Schmidt 2011) needs the same quantity for whichever
-## u the model actually assumes, so this file supplies the missing piece: a
-## registry of the u-density behind each `model_name`, and a quadrature that
-## works for all of them. See notes/code_history/composed_cdf.md.
-##
-## Conditioning on u leaves the NOISE cdf in closed form, so v is never
-## integrated -- the tails inherit pnorm()'s (or pt()'s) own accuracy.
+## Composed-error CDF for every cross-sectional model: a registry of the u-density
+## behind each model_name, and one quadrature over u with the noise CDF in closed
+## form. See notes/code_history/composed_cdf.md.
 
 ## Half-normal scale from the (lambda, sigma) pair NHN and NTN report.
 .lam_sig_to_u <- function(lambda, sigma) sigma * lambda / sqrt(1 + lambda^2)
 .lam_sig_to_v <- function(lambda, sigma) sigma / sqrt(1 + lambda^2)
 
-## The registry. `par` is the NAMED parameter vector from fit$out[, "par"].
-##
-## Every parameterization below is taken from the likelihood in sfm.R and
-## cross-checked against DATA_GENERATION_REFERENCE.md, because two of them do
-## not read the way the name suggests:
-##   THT lists sigu BEFORE sigv, the only model that does.
-##   NG's `sigu` is the gamma SCALE and its `mu` is the gamma SHAPE.
-##   NNAK's `sigu` is the Nakagami spread: Omega = sigu^2, the RMS of u.
-##   NLN's `mu` is a meanlog, not a mean.
+## The u-density registry; `par` is the named fit$out[, "par"]. THT, NG, NNAK and
+## NLN name their parameters unexpectedly -- see the note before relying on a name.
 .composed_u_spec <- function(model_name, par) {
   g <- function(nm) {
     if (!nm %in% names(par)) {
@@ -88,7 +70,7 @@
         scale = g("sigu"), upper = Inf, noise = norm(g("sigv")))
     },
     "NG" = {
-      ## `sigu` is the gamma SCALE and `mu` the SHAPE -- see the file header.
+      ## `sigu` is the gamma SCALE and `mu` the SHAPE.
       sh <- g("mu"); sc <- g("sigu")
       list(ldens = function(u) stats::dgamma(u, shape = sh, scale = sc, log = TRUE),
         scale = sh * sc, upper = Inf, noise = norm(g("sigv")))
@@ -114,20 +96,8 @@
       }, scale = s, upper = Inf, noise = norm(g("sigv")))
     },
     "THT" = {
-      ## Tancredi (2002). The ONLY model that lists sigu before sigv, and the
-      ## only one whose composed error is NOT an independent convolution.
-      ##
-      ## The composed error is skew-t, which is a SCALE MIXTURE: v and u are
-      ## divided by the SAME sqrt(V/a), V ~ chi^2_a. Treating it as an
-      ## independent t noise plus a half-normal -- which is what tHN actually
-      ## is -- gets the density wrong by up to 1.74 in logs, so the two models
-      ## must not share a branch here even though they look alike.
-      ##
-      ##   eps = (v0 - u0)/sqrt(W),  W = V/a ~ Gamma(a/2, rate = a/2)
-      ##   F(q) = E_W[ F_NHN(q sqrt(W)) ]
-      ##
-      ## so the half-normal machinery below is reused, wrapped in one extra
-      ## quadrature over W. `mix_df` switches that on.
+      ## Tancredi (2002): skew-t, a scale mixture (v and u share one chi-square
+      ## divisor), not tHN's t noise plus half-normal; `mix_df` adds a quadrature over W.
       su <- g("sigu")
       list(ldens = function(u) log(2) + stats::dnorm(u, 0, su, log = TRUE),
         scale = su, upper = Inf, noise = norm(g("sigv")), mix_df = g("a"))
@@ -238,13 +208,8 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
   )
 }
 
-## The fitted composed error eps = y - x'beta, on the production orientation.
-## NOT the OLS residual: the frontier coefficients are the ML ones.
-##
-## sfm() does not store `data` on the fit, so it has to be supplied or
-## recovered from the recorded call. Recovering it is a convenience, not a
-## guarantee -- if the object has moved away from where it was fitted, the
-## caller passes `data` instead and gets a clear error if they do not.
+## The fitted composed error y - x'beta with the ML (not OLS) coefficients, production
+## orientation. sfm() does not keep `data`, so it is recovered from the call if not given.
 .sfa_eps_hat <- function(object, data = NULL, env = parent.frame()) {
   if (is.null(data)) {
     data <- tryCatch(eval(object$call$data, envir = env), error = function(e) NULL)
@@ -273,12 +238,8 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
 }
 
 
-## Draw n composed errors from a fitted model. Needed by the parametric
-## bootstrap in gof_test(), which has to generate data from the null exactly as
-## the model states it -- a bootstrap that resampled residuals instead would be
-## testing something else.
-##
-## Returned on the PRODUCTION orientation (eps = v - u); the caller flips it.
+## Draw n composed errors, production orientation, exactly as the model states them --
+## for gof_test()'s parametric bootstrap.
 .composed_rgen <- function(n, model_name, par) {
   g <- function(nm) unname(par[[nm]])
   ## u first, then the noise, because two models make the noise depend on it.
@@ -337,11 +298,8 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
 }
 
 
-## Was this fitted as a production or a cost frontier? sfm() takes inefdec as
-## TRUE/FALSE and does NOT store it on the fit, so it is recovered from the
-## recorded call. psfm() uses the string "cost function" for the same idea, so
-## both spellings are accepted rather than assuming one convention holds
-## everywhere.
+## Production (TRUE) or cost (FALSE) frontier, from the fit or its recorded call;
+## accepts both sfm()'s logical and psfm()'s "cost function" string.
 .sfa_inefdec <- function(object) {
   if (!is.null(object$inefdec)) {
     if (is.character(object$inefdec)) {

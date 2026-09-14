@@ -3,10 +3,7 @@
 ## standard errors, vcovCL() for clustered ones, and coeftest() to print them.
 ## See notes/code_history/sandwich_methods.md.
 ##
-## Clustered standard errors are routine in applied work on firm-level panels,
-## and vcov.sfareg() returns the inverse Hessian and nothing else -- which is
-## valid only if the likelihood is correctly specified and the observations are
-## independent. Neither is safe to assume in this literature.
+## vcov.sfareg() alone is valid only under correct specification and independence.
 
 ## The "bread" of the sandwich: n times the inverse of the negative Hessian of
 ## the summed log-likelihood, i.e. n * vcov.
@@ -23,19 +20,8 @@ bread.sfareg <- function(x, ...) {
   V * n
 }
 
-## The per-observation score contributions, d loglik_i / d theta, as an n x p
-## matrix.
-##
-## There is no analytic gradient for most of these models, so the scores are
-## taken by CENTRAL differences of the per-observation log-likelihood, which
-## `sfm(keep_objective = TRUE)` retains. Central rather than forward because
-## the error is O(h^2) instead of O(h), and these likelihoods are built from
-## pnorm/dnorm calls whose own relative error is around 1e-15 -- a forward
-## difference loses roughly half the available digits.
-##
-## The step is scaled per parameter: h_j = eps * max(|theta_j|, 1). A single
-## absolute step cannot serve a vector holding both a variance on the log scale
-## and a frontier coefficient in levels.
+## Per-observation scores d loglik_i / d theta (n x p), by central differences of the
+## likelihood kept by keep_objective = TRUE, step scaled per parameter.
 estfun.sfareg <- function(x, ...) {
   if (is.null(x$objective)) {
     stop("estfun(): this fit does not retain its likelihood, so the score ",
