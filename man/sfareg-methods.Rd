@@ -41,7 +41,7 @@ list by hand.
            keep_objective = TRUE)
 lmtest::coeftest(fit, vcov. = sandwich::vcovCL(fit, cluster = d$firm))}
 
-Two requirements. The fit must have been made with \code{keep_objective = TRUE}, since the scores are differenced from the retained likelihood; and the \code{robust} divergence estimators are excluded, because they do not maximise a log-likelihood and so have no score. \code{sandwich::vcovHC()} does \emph{not} work and is not expected to: its finite-sample corrections are built from hat values, which are not defined for a nonlinear likelihood whose parameter vector includes variance components.
+Two requirements. The fit must have been made with \code{keep_objective = TRUE}, since the scores are differenced from the retained likelihood; and the \code{robust} divergence estimators are excluded, because they do not maximise a log-likelihood and so have no score. For \code{\link{psfm}} panel fits the scores are per \emph{firm}, so BHHH and sandwich standard errors are clustered by firm, and \code{bread()} scales by the number of firms rather than by \code{nobs()}. \code{sandwich::vcovHC()} does \emph{not} work and is not expected to: its finite-sample corrections are built from hat values, which are not defined for a nonlinear likelihood whose parameter vector includes variance components.
 
 The scores are taken by central differences with a per-parameter step, there being no analytic gradient for most of these models. Where one does exist (\code{NHN}) the two agree to about \eqn{3 \times 10^{-7}}, and they agree with \code{numDeriv} to the same order.
 

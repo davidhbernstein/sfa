@@ -12,7 +12,9 @@
 ## the summed log-likelihood, i.e. n * vcov.
 bread.sfareg <- function(x, ...) {
   V <- stats::vcov(x)
-  n <- stats::nobs(x)
+  ## psfm() scores are per firm, so the bread must scale by the same unit
+  ## count estfun() returns rows for; nobs() (N*T) would inflate it by T^2.
+  n <- if (!is.null(x$n_units)) x$n_units else stats::nobs(x)
   if (!is.finite(n)) {
     stop("bread(): the number of observations is unavailable for this fit.",
       call. = FALSE
@@ -74,11 +76,9 @@ estfun.sfareg <- function(x, ...) {
         } else {
           "  "
         },
-        "psfm()'s panel likelihoods do not yet support `per_obs`, so ",
-        "sandwich-form standard errors, influence_sfa() and the other ",
-        "score-based diagnostics are currently available for sfm() fits only. ",
-        "If this IS an sfm() fit, it was retained by a version older than ",
-        "1.2.0 -- refit.",
+        "Per-observation contributions are available for sfm() fits and for ",
+        "psfm()'s GTRE, TRE, GTRE_Z and TRE_Z (per firm) from 1.2.1. A fit ",
+        "retained by an older version must be refit.",
         call. = FALSE
       )
     }

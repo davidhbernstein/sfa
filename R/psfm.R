@@ -435,7 +435,7 @@ psfm <- function(formula,
     .H1 <- .D1[.gid, , drop = FALSE]
     .H2 <- .D2[.gid, , drop = FALSE]
 
-    fn_1_loop <- function(x) {
+    fn_1_loop <- function(x, per_obs = FALSE) {
       if (model_name == "GTRE") {
         x_x_vec <- x[5:as.numeric(n_x_vars + 4)]
       }
@@ -495,6 +495,7 @@ psfm <- function(formula,
       }
 
       fn1_apply <- unlist(lapply(1:N, fn1))
+      if (isTRUE(per_obs)) return(-fn1_apply)
       fn1_apply[is.nan(fn1_apply)] <- sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
       fn1_apply[is.infinite(fn1_apply)] <- sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
 
@@ -503,7 +504,7 @@ psfm <- function(formula,
 
     ## Vectorized equivalent: one dnorm/pnorm pair over the whole stacked (n x
     ## R) matrix instead of N pairs over Ti x R blocks.
-    fn_1_vec <- function(x) {
+    fn_1_vec <- function(x, per_obs = FALSE) {
       x_x_vec <- if (model_name == "GTRE") {
         x[5:as.numeric(n_x_vars + 4)]
       } else {
@@ -512,7 +513,7 @@ psfm <- function(formula,
       lam <- x[1]
       sig <- x[2]
       if (!is.finite(lam) || !is.finite(sig) || sig <= 0) {
-        return(sqrt(.SFA_CONSTANTS$MAX_VALUE))
+        return(if (isTRUE(per_obs)) rep(-sqrt(.SFA_CONSTANTS$MAX_VALUE), N) else sqrt(.SFA_CONSTANTS$MAX_VALUE))
       }
 
       base <- .yv - as.vector(.Xall %*% x_x_vec)
@@ -528,12 +529,13 @@ psfm <- function(formula,
         c_neg <- x[3] * .H1 + x[4] * .H2 * inefdec_n
         ll <- 0.5 * (ll + .gtre_sim_logdens((base + c_neg) * inefdec_n, lam, sig, .gid, N))
       }
+      if (isTRUE(per_obs)) return(unname(ll))
       ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
       -sum(ll[is.finite(ll)])
     }
 
-    fn_1 <- function(x) {
-      if (isTRUE(getOption("sfa.gtre_vectorized", FALSE))) fn_1_vec(x) else fn_1_loop(x)
+    fn_1 <- function(x, per_obs = FALSE) {
+      if (isTRUE(getOption("sfa.gtre_vectorized", FALSE))) fn_1_vec(x, per_obs) else fn_1_loop(x, per_obs)
     }
 
     Start.Time <- start.time()
@@ -773,6 +775,7 @@ psfm <- function(formula,
     ## and so the simulated log-likelihood can be evaluated at parameter values
     ## other than the optimum -- which is what a profile in sigh needs.
     if (isTRUE(keep_objective)) results$objective <- fn_1
+    if (isTRUE(keep_objective)) results$n_units <- N
 
     return(results)
   }
@@ -851,7 +854,7 @@ psfm <- function(formula,
     out_template <- out
 
     ## GTRE simulated negative log-likelihood
-    fn <- function(x) {
+    fn <- function(x, per_obs = FALSE) {
       beta_start <- 3
       beta_end <- beta_start + n_x_vars - 1
 
@@ -941,6 +944,7 @@ psfm <- function(formula,
       }
 
       ll_vec <- unlist(lapply(seq_len(N), ll_i))
+      if (isTRUE(per_obs)) return(-ll_vec)
 
       ll_vec[which(ll_vec == Inf)] <- (.SFA_CONSTANTS$MAX_VALUE)^0.1
       ll_vec[which(ll_vec == -Inf)] <- -(.SFA_CONSTANTS$MAX_VALUE)^0.1
@@ -1567,6 +1571,7 @@ psfm <- function(formula,
                                      "halfnormal", anchor = "(Intercept h)")
 
     if (isTRUE(keep_objective)) results$objective <- fn
+    if (isTRUE(keep_objective)) results$n_units <- N
     return(results)
   }
   if (model_name == "TRE_Z") {
@@ -1618,7 +1623,7 @@ psfm <- function(formula,
       data_z_vars[[ii]] <- as.matrix(data_i[[ii]][, c(z_vars), drop = FALSE])
     }
 
-    fn <- function(x) {
+    fn <- function(x, per_obs = FALSE) {
       x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
 
       for (qq in seq_len(n_z_vars)) {
@@ -1649,6 +1654,7 @@ psfm <- function(formula,
       }
 
       fn1_apply <- unlist(lapply(1:N, fn1))
+      if (isTRUE(per_obs)) return(-fn1_apply)
 
       fn1_apply[which(fn1_apply == Inf)] <- (.SFA_CONSTANTS$MAX_VALUE)^.1
       fn1_apply[which(fn1_apply == -Inf)] <- -(.SFA_CONSTANTS$MAX_VALUE)^.1
@@ -1743,6 +1749,7 @@ psfm <- function(formula,
     results$z_spec <- .psfm_z_spec(data, z_vars, out["par", ], "halfnormal")
 
     if (isTRUE(keep_objective)) results$objective <- fn
+    if (isTRUE(keep_objective)) results$n_units <- N
     return(results)
   }
   if (model_name == "GTRE_FML") {

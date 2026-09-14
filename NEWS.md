@@ -23,6 +23,29 @@
   formula, and `SSFE` gives the same slopes on time-varying regressors.
   Balanced panels are unaffected.
 
+## New features
+
+* **Score-based diagnostics now work for `psfm()`'s simulated-ML panel models**
+  (`"GTRE"`, `"TRE"`, `"GTRE_Z"`, `"TRE_Z"`). `keep_objective = TRUE` was
+  accepted and stored a likelihood, but the closure had no `per_obs` branch,
+  so `influence_sfa()`, `vcov(type = "bhhh")`, the `sandwich` methods, `TIC()`
+  and `vuong()` all failed on it. The closure now returns one contribution per
+  firm, since firms are the independent units, which makes the sandwich
+  standard errors firm-clustered and the influence diagnostics firm-deletion
+  diagnostics. `bread()` scales by the number of firms: scaling by `nobs()`
+  with firm-level scores would have overstated the sandwich variance by a
+  factor of T squared, silently.
+
+* **`data_gen_p()` can generate a genuinely non-null first-difference design.**
+  Two new arguments for the `y_fd` column. `fd_draw = "truncated"` draws the
+  firm-level inefficiency from the truncated normal `N+(mu, sig_u^2)` that Wang
+  and Ho (2010) and `psfm(model_name = "FD")` assume; the default, `"folded"`,
+  keeps the historical `|N(mu, sig_u^2)|`. The two coincide only at `mu = 0`.
+  `delta_fd` sets the coefficient in `u_it = exp(delta_fd * z_it) * u_i*`
+  separately from `mu`; previously the same `mu` controlled both, so a design
+  with `delta_z != mu` could not be generated. Both defaults reproduce the old
+  output exactly. Requested by Christopher Parmeter for the convergence study.
+
 ## Documentation
 
 * **`?endogeneity_test` now carries a size and power table.** The test shipped

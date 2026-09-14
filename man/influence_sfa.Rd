@@ -11,7 +11,7 @@ bound}.
 \usage{influence_sfa(object, scale = TRUE)}
 \arguments{
 \item{object}{An \code{"sfareg"} fit. It must retain its likelihood, so fit
-with \code{keep_objective = TRUE}; the score matrix cannot otherwise be built.}
+with \code{keep_objective = TRUE}; the score matrix cannot otherwise be built. For \code{\link{psfm}} panel fits (\code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"}, \code{"TRE_Z"}) the rows are firms, not observations, so the diagnostics measure the influence of deleting a whole firm.}
 \item{scale}{Multiply the influence function by \eqn{n}, so that
 \code{influence[i, ]} approximates the effect on the estimate of deleting
 observation \eqn{i} and is therefore on the same scale as the coefficients.
