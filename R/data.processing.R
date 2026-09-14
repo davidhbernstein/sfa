@@ -272,9 +272,14 @@ data_conform <- function(formula, data, na.action, method = "qr",
 
 ## Basic PCS code for regression on intercept
 pcs_c <- function(Y, inefdec = TRUE, Method = formals(psfm)$Method) {
-  sigma_u <- runif(n = 1, min = 0.04, max = 1) ## Random starting values
+  ## Random starting values, drawn under a fixed local seed with the caller's
+  ## RNG state restored: see notes/code_history/data.processing.md.
+  .rng_state <- .rng_snapshot()
+  set.seed(20260913L)
+  sigma_u <- runif(n = 1, min = 0.04, max = 1)
   sigma_v <- runif(n = 1, min = 0.04, max = 1)
   beta_0 <- runif(n = 1, min = 0.04, max = 1)
+  .rng_restore(.rng_state)
 
   lambda <- sigma_u / sigma_v
   sigma <- sqrt(sigma_u^2 + sigma_v^2)

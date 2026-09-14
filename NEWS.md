@@ -2,6 +2,17 @@
 
 ## Bug fixes
 
+* **`psfm(model_name = "FD")`, `"TFE"` and `"TFE_WMLE"` were not reproducible,
+  and changed the caller's random-number stream.** Their variance components are
+  seeded by an internal pooled fit whose own starting values were unseeded
+  `runif()` draws. Two fits of identical data in one session could differ by
+  up to about 3e-4 in relative terms, and occasionally one of them stopped with
+  an abnormal line-search termination where the other did not; every fit also
+  advanced the user's RNG. The draws are now taken under a fixed local seed and
+  the caller's RNG state is restored. The starting-value distribution is
+  unchanged, but results will differ slightly from fits made with 1.2.0, which
+  were themselves random.
+
 * **`psfm()` died with "system is exactly singular" for `PL80`, `BC92`,
   `K1990`, `K1990modified` and `SSFE` on a between-rank-deficient design**,
   such as `factor(year)` in an unbalanced panel. None of these models uses the
