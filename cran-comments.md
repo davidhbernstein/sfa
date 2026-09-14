@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Nine further defects in already-released code are fixed in the same submission,
+Ten further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -63,6 +63,11 @@ all silent -- each returns a wrong or irreproducible result without an error:
   predictor in `zsfm()` and `lcsfm()` became `NaN`, for observations far from
   the frontier, through `log(dnorm())` and `dnorm()/pnorm()` in levels. Both now
   in logs; ordinary fits are unchanged.
+* `zsfm(model_name = "ZISF_Z")` stopped in a spurious local optimum of its
+  regime link in 7 of 50 simulated samples, 10 to 64 log-likelihood units below
+  the best maximum and with the wrong regime slope. It now tries several link
+  intercepts before optimizing, as `"ZISF"` already did; on the same samples
+  no fit is more than 0.53 short.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

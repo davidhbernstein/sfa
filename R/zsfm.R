@@ -203,6 +203,35 @@ zsfm <- function(formula,
       }
     }
 
+    ## ZISF_Z has the same problem through its regime link: a spurious basin
+    ## about 40 log-likelihood units low (gap A31). Try several link intercepts
+    ## with zero slopes, polish the best three, keep the best.
+    if (identical(model_name, "ZISF_Z") && isFALSE(is.numeric(start_val))) {
+      .gi <- (n_x_vars + 3):(n_x_vars + 2 + n_z_vars)
+      .zz_cand <- lapply(c(-2, -0.4, 0.4, 2), function(g0) {
+        replace(start_v, .gi, c(g0, rep(0, length(.gi) - 1L)))
+      })
+      .zz_cand <- c(list(start_v), .zz_cand)
+      .zz_obj <- vapply(.zz_cand, function(z) {
+        tryCatch({
+          v <- like.fn(z)
+          if (is.finite(v)) v else Inf
+        }, error = function(e) Inf)
+      }, numeric(1))
+      if (any(is.finite(.zz_obj))) {
+        .zz_fits <- Filter(Negate(is.null), lapply(order(.zz_obj)[seq_len(min(3L, sum(is.finite(.zz_obj))))],
+          function(i) {
+            tryCatch(suppressWarnings(stats::optim(.zz_cand[[i]], like.fn,
+              method = "L-BFGS-B", lower = lower_bob,
+              control = list(maxit = 200))), error = function(e) NULL)
+          }))
+        .zz_fits <- Filter(function(o) is.finite(o$value), .zz_fits)
+        if (length(.zz_fits)) {
+          start_v <- .zz_fits[[which.min(vapply(.zz_fits, function(o) o$value, numeric(1)))]]$par
+        }
+      }
+    }
+
     Opt.Bobyqa <- opt.bobyqa(fn = like.fn, start_v = start_v, lower.bobyqa = lower_bob, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
     start_v <- Opt.Bobyqa$start_v
     start_feval <- Opt.Bobyqa$start_feval

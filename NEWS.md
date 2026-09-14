@@ -24,6 +24,17 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`zsfm(model_name = "ZISF_Z")` often stopped in a spurious local optimum.**
+  Its likelihood has a second basin in the regime-link coefficients, 10 to 64
+  log-likelihood units below the best maximum. In 50 simulated samples (40%
+  of firms efficient, the covariate unrelated to the regime) 7 shipped fits
+  ended there, reporting a regime slope averaging 0.38 against a truth of 0,
+  with no warning. `"ZISF"` already guarded against the same problem with
+  several starting fits; `"ZISF_Z"` now does too, over the link intercept. On
+  the same 50 samples no fit falls more than 0.53 below the best of six
+  polished starts, none is worse than before, and a fit takes about 0.20 s
+  instead of 0.13 s.
+
 * **`zsfm()` and `lcsfm()` could return `NaN` or `-Inf` for an observation far
   from the frontier.** `zsfm()`'s inefficient-regime log-density was
   `log(dnorm()) + log(pnorm())`, which is `-Inf` once either factor underflows
