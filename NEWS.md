@@ -92,6 +92,23 @@
   which overflowed to `NaN` for a scale or truncation point near 40, are now
   evaluated in logs too.
 
+* **`sfm(model_name = "NR")` was drawn to `sigma_v = 0` by a rounding artefact.**
+  Its log-density formed `-(eps/sigma_v)^2/2 + z^2/2`, two very large terms
+  whose exact sum is `-eps^2/sigma^2`. As `sigma_v` fell toward zero the
+  difference lost its digits and read too high (by 22 log-likelihood units per
+  observation at `sigma_v = 1e-9`), so fits ran to the `sigma_v` bound and could
+  report a log-likelihood far above the true one (-539.9 against -585.1 on one
+  simulated sample). The term is now formed exactly. On data with
+  `lambda = 2` nothing changes; with `lambda = 10` fits reach the best maximum
+  of the exact likelihood in 187 of 200 samples.
+
+* **`TIC()` could return an absurd value for a fit on a parameter bound**, and
+  `sfma(weights = "tic")` then gave that model all the weight: -2.64e14 for an
+  NR fit with `sigma_v` on its bound, although another candidate fitted
+  better. `TIC()` now stops when the Hessian is not positive definite or the
+  Takeuchi penalty is not positive; `sfma()` treats such a candidate as
+  unusable, and `vuong()` refuses it.
+
 * **`sfm(model_name = "NR")` evaluated its log-likelihood inaccurately for
   residuals far above the frontier.** The term `log(phi(z) - z * Phi(-z))` was
   computed as the difference of two nearly equal quantities through `erf()`:
@@ -110,6 +127,12 @@
   error then advised refitting with `keep_objective = TRUE` -- which could not
   help. `psfm()` now warns when the argument has no effect, and the message
   says which models retain their likelihood.
+
+* **`psfm(model_name = "GTRE_Z")` lost its whole fit when one firm's efficiency
+  could not be computed.** A single firm whose posterior system could not be
+  inverted stopped the fit with "Failed to compute GTRE posterior matrices",
+  discarding estimates that had already converged. That firm's `U` and `H` are
+  now `NA`, with a warning naming it.
 
 * **A starting value just outside its bound stopped the fit** with "Starting
   values violate bounds" from `bobyqa()`. On a panel whose random-effects start

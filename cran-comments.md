@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Thirteen further defects in already-released code are fixed in the same submission,
+Fifteen further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -78,8 +78,15 @@ all silent -- each returns a wrong or irreproducible result without an error:
 * `ttsfm(model_name = "TTNE")`'s E[exp(-u) | eps], and so its M6 metric, used
   `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`: 10.9% too high at
   `sigma_v = 0.3`. Corrected; checked against numerical integration.
+* `sfm(model_name = "NR")`'s log-density formed a difference of two very large
+  terms that lost its digits as `sigma_v` fell toward zero, reading too high,
+  so fits ran to the `sigma_v` bound (reported -539.9 against an exact -585.1
+  on one sample). Now formed exactly.
+* `TIC()` returned -2.64e14 for a fit with a parameter on its bound, and
+  `sfma(weights = "tic")` gave that model all the weight. It now refuses an
+  indefinite Hessian or a non-positive penalty.
 
-Five further defects in released code made a call fail rather than return a
+Six further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -104,6 +111,9 @@ wrong answer:
   random-effects start fitted on macOS and failed on Linux and Windows. Only
   coordinates strictly outside their bounds are now moved inside; fits from
   valid starts are unchanged.
+* `psfm(model_name = "GTRE_Z")` stopped when one firm's efficiency posterior
+  could not be inverted, losing estimates that had converged. That firm now
+  gets `NA` efficiencies with a warning.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
