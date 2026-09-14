@@ -427,7 +427,7 @@ lcsfm <- function(formula,
       mustar <- -eps * sigu^2 / sigsq
       sigstar <- sqrt(sigu^2 * sigv^2 / sigsq)
       zz <- mustar / sigstar
-      jlms_class[, j] <- mustar + sigstar * stats::dnorm(zz) / stats::pnorm(zz)
+      jlms_class[, j] <- .jlms_u(mustar, sigstar)
     }
     colnames(jlms_class) <- paste0("class", seq_len(J))
     jlms <- rowSums(post.prob * jlms_class)

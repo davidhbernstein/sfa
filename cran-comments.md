@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Eight further defects in already-released code are fixed in the same submission,
+Nine further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -59,6 +59,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
   0 above the frontier, returning a log-density of -708 where the truth is
   -44; `"NHN"`/`"NHN_Z"` floored their density in levels. Both are now computed
   in logs, with estimates unchanged to within 8e-8 (NHN).
+* `zsfm()`'s inefficient-regime log-density became `-Inf`, and the JLMS
+  predictor in `zsfm()` and `lcsfm()` became `NaN`, for observations far from
+  the frontier, through `log(dnorm())` and `dnorm()/pnorm()` in levels. Both now
+  in logs; ordinary fits are unchanged.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

@@ -24,6 +24,16 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`zsfm()` and `lcsfm()` could return `NaN` or `-Inf` for an observation far
+  from the frontier.** `zsfm()`'s inefficient-regime log-density was
+  `log(dnorm()) + log(pnorm())`, which is `-Inf` once either factor underflows
+  (beyond about 38 standard deviations; the truth there is finite, e.g. -919),
+  and both `zsfm()` and `lcsfm()` computed the JLMS predictor as
+  `dnorm(zz) / pnorm(zz)`, which is `0 / 0` below `zz` of about -37 (a firm far
+  above the frontier; the truth is about 0.007). Both are now taken in logs. On
+  ordinary data the likelihood is unchanged at every fit checked, `ZISF` and
+  `LCM` fits agree to within 7e-5, and `lcsfm()` is identical.
+
 * **`sfm(model_name = "NU")`'s log-likelihood, and `"NHN"`/`"NHN_Z"`'s at
   extreme parameters, were floored rather than computed.** NU took
   `log(pnorm(b) - pnorm(a))` as a difference floored at `.Machine$double.xmin`:

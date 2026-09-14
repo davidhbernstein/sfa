@@ -117,7 +117,7 @@ zsfm <- function(formula,
         sig <- sqrt(sigsq)
 
         f1 <- -0.5 * log(2 * pi * sigvsq) - (0.5 / sigvsq) * eps^2
-        f2 <- log(2 / sig) + log(dnorm(-eps / sig)) + log(pnorm(-eps * lambda / sig))
+        f2 <- log(2 / sig) + dnorm(-eps / sig, log = TRUE) + pnorm(-eps * lambda / sig, log.p = TRUE)
         ## Mixed on the LOG scale.
         like <- .log_add2(log(prob) + f1, log1p(-prob) + f2)
       }
@@ -146,7 +146,7 @@ zsfm <- function(formula,
         sig <- sqrt(sigsq)
 
         f1 <- -0.5 * log(2 * pi * sigvsq) - (0.5 / sigvsq) * eps^2
-        f2 <- log(2 / sig) + log(dnorm(-eps / sig)) + log(pnorm(-eps * lambda / sig))
+        f2 <- log(2 / sig) + dnorm(-eps / sig, log = TRUE) + pnorm(-eps * lambda / sig, log.p = TRUE)
         like <- .log_add2(log(prob) + f1, log1p(-prob) + f2)
       }
 
@@ -291,7 +291,7 @@ zsfm <- function(formula,
       ## Now the likelihood function, on the log scale as above so that the
       ## posterior probability stays a ratio of quantities that cannot underflow.
       f1 <- -0.5 * log(2 * pi * sigvsq) - (0.5 / sigvsq) * eps^2
-      f2 <- log(2 / sig) + log(dnorm(-eps / sig)) + log(pnorm(-eps * lambda / sig))
+      f2 <- log(2 / sig) + dnorm(-eps / sig, log = TRUE) + pnorm(-eps * lambda / sig, log.p = TRUE)
       l_eff <- log(prob) + f1 ## efficient-regime contribution
       l_ineff <- log1p(-prob) + f2 ## inefficient-regime contribution
       log_f <- .log_add2(l_eff, l_ineff)
@@ -301,7 +301,8 @@ zsfm <- function(formula,
       sigstarsq <- sigusq * sigvsq / (sigusq + sigvsq)
       sigstar <- sqrt(sigstarsq)
       zz <- mustar / sigstar
-      jlms <- mustar + sigstar * dnorm(zz) / pnorm(zz)
+      ## In logs: dnorm(zz) / pnorm(zz) is 0 / 0 below zz ~ -37 (gap A30).
+      jlms <- .jlms_u(mustar, sigstar)
     }
 
     if (model_name %in% c("ZISF", "ZISF_Z")) {
