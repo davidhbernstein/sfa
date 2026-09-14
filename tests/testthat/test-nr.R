@@ -171,3 +171,20 @@ test_that(".log_nr_g() matches the integral representation in both tails", {
   }
   expect_true(is.na(.log_nr_g(NA_real_)))
 })
+
+## Gap A34. -(eps/sigv)^2/2 + z^2/2 is exactly -eps^2/sigma^2; formed as a
+## difference it cancelled catastrophically as sigma_v -> 0 (off by 22 at
+## sigma_v = 1e-9), and the optimizer ran NR fits to the bound on that artefact.
+test_that("NR log-density is exact as sigma_v approaches zero", {
+  set.seed(3); n <- 60; x <- rnorm(n)
+  y <- 1 + 0.5 * x + rnorm(n, 0, 0.4) - rexp(n, 1)
+  f <- suppressWarnings(sfm(y ~ x, model_name = "NR", data = data.frame(y, x), keep_objective = TRUE))
+  for (sv in c(1e-3, 1e-7, 1e-9)) {
+    p <- f$opt$par; p[1] <- sv
+    su <- p[2]; sigma <- sqrt(2 * sv^2 + su^2)
+    eps <- y - p[3] - p[4] * x
+    z <- (eps * su / sv) / sigma
+    exact <- log(sv) - 2 * log(sigma) - eps^2 / sigma^2 + log(2) + .log_nr_g(z)
+    expect_equal(as.numeric(f$objective(p, per_obs = TRUE)), exact, tolerance = 1e-10, info = paste("sigma_v =", sv))
+  }
+})
