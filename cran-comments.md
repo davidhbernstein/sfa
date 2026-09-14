@@ -5,9 +5,8 @@ dependencies on CRAN**, so no other package is affected.
 
 ### Why so soon after 1.2.0
 
-1.2.0 was published three days ago, and `R CMD check --as-cran` raises the
-"Days since last update" note accordingly. The reason is a defect in 1.2.0
-that returns wrong estimates without any error or warning.
+1.2.0 was published on 2026-09-07. The reason for an update within weeks is a
+defect in 1.2.0 that returns wrong estimates without any error or warning.
 
 `copsfm(inefdec = FALSE)` -- the cost-frontier orientation of the new copula
 entry point -- composed the density with the sign applied twice, so it
@@ -21,8 +20,8 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Two further defects in already-released code are fixed in the same submission,
-both silent:
+Four further defects in already-released code are fixed in the same submission,
+all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
   in the fit. The likelihood refused out-of-range draws with
@@ -37,6 +36,28 @@ both silent:
   production orientation, so a cost frontier is fitted as `-y = x'(-b) + ...`
   and `-b` was reported. Scale parameters were unaffected, which is why it was
   not caught. Cost-frontier `"cols"` fits made with 1.2.0 should be re-run.
+* `psfm(model_name = "FD")`, `"TFE"` and `"TFE_WMLE"` were not reproducible,
+  and each fit advanced the caller's random-number stream. An internal
+  starting-value fit drew unseeded `runif()` starting values; two fits of
+  identical data could differ by up to about 3e-4 in relative terms. The draws
+  now use a fixed local seed and the caller's RNG state is restored.
+
+Three further defects in released code made a call fail rather than return a
+wrong answer:
+
+* `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
+  stopped with "system is exactly singular" on a between-rank-deficient design
+  such as `factor(year)` in an unbalanced panel. A random-effects starting
+  regression none of these models uses was being run for them outside the
+  collinearity guard; it is now run only for the models that read it.
+* `psfm(keep_objective = TRUE)` stored a likelihood for `"GTRE"`, `"TRE"`,
+  `"GTRE_Z"` and `"TRE_Z"`, but `influence_sfa()`, `vcov(type = "bhhh")`, the
+  `sandwich` methods, `TIC()` and `vuong()` then failed on it. The retained
+  likelihoods now return per-firm contributions.
+* `psfm(model_name = "SSRE")` and `"SSCRE"` stopped with a bare LAPACK error
+  on a singular random-effects fit. They now name the collinear columns, or,
+  for `"SSCRE"` on an unbalanced panel, explain that this is a current
+  limitation of that estimator and point to `"SSFE"`.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
@@ -60,21 +81,13 @@ One command, run once, on the tarball being submitted:
 R CMD check --as-cran sfa_1.2.1.tar.gz
 ```
 
-with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5, on a tarball built **with**
-the vignette. Result: **0 errors | 0 warnings | 3 notes**, all three properties
-of the check machine or of the submission interval rather than of the package.
+with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5.2 (aarch64), on a tarball built
+**with** the vignette. Result: **0 errors | 0 warnings | 1 note**, a property of
+the check machine rather than of the package.
 
-1. `checking CRAN incoming feasibility ... NOTE` -- "Days since last update",
-   the interval explained above.
-
-2. `checking for future file timestamps ... NOTE` -- "unable to verify current
-   time". The check tries to reach an external clock service and this machine
-   cannot; no file in the tarball carries a future timestamp.
-
-3. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
+1. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
    not recent enough and package `V8` is unavailable, so the HTML-validation
-   and math-rendering sub-checks are skipped rather than failed. A property of
-   the check machine, not of the package.
+   and math-rendering sub-checks are skipped rather than failed.
 
 Every other stage is `OK`, including `checking examples`, `checking examples
 with --run-donttest`, `checking tests`, `checking top-level files`, `checking
@@ -85,18 +98,18 @@ vignette outputs` and `checking PDF version of manual`.
 runs the `\donttest{}` examples, as a separate `checking examples with
 --run-donttest` stage. Passing `--run-donttest` explicitly *in addition* folds
 them into `checking examples` instead, which then exceeds the 5-second
-guideline and raises a third note listing thirteen examples. That note is an
+guideline and raises a second note listing seven examples. That note is an
 artefact of the redundant flag: measured on this tarball, `--as-cran` alone
-gives `checking examples ... [15s/16s] OK` followed by `checking examples with
---run-donttest ... [179s/176s] OK`, while `--as-cran --run-donttest` gives
-`checking examples ... [200s/197s] NOTE`. Same examples, same machine, same
-tarball. The command above is the one reported.
+gives `checking examples ... [11s/11s] OK` followed by `checking examples with
+--run-donttest ... [127s/128s] OK`, while `--as-cran --run-donttest` gives
+`checking examples ... [126s/127s] NOTE`. Same examples, same machine, same tarball. The
+command above is the one reported.
 
 ## Check time
 
-`checking tests ... [33m/33m] OK` under `NOT_CRAN=true`, which runs the Monte
+`checking tests ... [25m/25m] OK` under `NOT_CRAN=true`, which runs the Monte
 Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 16 | SKIP 8 |
-PASS 3694`. Under CRAN's own conditions that stage is about a minute, because
+PASS 3884`. Under CRAN's own conditions that stage is about a minute, because
 the tests needing a statistically meaningful sample size are behind
 `skip_on_cran()`. The 16 warnings are deliberate diagnostics being exercised by
 the tests that exist to fire them -- boundary reports from Greene's true fixed
@@ -105,16 +118,16 @@ and the `model_name = "TFE"` rename notice -- together with warnings raised by
 `plm` and by `optim()`'s numerical Hessian stepping outside its own box. None
 accompanies a failed expectation.
 
-`checking examples` is 16 seconds and `checking examples with --run-donttest`
-is 176 seconds. The examples that dominate the second are `influence_sfa`
-(54.9s), `simulation_se` (28.5s) and `zsfm` (19.7s); all are inside
+`checking examples` is 11 seconds and `checking examples with --run-donttest`
+is 128 seconds. The examples that dominate the second are `influence_sfa`
+(37.9s), `simulation_se` (17.9s) and `zsfm` (11.8s); all are inside
 `\donttest{}` because they fit models by simulated maximum likelihood over
 Halton draws, by quadrature, or by kernel regression with bandwidth
 cross-validation.
 
 ## Test environments
 
-* local: R 4.5.2, macOS 26.5 (aarch64)
+* local: R 4.5.2, macOS 26.5.2 (aarch64)
 * GitHub Actions: ubuntu-latest (release, devel, oldrel-1), macos-latest,
   windows-latest
 * win-builder (R-devel and R-release)
