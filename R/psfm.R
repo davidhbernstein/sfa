@@ -2433,9 +2433,8 @@ psfm <- function(formula,
         l3 <- -0.5 * (t[i] - 1) * log(x[2])
         l4 <- -0.5 * t(eps_t) %*% qr.solve(SIG) %*% eps_t
         l5 <- 0.5 * ((mu_star^2 / sig_star2) - ((x[3]^2) / x[1]))
-        ## In logs: the floored pnorm() misreported the likelihood (gap A32).
-        l6 <- 0.5 * log(sig_star2) + pnorm(mu_star / sqrt(sig_star2), log.p = TRUE)
-        l7 <- -(0.5 * log(x[1]) + pnorm(x[3] / sqrt(x[1]), log.p = TRUE))
+        l6 <- log(sqrt(sig_star2) * max(pnorm(mu_star / sqrt(sig_star2)), .SFA_CONSTANTS$MIN_POSITIVE))
+        l7 <- -log(sqrt(x[1]) * max(pnorm(x[3] / sqrt(x[1])), .SFA_CONSTANTS$MIN_POSITIVE))
 
 
         prod_vec_n <- sum(l1, l2, l3, l4, l5, l6, l7)

@@ -31,16 +31,6 @@
   square is restored; all six conditional expectations now agree with numerical
   integration to about 1e-11. Parameter estimates were not affected.
 
-* **`psfm(model_name = "FD")` could report a log-likelihood that was not the
-  likelihood.** Two terms of the Wang-Ho likelihood floored `pnorm()` at machine
-  epsilon inside `log()`, so wherever `mu*/sigma*` or `mu/sigma_u` fell below
-  about -8.1 the floor replaced the term. On one simulated null-design panel the
-  reported log-likelihood at the optimum was -165.41 where the exact value is
-  -166.10, and the optimizer stopped at a point the exact likelihood ranks
-  lower. Both terms are now `pnorm(log.p = TRUE)`. On the other panels checked
-  the fits agree with the exact likelihood to within optimizer noise along FD's
-  flat `mu` direction (at most 0.009 in log-likelihood).
-
 * **`ttsfm(model_name = "TTNE")` clipped its log-likelihood's exponents.** The
   density was formed as `log(pnorm(beta) * exp(alpha) + pnorm(b) * exp(a))` in
   levels, with `alpha` and `a` capped before exponentiating to avoid overflow,
