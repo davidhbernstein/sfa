@@ -159,3 +159,40 @@ test_that("SSCRE refuses a design with nothing to correct", {
     "nothing for the Mundlak means to correct"
   )
 })
+
+## Singular variance components: a named, actionable error instead of LAPACK.
+
+.ss_cohort <- function() {
+  ## Firms enter in four cohorts, so factor(year) is only PARTLY collinear
+  ## between firms -- the design that used to die inside plm::ercomp().
+  d <- .ss_panel(N = 60, Tt = 12, seed = 5)
+  start <- ((d$name - 1) %% 4) * 3 + 1
+  d[d$t >= start, ]
+}
+
+test_that("SSRE names the between-collinear columns instead of a LAPACK error", {
+  d <- .ss_cohort()
+  err <- tryCatch(psfm(y ~ x1 + x2 + factor(year), "SSRE", d, individual = "name", time = "year"),
+    error = function(e) conditionMessage(e)
+  )
+  expect_type(err, "character")
+  expect_false(grepl("Lapack|dgesv", err))
+  expect_match(err, "rank deficient")
+  expect_match(err, "factor\\(year\\)")
+  expect_match(err, "SSFE")
+})
+
+test_that("SSCRE on an unbalanced panel says why, and SSRE/SSFE still fit", {
+  d <- .ss_panel()
+  set.seed(7)
+  d <- d[-sample(nrow(d), 60), ]
+  err <- tryCatch(psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year"),
+    error = function(e) conditionMessage(e)
+  )
+  expect_type(err, "character")
+  expect_false(grepl("Lapack|dgesv", err))
+  expect_match(err, "unbalanced")
+  expect_match(err, "Mundlak")
+  expect_s3_class(psfm(y ~ x1 + x2, "SSRE", d, individual = "name", time = "year"), "sfareg")
+  expect_s3_class(psfm(y ~ x1 + x2, "SSFE", d, individual = "name", time = "year"), "sfareg")
+})

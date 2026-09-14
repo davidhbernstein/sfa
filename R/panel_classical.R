@@ -283,9 +283,19 @@
   ## created but data_proc2() did not strip, so plm re-indexes and warns about
   ## a column the package made itself. Muffled only when `time` is not a
   ## variable of the model -- if it is, plm really would clobber it.
-  fit <- .quiet_time_index(plm::plm(form, data,
-    effect = "individual", model = "random", index = individual
-  ), form)
+  ## A singular between design otherwise surfaces as a bare LAPACK error.
+  ## See notes/code_history/panel_classical.md ("Singular variance components").
+  fit <- tryCatch(
+    .quiet_time_index(plm::plm(form, data,
+      effect = "individual", model = "random", index = individual
+    ), form),
+    error = function(e) {
+      if (!grepl("singular", conditionMessage(e), ignore.case = TRUE)) stop(e)
+      stop(.ss_re_singular_message(e, formula_x, data, individual, model_name),
+        call. = FALSE
+      )
+    }
+  )
   cf <- stats::coef(fit)
   se <- summary(fit)$coefficients[, "Std. Error"]
 
@@ -309,4 +319,54 @@
        u_hat = u_hat, exp_u_hat = exp(-u_hat),
        mundlak = mund, theta = plm::ercomp(fit)$theta,
        ercomp = plm::ercomp(fit), plm_fit = fit)
+}
+
+
+## Message for a singular random-effects variance-component step in SSRE/SSCRE.
+.ss_re_singular_message <- function(err, formula_x, data, individual, model_name) {
+  head <- paste0("psfm(model_name = \"", model_name, "\"): the random-effects ",
+    "variance components cannot be estimated.\n")
+  chk <- tryCatch(.check_collinearity(formula_x, data, individual),
+    error = function(e) NULL
+  )
+  if (!is.null(chk) && length(chk$between_drop)) {
+    return(paste0(head,
+      "  The between-firm design is rank deficient: ", chk$between_cols,
+      " columns, rank ", chk$between_rank, ".\n",
+      "  Collinear between firms: ", paste(chk$between_drop, collapse = ", "), "\n",
+      "  ", model_name, " is a GLS estimator whose variance components come from ",
+      "that between regression,\n",
+      "  so unlike the ML models this cannot be repaired at the starting values.\n",
+      "  Options: remove or merge those columns (for factor(year) in an unbalanced ",
+      "panel,\n",
+      "  broader period groups or a time trend), or use model_name = \"SSFE\", ",
+      "whose within\n",
+      "  estimator does not use the between regression."
+    ))
+  }
+  Ti <- table(as.character(data[[individual]]))
+  if (identical(model_name, "SSCRE") && length(unique(as.integer(Ti))) > 1L) {
+    return(paste0(head,
+      "  SSCRE cannot currently be fitted to an unbalanced panel (T runs from ",
+      min(Ti), " to ", max(Ti), " across ", length(Ti), " firms).\n",
+      "  The cause is the Mundlak means SSCRE adds, not your formula: in the ",
+      "between-firm\n",
+      "  dimension each mean is identical to its regressor, and the default ",
+      "(Swamy-Arora)\n",
+      "  variance components for an unbalanced panel invert that between design.\n",
+      "  The SSCRE slopes on time-varying regressors equal the within estimates, ",
+      "so\n",
+      "  model_name = \"SSFE\" gives them; model_name = \"SSRE\" also fits. ",
+      "Balanced panels are\n",
+      "  unaffected."
+    ))
+  }
+  paste0(head,
+    "  The variance-component step failed on a singular system (",
+    conditionMessage(err), ").\n",
+    "  No exact collinearity was found in the between-firm design, so it is ",
+    "likely near-\n",
+    "  singular; check for regressors that barely vary between firms, or use ",
+    "model_name = \"SSFE\"."
+  )
 }

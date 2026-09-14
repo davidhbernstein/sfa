@@ -14,6 +14,15 @@
   working around it by substituting a different variance-component method
   inside `plm()`.
 
+* **`psfm(model_name = "SSRE")` and `"SSCRE"` now explain a singular
+  random-effects fit** instead of failing with a bare "Lapack routine dgesv:
+  system is exactly singular". When the formula is collinear between firms the
+  message names the columns and suggests remedies. When `SSCRE` meets an
+  unbalanced panel it says so plainly: this is a current limitation of
+  `SSCRE`, caused by the Mundlak means it adds rather than by the user's
+  formula, and `SSFE` gives the same slopes on time-varying regressors.
+  Balanced panels are unaffected.
+
 ## Documentation
 
 * **`?endogeneity_test` now carries a size and power table.** The test shipped
