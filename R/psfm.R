@@ -1177,17 +1177,24 @@ psfm <- function(formula,
             ridge_mult = 10,
             max_tries  = 8
           ),
-          error = function(e) {
-            stop(
-              sprintf(
-                "Failed to compute GTRE posterior matrices in .gtre_te() for firm %s (Ti = %s): %s",
-                ii, t[ii], conditionMessage(e)
-              ),
-              call. = FALSE
-            )
-          }
+          error = function(e) NULL
         )
       })
+
+      ## A firm whose posterior system cannot be inverted gets NA efficiencies
+      ## rather than taking the whole fit down with it (gap A36).
+      .te_failed <- which(vapply(post_obj, is.null, logical(1)))
+      if (length(.te_failed)) {
+        warning(sprintf(paste0("psfm(model_name = \"GTRE_Z\"): the efficiency posterior could not ",
+          "be inverted for firm(s) %s, so their U and H are NA. The parameter estimates ",
+          "are unaffected."), paste(.te_failed, collapse = ", ")), call. = FALSE)
+        for (ii in .te_failed) {
+          k <- t[ii] + 1L
+          post_obj[[ii]] <- list(LAM = matrix(NA_real_, k, k), ARR = matrix(NA_real_, k, t[ii]),
+            invVEE_method = "failed", invSIG_method = "failed", invK_method = "failed",
+            ridge_VEE = NA_real_, ridge_SIG = NA_real_, ridge_K = NA_real_)
+        }
+      }
 
       LAM <- lapply(post_obj, `[[`, "LAM")
       ARR <- lapply(post_obj, `[[`, "ARR")
@@ -1205,6 +1212,7 @@ psfm <- function(formula,
       ## Persistent TE
       res_d <- mapply(
         FUN = function(Ti, ARR_i, e_i, LAM_i) {
+          if (anyNA(LAM_i)) return(NA_real_)
           ptmvnorm(
             lowerx = rep(0, Ti + 1),
             upperx = rep(Inf, Ti + 1),
@@ -1221,6 +1229,7 @@ psfm <- function(formula,
 
       res_n <- mapply(
         FUN = function(Ti, ARR_i, e_i, LAM_i) {
+          if (anyNA(LAM_i)) return(NA_real_)
           shift_vec <- c(-1, rep(0, Ti))
           ptmvnorm(
             lowerx = rep(0, Ti + 1),
@@ -1261,6 +1270,7 @@ psfm <- function(formula,
         FUN = function(Ti, ARR_i, e_i, LAM_i, rd) {
           ## vapply: each element is the 1x1 matrix product below.
           vapply(seq_len(Ti), function(j) {
+            if (anyNA(LAM_i)) return(NA_real_)
             shift_vec <- rep(0, Ti + 1)
             shift_vec[j + 1] <- -1
 
