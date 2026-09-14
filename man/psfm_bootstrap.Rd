@@ -27,7 +27,7 @@ psfm_bootstrap(psfm_object,
                maxit.psoptim = 1000,
                seed_offset   = 0,
                write_back    = TRUE,
-               pkgs          = c("sfa", "Formula", "pbapply", "truncnorm"),
+               pkgs          = c("sfa", "Formula", "truncnorm"),
                inefdec,
                rand.gtre     = NULL,
                rand.psoptim  = NULL,
@@ -84,7 +84,7 @@ psfm_bootstrap(psfm_object,
     returned.}
   \item{pkgs}{Character vector of package names to load on each cluster
     worker via \code{\link[parallel]{clusterCall}}. Default
-    \code{c("sfa", "Formula", "pbapply", "truncnorm")} -- \pkg{truncnorm} is
+    \code{c("sfa", "Formula", "truncnorm")} -- \pkg{truncnorm} is
     only actually used when bootstrapping an \code{"FD"} fit, but is included
     in the default so a single default works for every supported model.}
   \item{inefdec}{Logical, with no default; must be supplied. Passed through to

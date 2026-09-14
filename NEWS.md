@@ -53,6 +53,15 @@
   formula, and `SSFE` gives the same slopes on time-varying regressors.
   Balanced panels are unaffected.
 
+## Dependencies
+
+* **`pracma` and `MASS` are no longer imported, and `pbapply` moves from
+  `Imports` to `Suggests`.** Each was used for a single function. `erfinv()` and
+  `ginv()` are now internal copies that compute the same thing the same way:
+  the simulated-ML draws and every fit are bitwise identical. `pbapply` only
+  ever supplied `psfm_bootstrap()`'s optional progress bar, and the code already
+  ran without it; its `pkgs` default no longer loads it on the workers.
+
 ## New features
 
 * **`psfm()` gains the simulated-ML draw controls `sfm()` has had since 1.2.0**

@@ -75,6 +75,27 @@
 
 
 ## Helpers: leave the caller's random number stream as we found it
+## Inverse error function, as pracma::erfinv computes it, so draws are unchanged
+## without the dependency. Arguments outside [-1, 1] are NA.
+.erfinv <- function(y) {
+  y[abs(y) > 1] <- NA
+  sqrt(stats::qchisq(abs(y), 1) / 2) * sign(y)
+}
+
+## Moore-Penrose pseudo-inverse of a real matrix, as MASS::ginv computes it.
+.ginv <- function(X, tol = sqrt(.Machine$double.eps)) {
+  if (!is.matrix(X)) X <- as.matrix(X)
+  Xsvd <- svd(X)
+  Positive <- Xsvd$d > max(tol * Xsvd$d[1L], 0)
+  if (all(Positive)) {
+    Xsvd$v %*% (1 / Xsvd$d * t(Xsvd$u))
+  } else if (!any(Positive)) {
+    array(0, dim(X)[2L:1L])
+  } else {
+    Xsvd$v[, Positive, drop = FALSE] %*% ((1 / Xsvd$d[Positive]) * t(Xsvd$u[, Positive, drop = FALSE]))
+  }
+}
+
 .rng_snapshot <- function() {
   if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
     get(".Random.seed", envir = globalenv(), inherits = FALSE)
@@ -2230,7 +2251,7 @@
                    scrambling = scrambling, prime = prime, seed = rand.gtre,
                    clamp = clamp)
   lapply(seq_len(N), function(ii) {
-    cbind(stats::qnorm(UU[[1]][ii, ]), sqrt(2) * pracma::erfinv(UU[[2]][ii, ]))
+    cbind(stats::qnorm(UU[[1]][ii, ]), sqrt(2) * .erfinv(UU[[2]][ii, ]))
   })
 }
 

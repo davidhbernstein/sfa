@@ -1412,7 +1412,7 @@ psfm <- function(formula,
                   "Some SEs may be unreliable.",
                   call. = FALSE
                 )
-                tryCatch(MASS::ginv(OPG_meat), error = function(e2) NULL)
+                tryCatch(.ginv(OPG_meat), error = function(e2) NULL)
               }
             )
 

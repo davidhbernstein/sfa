@@ -74,7 +74,7 @@ wrong-skewness suite of two estimators and a diagnostic, and rewrites the
 package Description. Those are in `NEWS.md`; they are not the reason for the
 timing.
 
-### One dependency change
+### Dependency changes
 
 `lpSolve` leaves `Suggests` and `DEA` enters it. `npsfm(method = "SZ")` solved
 its own output-oriented envelopment on `lpSolve`; it now calls `DEA::dea()`,
@@ -82,6 +82,12 @@ which the maintainer of this package also maintains. Both are `Suggests` and
 the code path is guarded by `requireNamespace()`, so nothing in `sfa` requires
 either package to be present. The two implementations agreed to 6e-12 across
 every returns-to-scale setting before the swap.
+
+`pracma` and `MASS` leave `Imports`, and `pbapply` moves from `Imports` to
+`Suggests`. Each was used for one function: `erfinv()` and `ginv()` are now
+internal copies of the same computation (results verified bitwise identical),
+and `pbapply` only provided an optional progress bar that the code already
+guarded with `requireNamespace()`.
 
 ## R CMD check results
 
