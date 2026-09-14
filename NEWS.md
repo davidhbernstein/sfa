@@ -24,6 +24,19 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`sfm(model_name = "NR")` evaluated its log-likelihood inaccurately for
+  residuals far above the frontier.** The term `log(phi(z) - z * Phi(-z))` was
+  computed as the difference of two nearly equal quantities through `erf()`:
+  from z of about 7 it lost all precision and overstated the log-density by up
+  to about 7 (by 0.8 at z = 8 and 4.6 at z = 10). Such z values arise at trial
+  parameters with a small `sigma_v`, so the optimizer was working on a
+  distorted surface there, and `exp_u_hat` used the same form. Both are now
+  computed through the continued fraction for the Mills ratio, accurate to
+  1e-13 across the range. On a design with lambda = 2 every fit reaches the same
+  maximum as before; with lambda = 10 fits reach the best maximum as often as
+  before (156 against 155 of 200) but can differ individually where the
+  likelihood is flat.
+
 * **`psfm(keep_objective = TRUE)` was silently ignored** for every model except
   `"GTRE"` (simulated ML), `"TRE"`, `"GTRE_Z"` and `"TRE_Z"`, and `estfun()`'s
   error then advised refitting with `keep_objective = TRUE` -- which could not

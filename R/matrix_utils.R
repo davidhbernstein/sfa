@@ -96,6 +96,25 @@
   }
 }
 
+## log(phi(z) - z * Phi(-z)), the normal-Rayleigh density's one-sided factor.
+## Direct below z = 3; above, the two terms cancel, so use the continued
+## fraction for the Mills ratio (see notes/code_history/matrix_utils.md, A26).
+.log_nr_g <- function(z, K = 80L) {
+  z <- as.numeric(z)
+  out <- rep(NA_real_, length(z))
+  lo <- !is.na(z) & z < 3
+  hi <- !is.na(z) & z >= 3
+  if (any(lo)) out[lo] <- log(stats::dnorm(z[lo]) - z[lo] * stats::pnorm(-z[lo]))
+  if (any(hi)) {
+    zz <- z[hi]
+    t <- zz
+    for (k in K:2) t <- zz + k / t
+    D <- 1 / t
+    out[hi] <- stats::dnorm(zz, log = TRUE) + log(D) - log(zz + D)
+  }
+  out
+}
+
 .rng_snapshot <- function() {
   if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
     get(".Random.seed", envir = globalenv(), inherits = FALSE)

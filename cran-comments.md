@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Five further defects in already-released code are fixed in the same submission,
+Six further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -47,6 +47,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
   `tmvtnorm::ptmvnorm()`, a randomized quasi-Monte Carlo integrator, which drew
   from the session RNG. It now runs under a fixed local seed and the caller's
   RNG state is restored. Parameter estimates were unaffected.
+* `sfm(model_name = "NR")` computed the one-sided factor of its log-density as
+  a difference of two nearly equal terms, which from z of about 7 overstated
+  the log-density by up to about 7. It is now evaluated through the continued
+  fraction for the Mills ratio, accurate to 1e-13; `exp_u_hat` likewise.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

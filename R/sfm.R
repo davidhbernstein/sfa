@@ -917,9 +917,9 @@ sfm <- function(formula,
         sigu <- x[2]
         sigma <- sqrt(2 * sigv^2 + sigu^2)
         z <- (eps * sigu / sigv) / sigma
+        ## The last term is log(2 * (phi(z) - z * Phi(-z))), taken stably (gap A26).
         like <- (log(pmax(sigv, .Machine$double.xmin)) - 2 * log(pmax(sigma, .Machine$double.xmin))
-          - 1 / 2 * (eps / sigv)^2 + 1 / 2 * z^2 + log(pmax(sqrt(2 / pi) * exp(-1 / 2 * z**2)
-            - z * (1 - erf(z / sqrt(2))), .Machine$double.xmin)))
+          - 1 / 2 * (eps / sigv)^2 + 1 / 2 * z^2 + log(2) + .log_nr_g(z))
       }
 
       if (model_name == "THT") {
@@ -1386,9 +1386,8 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       sigma <- sqrt(2 * sig_v^2 + sig_u^2)
       z <- (eps_hat * sig_u / sig_v) / sigma
-      exp_u_hat <- (exp(1 / 2 * (z + sig_v * sig_u / sigma)^2 - 1 / 2 * z^2) *
-        (exp(-1 / 2 * (z + sig_v * sig_u / sigma)^2) - sqrt(pi / 2) * (z + sig_v * sig_u / sigma) * (1 - erf(1 / sqrt(2) * (z + sig_v * sig_u / sigma)))) /
-        (exp(-z^2 / 2) - sqrt(pi / 2) * z * (1 - erf(z / sqrt(2)))))
+      w <- z + sig_v * sig_u / sigma
+      exp_u_hat <- exp(1 / 2 * w^2 - 1 / 2 * z^2 + .log_nr_g(w) - .log_nr_g(z))
       exp_u_hat <- pmax(exp_u_hat, 0)
     }
 

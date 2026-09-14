@@ -158,3 +158,16 @@ test_that("NR still reports efficiency and standard errors", {
   expect_true(all(f$exp_u_hat >= 0))
   expect_true(all(is.finite(f$std.errors)))
 })
+
+## Gap A26. log(phi(z) - z * Phi(-z)) was taken as a difference of two nearly
+## equal terms through erf(); from z ~ 7 it lost all precision.
+test_that(".log_nr_g() matches the integral representation in both tails", {
+  exact <- function(z) {
+    f <- function(t) exp(pnorm(-t, log.p = TRUE) + z^2 / 2)
+    log(integrate(f, z, Inf, rel.tol = 1e-12)$value) - z^2 / 2
+  }
+  for (z in c(-6, -1, 0, 1, 2.99, 3, 5, 8, 12, 25)) {
+    expect_equal(.log_nr_g(z), exact(z), tolerance = 1e-10, info = paste("z =", z))
+  }
+  expect_true(is.na(.log_nr_g(NA_real_)))
+})
