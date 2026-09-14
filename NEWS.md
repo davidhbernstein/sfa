@@ -134,6 +134,15 @@
   discarding estimates that had already converged. That firm's `U` and `H` are
   now `NA`, with a warning naming it.
 
+* **`psfm(model_name = "GTRE_Z")` stopped on some platforms with "sigma must be
+  positive definite"** from `tmvtnorm`, when a firm's efficiency posterior
+  covariance lost positive definiteness to rounding: the same call fitted on
+  macOS and failed on Windows and Linux. The covariance is now repaired when
+  the defect is rounding-sized (eigenvalues clipped at a relative floor, for
+  `"GTRE"` by simulated ML as well); a larger defect gives that firm `NA`
+  efficiencies with the warning above. Where the covariance was already valid
+  the results are identical.
+
 * **A starting value just outside its bound stopped the fit** with "Starting
   values violate bounds" from `bobyqa()`. On a panel whose random-effects start
   puts the firm-effect scale at essentially zero, `psfm(model_name = "TRE")`

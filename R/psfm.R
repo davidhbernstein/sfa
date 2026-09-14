@@ -1181,12 +1181,13 @@ psfm <- function(formula,
         )
       })
 
-      ## A firm whose posterior system cannot be inverted gets NA efficiencies
-      ## rather than taking the whole fit down with it (gap A36).
+      ## A firm whose posterior system cannot be inverted (gap A36), or whose
+      ## covariance is not positive definite (gap A38), gets NA efficiencies
+      ## rather than taking the whole fit down with it.
       .te_failed <- which(vapply(post_obj, is.null, logical(1)))
       if (length(.te_failed)) {
         warning(sprintf(paste0("psfm(model_name = \"GTRE_Z\"): the efficiency posterior could not ",
-          "be inverted for firm(s) %s, so their U and H are NA. The parameter estimates ",
+          "be computed (not invertible, or not positive definite) for firm(s) %s, so their U and H are NA. The parameter estimates ",
           "are unaffected."), paste(.te_failed, collapse = ", ")), call. = FALSE)
         for (ii in .te_failed) {
           k <- t[ii] + 1L

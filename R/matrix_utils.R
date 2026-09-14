@@ -993,7 +993,7 @@
   ARR <- invK$value %*% t(A_i) %*% invSIG$value
 
   list(
-    LAM = .safe_symmetrize(invK$value),
+    LAM = .tmv_sigma(.safe_symmetrize(invK$value), name = name),
     ARR = ARR,
     invVEE_method = invVEE$method,
     invSIG_method = invSIG$method,
@@ -1002,6 +1002,35 @@
     ridge_SIG = invSIG$ridge,
     ridge_K = invK$ridge
   )
+}
+
+## tmvtnorm::ptmvnorm() refuses a covariance unless it is symmetric with a
+## positive diagonal and det > 0. A posterior covariance is positive definite in
+## theory; when rounding breaks that (gap A38) the eigenvalues are clipped at a
+## relative floor. A defect larger than rounding is refused, not repaired.
+.tmv_sigma <- function(L, name = "posterior system", floor_rel = 1e-10,
+                       tol_rel = sqrt(.Machine$double.eps)) {
+  ok <- function(M) {
+    all(is.finite(M)) && isSymmetric(M, tol = sqrt(.Machine$double.eps)) &&
+      all(diag(M) > 0) && det(M) > 0
+  }
+  if (ok(L)) {
+    return(L)
+  }
+  if (!all(is.finite(L))) {
+    stop(name, ": the posterior covariance is not finite.", call. = FALSE)
+  }
+  eg <- eigen(.safe_symmetrize(L), symmetric = TRUE)
+  top <- max(eg$values)
+  if (!(top > 0) || min(eg$values) < -tol_rel * top) {
+    stop(sprintf("%s: the posterior covariance is not positive definite (smallest eigenvalue %.3g, largest %.3g).",
+      name, min(eg$values), top), call. = FALSE)
+  }
+  R <- .safe_symmetrize(eg$vectors %*% (pmax(eg$values, floor_rel * top) * t(eg$vectors)))
+  if (!ok(R)) {
+    stop(name, ": the posterior covariance could not be made positive definite.", call. = FALSE)
+  }
+  R
 }
 
 

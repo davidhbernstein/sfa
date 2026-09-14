@@ -86,7 +86,7 @@ all silent -- each returns a wrong or irreproducible result without an error:
   `sfma(weights = "tic")` gave that model all the weight. It now refuses an
   indefinite Hessian or a non-positive penalty.
 
-Six further defects in released code made a call fail rather than return a
+Seven further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -114,6 +114,10 @@ wrong answer:
 * `psfm(model_name = "GTRE_Z")` stopped when one firm's efficiency posterior
   could not be inverted, losing estimates that had converged. That firm now
   gets `NA` efficiencies with a warning.
+* `psfm(model_name = "GTRE_Z")` stopped on Windows and Linux with "sigma must
+  be positive definite" when a firm's posterior covariance lost positive
+  definiteness to rounding. It is now repaired when the defect is
+  rounding-sized; results where it was already valid are identical.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
