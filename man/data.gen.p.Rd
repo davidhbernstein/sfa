@@ -4,7 +4,8 @@
 \description{\code{data_gen_p} generates simulated panel data for estimating various panel stochastic frontier models, including the Generalized True Random Effects (GTRE), True Random Effects (TRE), Pooled Cross-Section (PCS), and True Fixed Effects (TFE) models. The function returns the data as a \code{pdata.frame}.  All variants are produced so that the user can select those that they want.}
 \usage{data_gen_p(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5,
                   mu = 0, beta1, beta2, eta = 0.1, b_k90 = 0.05, c_k90 = 0.01,
-                  d_k90 = 0.05, e_k90 = -0.005, rho_mvtn = 0.5)}
+                  d_k90 = 0.05, e_k90 = -0.005, rho_mvtn = 0.5,
+                  delta_fd = mu, fd_draw = c("folded", "truncated"))}
 \arguments{
 \item{t}{The number of time periods.}
 \item{N}{The number of individuals.}
@@ -15,7 +16,9 @@
 \item{sig_h}{The standard deviation (\eqn{\sigma_h}) for the one-sided individual effect (\eqn{h_i}).}
 \item{cons}{The constant term (\eqn{\beta_0}) for the frontier models.}
 \item{tau}{The dependence parameter (\eqn{\tau}) used for the \code{y_tfe} (TFE) model formulation, default is 0.5.  See Chen, Schmidt, and Wang (2014, Journal of Econometrics).}
-\item{mu}{The mean parameter (\eqn{\mu}) used for the Truncated-Normal (TN) component of the \code{y_fd} model with default set to 0. See Wang and Ho (2010, Journal of Econometrics).}
+\item{mu}{The pre-truncation mean (\eqn{\mu}) of the firm-level inefficiency \eqn{u_i^*} behind \code{y_fd}. Default 0. See Wang and Ho (2010, Journal of Econometrics).}
+\item{delta_fd}{The coefficient \eqn{\delta} in the scaling function \eqn{u_{it} = \exp(\delta z_{it}) u_i^*} behind \code{y_fd}. Defaults to \code{mu}, which reproduces this function's historical output exactly; set it separately for a design in which \eqn{\mu} and \eqn{\delta} differ.}
+\item{fd_draw}{How \eqn{u_i^*} is drawn for \code{y_fd}. \code{"folded"} (the default, and the historical behaviour) takes \eqn{|N(\mu, \sigma_u^2)|}; \code{"truncated"} takes \eqn{N^+(\mu, \sigma_u^2)}, which is what Wang and Ho (2010) and \code{psfm(model_name = "FD")} assume. The two coincide exactly at \code{mu = 0} and differ otherwise. Because the truncated draw consumes random numbers differently, it also changes the columns generated after it (\code{z_gtre}, \code{u_gtre}, \code{u_inv} and those built from them), so do not mix columns from the two modes.}
 \item{beta1}{The coefficient for the \code{x1} variable (\eqn{\beta_1}).}
 \item{beta2}{The coefficient for the \code{x2} variable (\eqn{\beta_2}).}
 \item{eta}{The decay-rate parameter (\eqn{\eta}) for the time-varying inefficiency component \code{u_bc92}, following Battese and Coelli (1992): \eqn{u_{it} = u_i \exp(-\eta(T_i - t))}. Default is 0.1. See Battese and Coelli (1992, Journal of Productivity Analysis).}
@@ -65,7 +68,7 @@
    \item \eqn{u_{it} \sim |N(0, \sigma_u^2)|} (one-sided inefficiency)
  }
 
-The First-Difference estimation model (\code{y_fd}) uses a variation where \eqn{r_{i,fd} \sim U(0,1)} and \eqn{u_{it,fd}} is generated using a heteroskedastic truncated-normal structure, reflecting an alternative model type.
+The First-Difference estimation model (\code{y_fd}) uses a variation where \eqn{r_{i,fd} \sim U(0,1)} and \eqn{u_{it,fd} = \exp(\delta z_{it}) u_i^*}, with \eqn{u_i^*} time-invariant: folded normal by default, truncated normal under \code{fd_draw = "truncated"} (see \code{fd_draw}).
  }
 \value{A \code{\link[plm:pdata.frame]{pdata.frame}} object containing \eqn{N \times t} observations suitable for Stochastic Frontier Analysis (SFA).}
 \references{

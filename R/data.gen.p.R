@@ -2,7 +2,8 @@
 data_gen_p <-
   function(t, N, rand, sig_u, sig_v, sig_r, sig_h, cons, tau = 0.5, mu = 0, beta1, beta2, eta = 0.1,
            b_k90 = 0.05, c_k90 = 0.01, d_k90 = 0.05, e_k90 = -0.005,
-           rho_mvtn = 0.5) {
+           rho_mvtn = 0.5, delta_fd = mu, fd_draw = c("folded", "truncated")) {
+    fd_draw <- match.arg(fd_draw)
     if (!is.null(rand)) {
       .rng_state <- .rng_snapshot()
       on.exit(.rng_restore(.rng_state), add = TRUE)
@@ -35,11 +36,16 @@ data_gen_p <-
     }
 
     z_fd <- rnorm(n, 0, 1)
-    ## NOTE: u_fd_star is a folded normal (abs() of a general N(mu,sig_u)
-    ## draw), not a half-normal (mu=0 case) or a truncated normal.
-    u_fd_star <- abs(rep(rnorm(N, mean = mu, sd = sig_u), each = t))
+    ## Wang and Ho (2010): u_it = exp(z_it * delta) * u_i*, u_i* ~ N+(mu, sig_u^2).
+    ## The defaults keep the historical folded draw scaled by exp(mu * z); see
+    ## notes/code_history/data.gen.p.md.
+    u_fd_star <- if (identical(fd_draw, "truncated")) {
+      rep(rtruncnorm(N, a = 0, mean = mu, sd = sig_u), each = t)
+    } else {
+      abs(rep(rnorm(N, mean = mu, sd = sig_u), each = t))
+    }
     r_fd <- rep(r_fd, each = t)
-    u_fd <- exp(mu * z_fd) * u_fd_star
+    u_fd <- exp(delta_fd * z_fd) * u_fd_star
 
     ## Output -  psfm
     y_gtre <- r - h + cons + beta1 * x1 + beta2 * x2 + v - u
