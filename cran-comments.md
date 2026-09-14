@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Eleven further defects in already-released code are fixed in the same submission,
+Twelve further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -72,6 +72,9 @@ all silent -- each returns a wrong or irreproducible result without an error:
   firm well above the frontier got a negative inefficiency and an efficiency
   above 1 (71 for a firm 20 above the frontier under `"C2SLS"`). Now in logs;
   estimates are unaffected.
+* `ttsfm(model_name = "TTNE")` capped the exponents in its log-likelihood before
+  forming it in levels. It is now a log-sum-exp, exact without a cap; fits are
+  unchanged to about 1e-6 on simulated data.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

@@ -308,19 +308,13 @@ ttsfm <- function(formula,
       alpha <- e / sigu + (sigv^2) / (2 * sigu^2)
       beta <- -e / sigv - sigv / sigu
 
-      ## Clip the exp() arguments before exponentiating.
-      alpha[alpha > .SFA_CONSTANTS$EXP_CLIP_UPPER] <- .SFA_CONSTANTS$EXP_CLIP_UPPER
-      a[a > .SFA_CONSTANTS$EXP_CLIP_UPPER] <- .SFA_CONSTANTS$EXP_CLIP_UPPER
-
       denom <- sigu + sigw
 
-      term1 <- exp(alpha)
-      term2 <- exp(a)
-
-      ## return will send the summation of the log of the
-      ## density of the composed error
-
-      ll <- -log(denom) + log((pnorm(beta) * term1) + (pnorm(b) * term2))
+      ## log(pnorm(beta) e^alpha + pnorm(b) e^a) by log-sum-exp: nothing to
+      ## clip and neither pnorm() can underflow (gap A32).
+      l1 <- pnorm(beta, log.p = TRUE) + alpha
+      l2 <- pnorm(b, log.p = TRUE) + a
+      ll <- -log(denom) + pmax(l1, l2) + log1p(exp(-abs(l1 - l2)))
 
       ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize
       ## by default, see opts.R -- none of them flip the sign).

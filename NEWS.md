@@ -24,6 +24,14 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`ttsfm(model_name = "TTNE")` clipped its log-likelihood's exponents.** The
+  density was formed as `log(pnorm(beta) * exp(alpha) + pnorm(b) * exp(a))` in
+  levels, with `alpha` and `a` capped before exponentiating to avoid overflow,
+  so the reported density was wrong wherever the cap bound and either `pnorm()`
+  could underflow. It is now a log-sum-exp of the two terms, exact with no cap.
+  On 20 simulated two-tier samples, 19 fits are unchanged to about 1e-6 and one
+  reaches a log-likelihood 1.2e-4 higher.
+
 * **`ivsfm()` could report efficiencies above 1.** The JLMS predictor divided
   `dnorm(zz)` by `pnorm(zz)` floored at machine epsilon, so for a firm well above
   the frontier (`zz` below about -8.1) the inefficiency estimate came back
