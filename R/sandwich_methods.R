@@ -25,8 +25,10 @@ bread.sfareg <- function(x, ...) {
 estfun.sfareg <- function(x, ...) {
   if (is.null(x$objective)) {
     stop("estfun(): this fit does not retain its likelihood, so the score ",
-      "matrix cannot be built. Refit with keep_objective = TRUE (accepted by ",
-      "sfm() and psfm()).",
+      "matrix cannot be built. Refit with keep_objective = TRUE: that works for ",
+      "sfm() fits, and for psfm() only with \"GTRE\" (estimator = \"sml\"), ",
+      "\"TRE\", \"GTRE_Z\" and \"TRE_Z\". Other psfm() models and the other ",
+      "entry points have no per-observation likelihood.",
       call. = FALSE
     )
   }

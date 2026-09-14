@@ -24,6 +24,12 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`psfm(keep_objective = TRUE)` was silently ignored** for every model except
+  `"GTRE"` (simulated ML), `"TRE"`, `"GTRE_Z"` and `"TRE_Z"`, and `estfun()`'s
+  error then advised refitting with `keep_objective = TRUE` -- which could not
+  help. `psfm()` now warns when the argument has no effect, and the message
+  says which models retain their likelihood.
+
 * **`psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with
   "0 < ctrl$rhoend is not TRUE"** when the random-effects regression that seeds
   them put the firm-effect variance on its boundary. Its firm effects are then

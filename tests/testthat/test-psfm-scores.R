@@ -69,3 +69,31 @@ test_that("a psfm() fit without a per-observation likelihood still says so", {
     individual = "name", time = "year"))
   expect_error(estfun.sfareg(fit), "does not retain its likelihood")
 })
+
+test_that("keep_objective = TRUE warns for a psfm() model that cannot retain it", {
+  skip_on_cran()
+  d <- .score_panel()
+  expect_warning(
+    fit <- psfm(y_ssfe ~ x1 + x2, model_name = "PL80", data = d,
+      individual = "name", time = "year", keep_objective = TRUE),
+    "keep_objective = TRUE has no effect"
+  )
+  expect_null(fit$objective)
+  expect_error(estfun.sfareg(fit), "only with \"GTRE\"")
+})
+
+test_that("keep_objective = TRUE does not warn for the models that retain it", {
+  skip_on_cran()
+  d <- .score_panel()
+  w <- character(0)
+  fit <- withCallingHandlers(
+    psfm(y_tre ~ x1 + x2, model_name = "TRE", data = d, individual = "name",
+      halton_num = 30, rand.gtre = 3, keep_objective = TRUE),
+    warning = function(cnd) {
+      w <<- c(w, conditionMessage(cnd))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_false(any(grepl("keep_objective", w)))
+  expect_false(is.null(fit$objective))
+})

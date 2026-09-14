@@ -120,6 +120,18 @@ psfm <- function(formula,
     )
   }
 
+  ## Only the simulated-ML likelihoods can be retained; say so rather than
+  ## silently returning a fit the score-based tools cannot use (gap H14).
+  if (isTRUE(keep_objective) && !model_name %in% c("GTRE", "TRE", "GTRE_Z", "TRE_Z")) {
+    warning("keep_objective = TRUE has no effect for model_name = \"", model_name,
+      "\": only \"GTRE\" (estimator = \"sml\"), \"TRE\", \"GTRE_Z\" and \"TRE_Z\" ",
+      "retain their likelihood. Score-based tools (influence_sfa(), ",
+      "vcov(type = \"bhhh\"), sandwich and clustered standard errors, TIC(), ",
+      "vuong()) are unavailable for this fit.",
+      call. = FALSE
+    )
+  }
+
   .check_model_formula_pipes(formula, model_name)
 
   ## Accept an ordinary data.frame (or tibble/data.table) as well as a
