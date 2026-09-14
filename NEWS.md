@@ -1,5 +1,19 @@
 # sfa 1.2.1
 
+## Bug fixes
+
+* **`psfm()` died with "system is exactly singular" for `PL80`, `BC92`,
+  `K1990`, `K1990modified` and `SSFE` on a between-rank-deficient design**,
+  such as `factor(year)` in an unbalanced panel. None of these models uses the
+  random-effects starting regression -- each builds its own starting values --
+  but `start_panel()` ran it for them anyway, and did so outside the
+  collinearity guard, which skips these models. The regression is now run only
+  for the seven models that read its result (`TRE_Z`, `GTRE_Z`, `TRE`, `GTRE`,
+  `GTRE_FML`, `GTRE_SEQ1`, `GTRE_SEQ2`). Reported from a replication of
+  Filippini and Greene (2016) on the Swiss railways panel, which had been
+  working around it by substituting a different variance-component method
+  inside `plm()`.
+
 ## Documentation
 
 * **`?endogeneity_test` now carries a size and power table.** The test shipped

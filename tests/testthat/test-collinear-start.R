@@ -130,3 +130,37 @@ test_that(".gtre_two_step_se() returns NA at the wrong-skew boundary", {
   expect_true(all(is.na(s5)))
   expect_named(s5, c("gamma_uv", "sigmaSq_uv", "gamma_hr", "sigmaSq_hr", "beta_0"))
 })
+
+test_that("models that do not use the RE starting regression never run it", {
+  ## Reported from the FilippiniGreene2016 replication: PL80, BC92, K1990,
+  ## K1990modified and SSFE all build their own starting values, but
+  ## start_panel() still ran plm(model = "random") for them -- outside the
+  ## collinearity guard, which skips these models -- and died with "system is
+  ## exactly singular" on a between-rank-deficient factor(year).
+  skip_if_not_installed("plm")
+  d <- .mk_cohort_panel()
+  f <- y ~ x1 + x2 + factor(year)
+  chk <- .check_collinearity(f, d, "id")
+  expect_true(length(chk$between_drop) > 0) ## the design that used to crash
+  for (mn in c("PL80", "BC92", "K1990", "K1990modified", "SSFE")) {
+    fit <- tryCatch(
+      suppressWarnings(psfm(f, model_name = mn, data = d, individual = "id")),
+      error = function(e) e
+    )
+    expect_false(inherits(fit, "error"),
+                 info = paste(mn, if (inherits(fit, "error")) conditionMessage(fit)))
+    if (!inherits(fit, "error")) expect_s3_class(fit, "sfareg")
+  }
+})
+
+test_that(".RE_START_MODELS lists exactly the models that read the RE start", {
+  ## These are the models start_panel() computes RE starting values for. A
+  ## model added here must actually consume alpha_hat/epsilon_hat; one removed
+  ## must build its own starts.
+  expect_setequal(
+    .RE_START_MODELS,
+    c("TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "GTRE_SEQ1", "GTRE_SEQ2")
+  )
+  expect_false(any(c("PL80", "BC92", "K1990", "K1990modified", "SSFE",
+                     "TFE", "TFE_WMLE", "FD") %in% .RE_START_MODELS))
+})

@@ -428,6 +428,10 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
   return(results)
 }
 
+## Models whose starting values come from the random-effects plm() fit below.
+## See notes/code_history/starting.values.md ("RE start regression scope").
+.RE_START_MODELS <- c("TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "GTRE_SEQ1", "GTRE_SEQ2")
+
 start_panel <- function(formula_x, data, model_name, start_val, intercept, x_vars_vec,
                         individual = NULL, collinear_chk = NULL) {
   sfa_eps <- sfa_alp <- exp_eta <- exp_u <- sigma_v <- sigma_u <-
@@ -441,7 +445,7 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
     if (model_name %in% c("TFE", "TFE_WMLE", "FD")) {
       plm_tfe <- plm(formula_x, data, effect = "individual", model = "within")
       plm_fd <- plm(formula_x, data, effect = "individual", model = "pooling")
-    } else {
+    } else if (model_name %in% .RE_START_MODELS) {
       ## Guard the random-effects starting-value regression against a
       ## rank-deficient BETWEEN-individual design. The reduction happens at
       ## COLUMN granularity (see .re_start_design): dropping whole terms cannot
@@ -493,7 +497,7 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
     start_v <- start_val
   }
 
-  if (isFALSE(is.numeric(start_val)) & model_name %in% c("TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "GTRE_SEQ1", "GTRE_SEQ2")) {
+  if (isFALSE(is.numeric(start_val)) & model_name %in% .RE_START_MODELS) {
     ## Variance components for the starting values come from the SAME
     ## sequential decomposition that psfm(model_name = "GTRE_SEQ1") reports.
     fit_eps_st <- .fit_nhn_intercept(as.numeric(epsilon_hat))
