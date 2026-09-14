@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Ten further defects in already-released code are fixed in the same submission,
+Eleven further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -68,6 +68,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
   the best maximum and with the wrong regime slope. It now tries several link
   intercepts before optimizing, as `"ZISF"` already did; on the same samples
   no fit is more than 0.53 short.
+* `ivsfm()` floored `pnorm()` at machine epsilon in its JLMS predictor, so a
+  firm well above the frontier got a negative inefficiency and an efficiency
+  above 1 (71 for a firm 20 above the frontier under `"C2SLS"`). Now in logs;
+  estimates are unaffected.
 
 Four further defects in released code made a call fail rather than return a
 wrong answer:

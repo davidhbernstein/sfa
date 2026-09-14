@@ -176,7 +176,7 @@ ivsfm <- function(formula,
     mus <- -as.numeric(eps) * su0^2 / ssq
     sst <- sqrt(su0^2 * sv0^2 / ssq)
     zz <- mus / sst
-    jlms <- mus + sst * stats::dnorm(zz) / pmax(stats::pnorm(zz), cz$MIN_POSITIVE)
+    jlms <- .jlms_u(mus, sst)
 
     results <- list(
       t(out), NULL, end.time(Start.Time), par, model_name, formula, endogenous,
@@ -440,7 +440,7 @@ ivsfm <- function(formula,
   mus <- -eps_t * su_i^2 / s_i^2
   sst <- su_i * sc / s_i
   zz <- mus / sst
-  jlms <- mus + sst * stats::dnorm(zz) / pmax(stats::pnorm(zz), cz$MIN_POSITIVE)
+  jlms <- .jlms_u(mus, sst)
 
   ## vcov_rho travels with the fit so endogeneity_test() can form the JOINT
   ## Wald statistic; the diagonal alone would only give one-at-a-time t-ratios.

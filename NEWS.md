@@ -24,6 +24,14 @@
   local seed and the caller's RNG state is restored; the scores still carry
   the integrator's own error of about 1e-3, now the same error every time.
 
+* **`ivsfm()` could report efficiencies above 1.** The JLMS predictor divided
+  `dnorm(zz)` by `pnorm(zz)` floored at machine epsilon, so for a firm well above
+  the frontier (`zz` below about -8.1) the inefficiency estimate came back
+  negative and `exp(-jlms)` exceeded 1: on simulated data with one firm 20 above
+  the frontier, `model_name = "C2SLS"` reported an efficiency of 71, and 25
+  million at 80 above. It is now computed in logs and cannot be negative.
+  Estimates are unaffected.
+
 * **`zsfm(model_name = "ZISF_Z")` often stopped in a spurious local optimum.**
   Its likelihood has a second basin in the regime-link coefficients, 10 to 64
   log-likelihood units below the best maximum. In 50 simulated samples (40%
