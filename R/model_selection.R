@@ -52,9 +52,28 @@
       call. = FALSE
     )
   }
+  ## At a parameter bound, or with a Hessian that is not positive definite, the
+  ## Takeuchi penalty is undefined and can come out absurd: -2.6e14 for an NR fit
+  ## with sigma_v on its bound, which gave that model all of sfma()'s TIC weight
+  ## (gap A37). Refuse rather than return it.
+  ev <- eigen(I_sum, symmetric = TRUE, only.values = TRUE)$values
+  if (!all(is.finite(ev)) || min(ev) <= 0) {
+    stop("TIC(): the Hessian is not positive definite (smallest eigenvalue ",
+      format(min(ev), digits = 3), "), as happens when a parameter sits on a ",
+      "bound; the Takeuchi penalty is undefined for this fit.",
+      call. = FALSE
+    )
+  }
   H_sum <- crossprod(G)
   Iinv <- .safe_inverse(I_sum, name = "Hessian")$value
-  sum(diag(H_sum %*% Iinv))
+  pen <- sum(diag(H_sum %*% Iinv))
+  if (!is.finite(pen) || pen <= 0) {
+    stop("TIC(): the Takeuchi penalty is not positive (", format(pen, digits = 3),
+      "), so it is undefined for this fit.",
+      call. = FALSE
+    )
+  }
+  pen
 }
 
 TIC <- function(object, detail = FALSE) {
