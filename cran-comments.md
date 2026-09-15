@@ -148,14 +148,16 @@ R CMD check --as-cran sfa_1.2.1.tar.gz
 ```
 
 with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5.2 (aarch64), on a tarball built
-**with** the vignette. Result: **0 errors | 0 warnings | 2 notes**, both
-properties of the check machine rather than of the package.
+**with** the vignette. Result: **0 errors | 0 warnings | 1 note**, a property
+of the check machine rather than of the package:
 
-1. `checking for future file timestamps ... NOTE` -- "unable to verify current
-   time": the check could not reach a time server from this machine.
-2. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
+1. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
    not recent enough and package `V8` is unavailable, so the HTML-validation
    and math-rendering sub-checks are skipped rather than failed.
+
+An earlier run of this version also noted `checking for future file timestamps`
+("unable to verify current time") when no time server could be reached; that
+stage is `OK` in the run reported here.
 
 Every other stage is `OK`, including `checking examples`, `checking examples
 with --run-donttest`, `checking tests`, `checking top-level files`, `checking
@@ -172,14 +174,14 @@ version: there `--as-cran` alone gave `checking examples ... [11s/11s] OK`
 followed by `checking examples with --run-donttest ... [127s/128s] OK`, while
 `--as-cran --run-donttest` on the same tarball gave `checking examples ...
 [126s/127s] NOTE`. On the tarball being submitted, `--as-cran` alone gives
-`checking examples ... [14s/14s] OK` and `checking examples with --run-donttest
-... [180s/180s] OK`. The command above is the one reported.
+`checking examples ... [11s/11s] OK` and `checking examples with --run-donttest
+... [132s/133s] OK`. The command above is the one reported.
 
 ## Check time
 
-`checking tests ... [34m/34m] OK` under `NOT_CRAN=true`, which runs the Monte
+`checking tests ... [25m/25m] OK` under `NOT_CRAN=true`, which runs the Monte
 Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 16 | SKIP 9 |
-PASS 3964`. Under CRAN's own conditions that stage is about a minute, because
+PASS 3987`. Under CRAN's own conditions that stage is about a minute, because
 the tests needing a statistically meaningful sample size are behind
 `skip_on_cran()`. The 16 warnings are deliberate diagnostics being exercised by
 the tests that exist to fire them -- boundary reports from Greene's true fixed
@@ -188,9 +190,9 @@ and the `model_name = "TFE"` rename notice -- together with warnings raised by
 `plm` and by `optim()`'s numerical Hessian stepping outside its own box. None
 accompanies a failed expectation.
 
-`checking examples` is 14 seconds and `checking examples with --run-donttest`
-is 180 seconds. The examples that dominate the second are `influence_sfa`
-(47.2s), `zsfm` (26.5s) and `simulation_se` (24.8s); all are inside
+`checking examples` is 11 seconds and `checking examples with --run-donttest`
+is 132 seconds. The examples that dominate the second are `influence_sfa`
+(35.6s), `zsfm` (19.7s) and `simulation_se` (17.5s); all are inside
 `\donttest{}` because they fit models by simulated maximum likelihood over
 Halton draws, by quadrature, or by kernel regression with bandwidth
 cross-validation.
