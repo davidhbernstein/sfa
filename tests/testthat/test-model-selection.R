@@ -191,3 +191,25 @@ test_that("a moment-based fit has no likelihood-based criterion", {
   )
   expect_error(suppressWarnings(TIC(f)))
 })
+
+## Gap A37. At a fit with a parameter on its bound the Takeuchi penalty is
+## undefined; it came out as -2.6e14 for NR on this data and gave NR all of
+## sfma()'s TIC weight although NE fits better.
+test_that("TIC() refuses a fit whose Hessian is not positive definite, and sfma's TIC weights are sane", {
+  skip_on_cran()
+  set.seed(3); n <- 400; x1 <- rnorm(n); x2 <- rnorm(n); ui <- rexp(n, 1)
+  d <- data.frame(y = 1 + 0.5 * x1 + 0.5 * x2 + rnorm(n, 0, 0.4) - ui, x1 = x1, x2 = x2)
+  fe <- suppressWarnings(sfm(y ~ x1 + x2, model_name = "NE", data = d, keep_objective = TRUE))
+  expect_true(is.finite(TIC(fe)) && TIC(fe) > 0)
+  msgs <- character(0)
+  a <- withCallingHandlers(
+    suppressWarnings(sfma(y ~ x1 + x2, data = d, models = c("NHN", "NE", "NR"), weights = "tic")),
+    message = function(cnd) {
+      msgs <<- c(msgs, conditionMessage(cnd))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_identical(names(which.max(a$weights)), "NE")
+  ## The excluded candidate is named rather than dropped silently.
+  expect_true(any(grepl("NR gets no TIC weight", msgs, fixed = TRUE)))
+})

@@ -135,14 +135,21 @@ sfma <- function(formula, data,
   } else if (weights == "bic") {
     w <- ic_weights(-2 * ll + log(n) * k)
   } else if (weights == "tic") {
-    tic <- vapply(fits, function(f) {
-      tryCatch(TIC(f), error = function(e) NA_real_)
+    why <- character(0)
+    tic <- vapply(names(fits), function(m) {
+      tryCatch(TIC(fits[[m]]), error = function(e) {
+        why[m] <<- conditionMessage(e)
+        NA_real_
+      })
     }, numeric(1))
     if (all(!is.finite(tic))) {
       stop("sfma(weights = \"tic\"): no candidate produced a usable Takeuchi ",
-        "penalty. Refit with optHessian = TRUE.",
+        "penalty. ", paste0(names(why), ": ", why, collapse = " "),
         call. = FALSE
       )
+    }
+    if (!quiet) {
+      for (m in names(why)) message("sfma: ", m, " gets no TIC weight -- ", why[[m]])
     }
     tic[!is.finite(tic)] <- max(tic, na.rm = TRUE) + 1e3
     w <- ic_weights(tic)

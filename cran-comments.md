@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Thirteen further defects in already-released code are fixed in the same submission,
+Fifteen further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -78,8 +78,15 @@ all silent -- each returns a wrong or irreproducible result without an error:
 * `ttsfm(model_name = "TTNE")`'s E[exp(-u) | eps], and so its M6 metric, used
   `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`: 10.9% too high at
   `sigma_v = 0.3`. Corrected; checked against numerical integration.
+* `sfm(model_name = "NR")`'s log-density formed a difference of two very large
+  terms that lost its digits as `sigma_v` fell toward zero, reading too high,
+  so fits ran to the `sigma_v` bound (reported -539.9 against an exact -585.1
+  on one sample). Now formed exactly.
+* `TIC()` returned -2.64e14 for a fit with a parameter on its bound, and
+  `sfma(weights = "tic")` gave that model all the weight. It now refuses an
+  indefinite Hessian or a non-positive penalty.
 
-Four further defects in released code made a call fail rather than return a
+Seven further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -99,6 +106,18 @@ wrong answer:
   is not TRUE" when the random-effects regression seeding them estimated zero
   firm-effect variance: the starting step then began at zero scale, leaving
   `bobyqa()` no trust region. It now starts from a small positive scale.
+* A starting value just outside its bound stopped a fit with "Starting values
+  violate bounds" from `bobyqa()`; `psfm(model_name = "TRE")` on a boundary
+  random-effects start fitted on macOS and failed on Linux and Windows. Only
+  coordinates strictly outside their bounds are now moved inside; fits from
+  valid starts are unchanged.
+* `psfm(model_name = "GTRE_Z")` stopped when one firm's efficiency posterior
+  could not be inverted, losing estimates that had converged. That firm now
+  gets `NA` efficiencies with a warning.
+* `psfm(model_name = "GTRE_Z")` stopped on Windows and Linux with "sigma must
+  be positive definite" when a firm's posterior covariance lost positive
+  definiteness to rounding. It is now repaired when the defect is
+  rounding-sized; results where it was already valid are identical.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
@@ -129,14 +148,16 @@ R CMD check --as-cran sfa_1.2.1.tar.gz
 ```
 
 with `NOT_CRAN=true` set, R 4.5.2 on macOS 26.5.2 (aarch64), on a tarball built
-**with** the vignette. Result: **0 errors | 0 warnings | 2 notes**, both
-properties of the check machine rather than of the package.
+**with** the vignette. Result: **0 errors | 0 warnings | 1 note**, a property
+of the check machine rather than of the package:
 
-1. `checking for future file timestamps ... NOTE` -- "unable to verify current
-   time": the check could not reach a time server from this machine.
-2. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
+1. `checking HTML version of manual ... NOTE` -- HTML Tidy on this machine is
    not recent enough and package `V8` is unavailable, so the HTML-validation
    and math-rendering sub-checks are skipped rather than failed.
+
+An earlier run of this version also noted `checking for future file timestamps`
+("unable to verify current time") when no time server could be reached; that
+stage is `OK` in the run reported here.
 
 Every other stage is `OK`, including `checking examples`, `checking examples
 with --run-donttest`, `checking tests`, `checking top-level files`, `checking
@@ -153,14 +174,14 @@ version: there `--as-cran` alone gave `checking examples ... [11s/11s] OK`
 followed by `checking examples with --run-donttest ... [127s/128s] OK`, while
 `--as-cran --run-donttest` on the same tarball gave `checking examples ...
 [126s/127s] NOTE`. On the tarball being submitted, `--as-cran` alone gives
-`checking examples ... [14s/14s] OK` and `checking examples with --run-donttest
-... [180s/180s] OK`. The command above is the one reported.
+`checking examples ... [11s/11s] OK` and `checking examples with --run-donttest
+... [132s/133s] OK`. The command above is the one reported.
 
 ## Check time
 
-`checking tests ... [34m/34m] OK` under `NOT_CRAN=true`, which runs the Monte
+`checking tests ... [25m/25m] OK` under `NOT_CRAN=true`, which runs the Monte
 Carlo and bootstrap validations that CRAN skips: `FAIL 0 | WARN 16 | SKIP 9 |
-PASS 3964`. Under CRAN's own conditions that stage is about a minute, because
+PASS 3987`. Under CRAN's own conditions that stage is about a minute, because
 the tests needing a statistically meaningful sample size are behind
 `skip_on_cran()`. The 16 warnings are deliberate diagnostics being exercised by
 the tests that exist to fire them -- boundary reports from Greene's true fixed
@@ -169,9 +190,9 @@ and the `model_name = "TFE"` rename notice -- together with warnings raised by
 `plm` and by `optim()`'s numerical Hessian stepping outside its own box. None
 accompanies a failed expectation.
 
-`checking examples` is 14 seconds and `checking examples with --run-donttest`
-is 180 seconds. The examples that dominate the second are `influence_sfa`
-(47.2s), `zsfm` (26.5s) and `simulation_se` (24.8s); all are inside
+`checking examples` is 11 seconds and `checking examples with --run-donttest`
+is 132 seconds. The examples that dominate the second are `influence_sfa`
+(35.6s), `zsfm` (19.7s) and `simulation_se` (17.5s); all are inside
 `\donttest{}` because they fit models by simulated maximum likelihood over
 Halton draws, by quadrature, or by kernel regression with bandwidth
 cross-validation.

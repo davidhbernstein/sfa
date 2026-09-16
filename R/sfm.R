@@ -915,9 +915,10 @@ sfm <- function(formula,
         sigu <- x[2]
         sigma <- sqrt(2 * sigv^2 + sigu^2)
         z <- (eps * sigu / sigv) / sigma
-        ## The last term is log(2 * (phi(z) - z * Phi(-z))), taken stably (gap A26).
+        ## -(eps/sigv)^2/2 + z^2/2 is exactly -eps^2/sigma^2; formed as a difference
+        ## it cancels catastrophically as sigv -> 0 (gap A34). Last term: gap A26.
         like <- (log(pmax(sigv, .Machine$double.xmin)) - 2 * log(pmax(sigma, .Machine$double.xmin))
-          - 1 / 2 * (eps / sigv)^2 + 1 / 2 * z^2 + log(2) + .log_nr_g(z))
+          - eps^2 / sigma^2 + log(2) + .log_nr_g(z))
       }
 
       if (model_name == "THT") {
@@ -1385,8 +1386,10 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       sigma <- sqrt(2 * sig_v^2 + sig_u^2)
       z <- (eps_hat * sig_u / sig_v) / sigma
-      w <- z + sig_v * sig_u / sigma
-      exp_u_hat <- exp(1 / 2 * w^2 - 1 / 2 * z^2 + .log_nr_g(w) - .log_nr_g(z))
+      s <- sig_v * sig_u / sigma
+      w <- z + s
+      ## (w^2 - z^2)/2 = s z + s^2/2, without the cancellation (gap A34).
+      exp_u_hat <- exp(s * z + s^2 / 2 + .log_nr_g(w) - .log_nr_g(z))
       exp_u_hat <- pmax(exp_u_hat, 0)
     }
 
