@@ -189,8 +189,34 @@ predict.sfareg <- function(object, newdata = NULL,
   if (!is.null(newdata)) {
     stop("type = \"response\" is only available for the estimation sample.", call. = FALSE)
   }
-  s <- if (isTRUE(object$call$inefdec == FALSE)) -1 else 1
-  z$xb - s * as.numeric(u)
+  cost <- .is_cost_fit(object)
+  if (is.na(cost)) stop(.cost_fit_unknown("predict(type = \"response\")"), call. = FALSE)
+  z$xb - (if (cost) -1 else 1) * as.numeric(u)
+}
+
+## TRUE for a cost frontier (inefdec = FALSE), FALSE for production (the
+## default), NA if the call's `inefdec` is a name that can no longer be
+## evaluated. It is looked up where the formula was created, which is where a
+## variable passed as `inefdec` normally lives.
+.is_cost_fit <- function(object) {
+  v <- object$call$inefdec
+  if (is.null(v)) {
+    return(FALSE)
+  }
+  if (!is.logical(v)) {
+    env <- tryCatch(environment(stats::formula(object$formula)), error = function(e) NULL)
+    v <- tryCatch(eval(v, if (is.null(env)) globalenv() else env), error = function(e) NA)
+  }
+  if (length(v) != 1L || !is.logical(v) || is.na(v)) {
+    return(NA)
+  }
+  !v
+}
+
+.cost_fit_unknown <- function(what) {
+  paste0(what, ": cannot tell whether this fit is a production or a cost ",
+    "frontier, because its call gives `inefdec` as a name that no longer ",
+    "evaluates. Refit with inefdec = TRUE or FALSE written out.")
 }
 
 fitted.sfareg <- function(object, ...) .sfa_xb(object)$xb

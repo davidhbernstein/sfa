@@ -18,7 +18,8 @@ efficiency(object, type = c("bc", "jlms", "mode"), logDepVar = TRUE,
   uses the mode of the posterior of \eqn{u_i}.}
 \item{logDepVar}{\code{TRUE} (the default) if the dependent variable is on a
   log scale, so that efficiency is \eqn{\exp(-u_i)}; \code{FALSE} if it is on a
-  level scale, giving \eqn{1 - u_i / f(x_i)}.}
+  level scale, giving \eqn{1 - u_i / f(x_i)} for a production frontier and
+  \eqn{f(x_i) / (f(x_i) + u_i)} for a cost frontier (\code{inefdec = FALSE}).}
 \item{newdata}{Data to rebuild the fitted frontier from, needed only when
   \code{logDepVar = FALSE}. Supply it when the data used for the fit can no
   longer be recovered from the stored call.}
@@ -38,7 +39,11 @@ normal (\code{"NHN"}, \code{"NHN_Z"}, \code{"NE"}, \code{"NTN"}).
 \bold{Which scale.} The package elsewhere assumes throughout that the
 dependent variable is logged, which is the usual case and makes \eqn{u} a
 proportional shortfall. \code{logDepVar = FALSE} instead forms
-\eqn{(f(x_i) - u_i)/f(x_i)}. That is a ratio of two estimated quantities and is
+\eqn{(f(x_i) - u_i)/f(x_i)} for a production frontier, and for a cost frontier,
+where \eqn{y = f(x) + u + v}, cost efficiency \eqn{f(x_i)/(f(x_i) + u_i)}:
+minimum over actual cost, the level-scale counterpart of \eqn{\exp(-u_i)}. The
+orientation is read from the fit's \code{inefdec}, including when it was passed
+as a variable. That is a ratio of two estimated quantities and is
 less well behaved than the log version: it is undefined where the fitted
 frontier is zero and negative where \eqn{u} exceeds it, both of which happen
 near zero output. A warning is issued if any score comes back negative or

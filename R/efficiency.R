@@ -111,7 +111,12 @@ efficiency <- function(object,
       call. = FALSE
     )
   }
-  te <- 1 - u / f
+  ## A cost frontier has y = f + u + v, so its efficiency is minimum over actual
+  ## cost, f / (f + u) -- the level analogue of exp(-u) on the log scale. The
+  ## production form 1 - u/f was applied to both until gap A41.
+  cost <- .is_cost_fit(object)
+  if (is.na(cost)) stop(.cost_fit_unknown("efficiency(logDepVar = FALSE)"), call. = FALSE)
+  te <- if (cost) f / (f + u) else 1 - u / f
   if (any(!is.finite(te)) || any(te < 0, na.rm = TRUE)) {
     warning("efficiency(logDepVar = FALSE): ",
       sum(!is.finite(te) | te < 0, na.rm = TRUE),

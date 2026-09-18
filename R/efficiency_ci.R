@@ -31,6 +31,19 @@ efficiency_ci <- function(object, level = 0.95, type = c("both", "u", "te")) {
     u_hat <- .jlms_u(post$mu_star, post$sigma_star)
   }
   te_hat <- object$exp_u_hat
+  ## A data frame column recycles a vector whose length divides the row count,
+  ## so a mismatched predictor would be misaligned silently (GitHub issue #2).
+  n <- length(ci$lower)
+  for (nm in c("u_hat", "exp_u_hat")) {
+    v <- if (nm == "u_hat") u_hat else te_hat
+    if (!is.null(v) && length(v) != n) {
+      stop("efficiency_ci(): `object$", nm, "` has ", length(v), " values but ",
+        "the fitted posterior has ", n, ", so they cannot be matched to the ",
+        "same observations.",
+        call. = FALSE
+      )
+    }
+  }
 
   out <- data.frame(row.names = seq_along(ci$lower))
   if (type %in% c("both", "u")) {

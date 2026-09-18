@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Sixteen further defects in already-released code are fixed in the same submission,
+Seventeen further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -89,6 +89,9 @@ all silent -- each returns a wrong or irreproducible result without an error:
   starting point their optimizer was handed (on one simulated sample -449.5
   against a start of -259.6 in log-likelihood). The fit is now never worse
   than that start.
+* `efficiency(logDepVar = FALSE)` applied the production ratio `1 - u/f` to
+  cost frontiers too, where efficiency is `f / (f + u)`; cost-frontier
+  level-scale scores were too low. Production fits are unchanged.
 
 Eight further defects in released code made a call fail rather than return a
 wrong answer:

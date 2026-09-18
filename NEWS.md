@@ -2,6 +2,21 @@
 
 ## Bug fixes
 
+* **`efficiency(logDepVar = FALSE)` gave cost frontiers the production
+  formula.** On the level scale it returned `1 - u/f` for every fit; for a cost
+  frontier, where `y = f + u + v`, efficiency is minimum over actual cost,
+  `f / (f + u)`, the level-scale counterpart of the `exp(-u)` the default log
+  scale already reports. Cost-frontier level-scale scores from 1.2.0 were too
+  low (negative where `u` exceeded `f`). Production fits are unchanged. The
+  orientation is now read from the fit's `inefdec` even when it was passed as
+  a variable, which `predict(type = "response")` also could not do. Reported
+  in GitHub issue #2.
+
+* **`efficiency_ci()` could pair point estimates with the wrong
+  observations** if a fit's stored `u_hat` or `exp_u_hat` had a length that
+  divides the number of observations: a data-frame column silently recycles
+  such a vector. It now stops with a message instead (issue #2).
+
 * **`sfm(model_name = "NG")` and `"NNAK"` could return a fit far worse than a
   point they had already reached.** The three optimizer stages start from the
   best of NG's polished multistart candidates, and could end below it: on one
