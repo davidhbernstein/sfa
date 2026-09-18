@@ -197,6 +197,15 @@
   ever supplied `psfm_bootstrap()`'s optional progress bar, and the code already
   ran without it; its `pkgs` default no longer loads it on the workers.
 
+* **`tmvtnorm` is replaced by `mvtnorm`**, which `tmvtnorm` itself was built on:
+  13 recursive dependencies become none outside base R. `psfm()`'s GTRE
+  efficiency scores called `tmvtnorm::ptmvnorm()`, which for an untruncated
+  orthant is exactly `mvtnorm::pmvnorm()`; they now call that directly and are
+  bitwise identical. `data_gen_p()`'s truncated multivariate normal draw for the
+  `PL80_MVTN` column now comes from an internal Gibbs sampler (checked against
+  the exact truncated moments), so that column and `y_pl_mvtn` differ from
+  earlier versions for the same seed; every other column is unchanged.
+
 ## New features
 
 * **`psfm()` gains the simulated-ML draw controls `sfm()` has had since 1.2.0**

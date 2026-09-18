@@ -106,11 +106,7 @@ data_gen_p <-
     ## Pitt and Lee (1981) Model III: inefficiency is a T-vector drawn from a
     ## multivariate normal TRUNCATED to the negative orthant.
     Sig_mvtn <- sig_u^2 * ((1 - rho_mvtn) * diag(t) + rho_mvtn)
-    U_mvtn <- tmvtnorm::rtmvnorm(N,
-      mean = rep(0, t), sigma = Sig_mvtn,
-      lower = rep(-Inf, t), upper = rep(0, t),
-      algorithm = "gibbs", burn.in.samples = 100
-    )
+    U_mvtn <- .rtmvn_neg_orthant(N, Sig_mvtn)
     u_mvtn <- as.numeric(t(U_mvtn)) ## firm-major, matching the name/year order
     y_pl_mvtn <- cons + beta1 * x1 + beta2 * x2 + v + u_mvtn ## u <= 0 already
 

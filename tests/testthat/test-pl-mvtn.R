@@ -48,9 +48,7 @@ test_that("the likelihood is maximized at the truth", {
   set.seed(20); N <- 100; TT <- 4
   SU <- 0.8; RHO <- 0.5; SV <- 0.3; B <- c(0.5, 0.5)
   Sig <- SU^2 * ((1 - RHO) * diag(TT) + RHO)
-  U <- tmvtnorm::rtmvnorm(N, rep(0, TT), Sig, lower = rep(-Inf, TT),
-                          upper = rep(0, TT), algorithm = "gibbs",
-                          burn.in.samples = 100)
+  U <- sfa:::.rtmvn_neg_orthant(N, Sig)
   Y <- X <- vector("list", N)
   for (i in seq_len(N)) {
     Xi <- cbind(runif(TT, 1, 3), runif(TT, 1, 3))

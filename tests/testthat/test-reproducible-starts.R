@@ -43,7 +43,7 @@ test_that("TFE_WMLE fits are reproducible", {
   expect_identical(coef(f1), coef(f2))
 })
 
-## Gap A23. GTRE's and GTRE_Z's efficiency scores come from ptmvnorm(), which
+## Gap A23. GTRE's and GTRE_Z's efficiency scores come from mvtnorm::pmvnorm(), which
 ## integrates by randomized quasi-Monte Carlo: U and H differed between two
 ## identical fits by up to 0.4%, and every fit advanced the caller's RNG.
 test_that("GTRE (sml) and GTRE_Z efficiency scores are reproducible and leave the RNG alone", {

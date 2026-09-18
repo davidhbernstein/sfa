@@ -1,9 +1,15 @@
-## Gap A38. tmvtnorm::ptmvnorm() stopped GTRE_Z's efficiency scores on the
+## Gap A38. tmvtnorm::ptmvnorm(), then used, stopped GTRE_Z's efficiency scores on the
 ## Windows and Ubuntu oldrel-1 runners with "sigma must be positive definite":
 ## a firm's posterior covariance had lost positive definiteness. .tmv_sigma()
 ## repairs a rounding-sized defect and refuses anything larger.
 
-.tmv_check <- function(M) tmvtnorm:::checkSymmetricPositiveDefinite(M)
+## tmvtnorm's own conditions (it is no longer a dependency, gap A25).
+.tmv_check <- function(M) {
+  if (!isSymmetric(M, tol = sqrt(.Machine$double.eps))) stop("sigma must be a symmetric matrix")
+  if (any(diag(M) <= 0)) stop("sigma all diagonal elements must be positive")
+  if (det(M) <= 0) stop("sigma must be positive definite")
+  invisible(NULL)
+}
 
 .with_eigenvalues <- function(ev, seed) {
   set.seed(seed)

@@ -1004,10 +1004,11 @@
   )
 }
 
-## tmvtnorm::ptmvnorm() refuses a covariance unless it is symmetric with a
-## positive diagonal and det > 0. A posterior covariance is positive definite in
-## theory; when rounding breaks that (gap A38) the eigenvalues are clipped at a
-## relative floor. A defect larger than rounding is refused, not repaired.
+## An orthant probability of the GTRE posterior needs a covariance that is
+## symmetric with a positive diagonal and det > 0 (tmvtnorm, used until gap A25,
+## refused anything else). It is positive definite in theory; when rounding
+## breaks that (gap A38) the eigenvalues are clipped at a relative floor. A
+## defect larger than rounding is refused, not repaired.
 .tmv_sigma <- function(L, name = "posterior system", floor_rel = 1e-10,
                        tol_rel = sqrt(.Machine$double.eps)) {
   ok <- function(M) {
@@ -1031,6 +1032,24 @@
     stop(name, ": the posterior covariance could not be made positive definite.", call. = FALSE)
   }
   R
+}
+
+## n draws from N(0, Sigma) truncated to the negative orthant (gap A25, replacing
+## tmvtnorm::rtmvnorm()). One Gibbs chain per draw, so the draws are independent:
+## each coordinate's full conditional is a normal truncated at zero, drawn with
+## truncnorm, for `burn` sweeps. Checked against the exact truncated moments.
+.rtmvn_neg_orthant <- function(n, Sigma, burn = 100L) {
+  d <- nrow(Sigma)
+  P <- solve(Sigma)
+  sd_c <- 1 / sqrt(diag(P))
+  X <- matrix(-sqrt(diag(Sigma)), n, d, byrow = TRUE)
+  for (s in seq_len(burn)) {
+    for (j in seq_len(d)) {
+      mu <- -as.numeric(X[, -j, drop = FALSE] %*% P[-j, j]) / P[j, j]
+      X[, j] <- truncnorm::rtruncnorm(n, a = -Inf, b = 0, mean = mu, sd = sd_c[j])
+    }
+  }
+  X
 }
 
 

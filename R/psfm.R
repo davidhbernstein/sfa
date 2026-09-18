@@ -638,7 +638,7 @@ psfm <- function(formula,
 
     ## TE Measurements : GTRE
     if (model_name == "GTRE") {
-      ## ptmvnorm() integrates by randomized quasi-Monte Carlo: fix its draws
+      ## mvtnorm::pmvnorm() integrates by randomized quasi-Monte Carlo: fix its draws
       ## and restore the caller's stream (notes/code_history/psfm.md, gap A23).
       .rng_state <- .rng_snapshot()
       set.seed(20260914L)
@@ -671,16 +671,16 @@ psfm <- function(formula,
       }
 
       res_d_fn <- function(i) {
-        ptmvnorm(
-          lowerx = rep(0, t[i] + 1), upperx = rep(Inf, t[i] + 1),
+        mvtnorm::pmvnorm(
+          lower = rep(0, t[i] + 1), upper = rep(Inf, t[i] + 1),
           mean = as.numeric(ARR[[i]] %*% e_i[[i]]),
           sigma = LAM[[i]]
         )[1]
       }
 
       res_n_fn <- function(i) {
-        ptmvnorm(
-          lowerx = rep(0, t[i] + 1), upperx = rep(Inf, t[i] + 1),
+        mvtnorm::pmvnorm(
+          lower = rep(0, t[i] + 1), upper = rep(Inf, t[i] + 1),
           mean = as.numeric(ARR[[i]] %*% e_i[[i]] + LAM[[i]] %*% c(-1, rep(0, t[i]))),
           sigma = LAM[[i]]
         )[1]
@@ -726,8 +726,8 @@ psfm <- function(formula,
       }
 
       res_n_t_fn <- function(i) {
-        ptmvnorm(
-          lowerx = rep(0, t_exp[[i]] + 1), upperx = rep(Inf, t_exp[[i]] + 1),
+        mvtnorm::pmvnorm(
+          lower = rep(0, t_exp[[i]] + 1), upper = rep(Inf, t_exp[[i]] + 1),
           mean = as.numeric(ARR_exp[[i]] %*% e_i_exp[[i]] + LAM_exp[[i]] %*% new_t_exp[[i]]),
           sigma = LAM_exp[[i]]
         )[1]
@@ -1059,7 +1059,7 @@ psfm <- function(formula,
 
     ## Post-estimation GTRE technical efficiency recovery
     .gtre_te <- function(opt, prep, inefdec_n) {
-      ## Fixed draws for ptmvnorm(), caller's stream restored (gap A23).
+      ## Fixed draws for mvtnorm::pmvnorm(), caller's stream restored (gap A23).
       .rng_state <- .rng_snapshot()
       on.exit(.rng_restore(.rng_state), add = TRUE)
       set.seed(20260914L)
@@ -1214,9 +1214,9 @@ psfm <- function(formula,
       res_d <- mapply(
         FUN = function(Ti, ARR_i, e_i, LAM_i) {
           if (anyNA(LAM_i)) return(NA_real_)
-          ptmvnorm(
-            lowerx = rep(0, Ti + 1),
-            upperx = rep(Inf, Ti + 1),
+          mvtnorm::pmvnorm(
+            lower = rep(0, Ti + 1),
+            upper = rep(Inf, Ti + 1),
             mean   = as.numeric(ARR_i %*% e_i),
             sigma  = LAM_i
           )[1]
@@ -1232,9 +1232,9 @@ psfm <- function(formula,
         FUN = function(Ti, ARR_i, e_i, LAM_i) {
           if (anyNA(LAM_i)) return(NA_real_)
           shift_vec <- c(-1, rep(0, Ti))
-          ptmvnorm(
-            lowerx = rep(0, Ti + 1),
-            upperx = rep(Inf, Ti + 1),
+          mvtnorm::pmvnorm(
+            lower = rep(0, Ti + 1),
+            upper = rep(Inf, Ti + 1),
             mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
             sigma  = LAM_i
           )[1]
@@ -1275,9 +1275,9 @@ psfm <- function(formula,
             shift_vec <- rep(0, Ti + 1)
             shift_vec[j + 1] <- -1
 
-            rn_t <- ptmvnorm(
-              lowerx = rep(0, Ti + 1),
-              upperx = rep(Inf, Ti + 1),
+            rn_t <- mvtnorm::pmvnorm(
+              lower = rep(0, Ti + 1),
+              upper = rep(Inf, Ti + 1),
               mean   = as.numeric(ARR_i %*% e_i + LAM_i %*% shift_vec),
               sigma  = LAM_i
             )[1]

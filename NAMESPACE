@@ -6,7 +6,6 @@ import("minqa") # import whole package
 import("randtoolbox") # import whole package
 import("mnormt") # import whole package
 import("truncnorm") # import whole package
-import("tmvtnorm") # import whole package
 import("Formula") # import whole package
 import("pso") # import whole package 
 import("numDeriv") # import whole package
