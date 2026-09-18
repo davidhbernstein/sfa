@@ -62,8 +62,8 @@ with \eqn{u_i} independent of \eqn{(v_i, \xi_i)}. Endogeneity is the
 correlation between \eqn{\xi} and \eqn{v}: the regressors are correlated with
 the \emph{noise}, not with the inefficiency.
 
-Conditioning \eqn{v} on \eqn{\xi} turns this into an ordinary normal--half
-normal frontier in a shifted residual with a smaller noise variance,
+Conditioning \eqn{v} on \eqn{\xi} turns this into an ordinary normal--half-normal
+frontier in a shifted residual with a smaller noise variance,
 \deqn{\mu_{c,i} = \Sigma_{v\xi}\Sigma_{\xi\xi}^{-1}\xi_i, \qquad
       \sigma_c^2 = \sigma_V^2 - \Sigma_{v\xi}\Sigma_{\xi\xi}^{-1}\Sigma_{\xi v}}
 which is what makes the likelihood closed-form and needs no simulation.

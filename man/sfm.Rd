@@ -23,19 +23,19 @@
 \item{model_name}{Which distributional pair to fit. The noise term \eqn{v} is
 normal except where stated, and the one-sided inefficiency term \eqn{u} follows:
 \describe{
-  \item{\code{"NHN"}}{half normal.}
-  \item{\code{"NHN_Z"}}{half normal with heteroskedastic \eqn{\sigma_u}, parameterized by the determinants \eqn{z} given in the second part of the formula (\code{y ~ x | z}) as \eqn{\sigma_u = \exp(z'\delta)}.}
+  \item{\code{"NHN"}}{half-normal.}
+  \item{\code{"NHN_Z"}}{half-normal with heteroskedastic \eqn{\sigma_u}, parameterized by the determinants \eqn{z} given in the second part of the formula (\code{y ~ x | z}) as \eqn{\sigma_u = \exp(z'\delta)}.}
   \item{\code{"NE"}}{exponential.}
   \item{\code{"NE_Z"}}{exponential with heteroskedastic \eqn{\sigma_u}, parameterized as for \code{"NHN_Z"}.}
   \item{\code{"NTN"}}{truncated normal.}
-  \item{\code{"NR"}}{Rayleigh. Note this is a distinct family from \code{"NHN"}, not a reparameterization of it: the Rayleigh density carries an extra factor of \eqn{u}, and its standardized skewness is fixed at -0.631 against the half normal's -0.996.}
+  \item{\code{"NR"}}{Rayleigh. Note this is a distinct family from \code{"NHN"}, not a reparameterization of it: the Rayleigh density carries an extra factor of \eqn{u}, and its standardized skewness is fixed at -0.631 against the half-normal's -0.996.}
   \item{\code{"NU"}}{uniform.}
   \item{\code{"NG"}}{gamma. See \code{ng_starts} under \sQuote{Value} -- this likelihood determines \eqn{E[u] = \mu\sigma_u} far better than either factor separately.}
   \item{\code{"NNAK"}}{Nakagami, with shape \eqn{m}. Nests \code{"NR"} at \eqn{m = 1}. The shape is weakly identified in practice, so \eqn{\sigma_u} and \eqn{m} are strongly correlated across samples.}
   \item{\code{"NGE"}}{generalized exponential.}
   \item{\code{"NLN"}}{lognormal. Estimated by simulated maximum likelihood; see \code{Nsim} and \sQuote{Details}.}
   \item{\code{"NW"}}{Weibull. Also simulated maximum likelihood.}
-  \item{\code{"tHN"}}{half normal, with Student-\emph{t} noise.}
+  \item{\code{"tHN"}}{half-normal, with Student-\emph{t} noise.}
   \item{\code{"TSL"}}{truncated skew-Laplace.}
   \item{\code{"THT"}}{half \emph{t}, with Student-\emph{t} noise.}
   \item{\code{"NGB2"}}{generalized beta of the second kind (Makiela and Mazur 2022), with scale \eqn{\sigma_u} and three shape parameters \eqn{(\nu, \psi, \tau)}. The most general one-sided family here: it nests \code{"NHN"}, \code{"NE"}, \code{"NG"} and \code{"NW"} as limits and the half-Student \eqn{t} exactly. Simulated maximum likelihood; see \sQuote{Details}.}
@@ -101,7 +101,7 @@ See \sQuote{Details}.}
   \item{cols_boot}{Integer. Number of nonparametric bootstrap resamples used to obtain standard errors under \code{estimator = "cols"} or \code{"acols"}. Zero (the default) skips the bootstrap, in which case only the OLS slope standard errors are reported and the scale parameters and corrected intercept carry \code{NA}. Ignored when \code{estimator = "mle"}.}
   \item{rand.cols}{Integer. Seed for the COLS bootstrap, for reproducibility. The caller's random-number stream is restored afterwards. Default \code{NULL}.}
 }
-\details{The options include the Normal-Half Normal (NHN), Normal-exponential (NE), Student's t-Half t (THT), the Normal-Truncated Normal (NTN), the Normal-Uniform (NU), the Normal-Generalized Exponential (NGE), the Normal-Lognormal (NLN), the Normal-Weibull (NW), the Student's t-half normal (tHN) and the Normal-Truncated Skew-Laplace (TSL).  NHN_Z and NE_Z are extensions for the NHN and NE models that allow for modeling the u-component of those models with determinants of inefficiency.
+\details{The options include the Normal-Half-Normal (NHN), Normal-exponential (NE), Student's t-Half t (THT), the Normal-Truncated Normal (NTN), the Normal-Uniform (NU), the Normal-Generalized Exponential (NGE), the Normal-Lognormal (NLN), the Normal-Weibull (NW), the Student's t-half-normal (tHN) and the Normal-Truncated Skew-Laplace (TSL).  NHN_Z and NE_Z are extensions for the NHN and NE models that allow for modeling the u-component of those models with determinants of inefficiency.
 
 \bold{Modified ordinary least squares (\code{estimator = "cols"} or \code{"mols"}).} The moment estimator of Olson, Schmidt and Waldman (1980, \emph{Journal of Econometrics}), standardly called MOLS. Note the name: this is \emph{not} Winsten's corrected OLS, which shifts the intercept by the largest residual and estimates no variance parameters at all. The package has shipped this estimator under the spelling \code{"cols"} since it was introduced, so that spelling continues to work and is not deprecated; \code{"mols"} is accepted as an exact synonym so the method can be found under its usual name. OLS is consistent for the \emph{slopes} of a composed-error frontier whatever the one-sided distribution; only the intercept is biased, by \eqn{E[u]}, because the composed error does not have zero mean. COLS therefore keeps the OLS slopes, inverts the central moments of the OLS residuals for the scale parameters, and shifts the intercept up by the implied \eqn{E[u]}. Writing \eqn{m_2}, \eqn{m_3} for the second and third central moments of \eqn{e = v - u}: for \code{"NHN"}, \eqn{m_3 = \sigma_u^3\sqrt{2/\pi}(1-4/\pi)} and \eqn{m_2 = \sigma_v^2 + \sigma_u^2(1-2/\pi)} with \eqn{E[u] = \sigma_u\sqrt{2/\pi}}; for \code{"NE"}, \eqn{m_3 = -2\sigma_u^3} and \eqn{m_2 = \sigma_v^2+\sigma_u^2} with \eqn{E[u] = \sigma_u}; for \code{"NG"}, from the third and fourth cumulants, \eqn{\sigma_u = -k_4/(3k_3)} and \eqn{\mu = -k_3/(2\sigma_u^3)} with \eqn{E[u] = \mu\sigma_u}.
 
@@ -146,7 +146,7 @@ likelihoods:
 \tabular{ll}{
  \bold{restriction} \tab \bold{distribution} \cr
  \eqn{\nu_u \to \infty} \tab generalized gamma \cr
- \eqn{\nu_u \to \infty}, \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half normal (\code{"NHN"}) \cr
+ \eqn{\nu_u \to \infty}, \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half-normal (\code{"NHN"}) \cr
  \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u = 1} \tab exponential (\code{"NE"}) \cr
  \eqn{\nu_u \to \infty}, \eqn{\psi_u = 1} \tab gamma (\code{"NG"}) \cr
  \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u} \tab Weibull (\code{"NW"}), at scale \eqn{\sigma_u\psi_u^{1/\psi_u}} \cr
@@ -185,7 +185,7 @@ density on the same grid.
 It is \emph{not} estimated by simulated maximum likelihood, and the reason is
 worth knowing before reaching for simulation elsewhere. Written that way first,
 with 100 draws per proposal, the simulated likelihood was biased upward and the
-optimizer chased the bias: on \eqn{n = 400} generated from a half normal it
+optimizer chased the bias: on \eqn{n = 400} generated from a half-normal it
 walked to \eqn{\psi_u = 88}, \eqn{\tau = 0.22} -- a near point mass, where
 importance sampling from the inefficiency badly overstates the density -- and
 reported a log-likelihood of -336.9 where the exact value at those parameters
@@ -306,7 +306,7 @@ spread of repeated fits). Currently only implemented for
 \code{model_name = "NHN"} -- other models will error clearly if
 \code{robust != "mle"} is requested.
 
-\bold{The wrong-skewness suite (\code{estimator = "acols"} and \code{"cmle"}).} Both address the same defect from opposite directions, and neither changes the model. Waldman (1982) showed that when the OLS residuals of a Normal-Half Normal frontier are skewed the \emph{wrong} way -- positively, for a production frontier -- the OLS fit is a local maximum of the likelihood at \eqn{\hat\sigma_u = 0}, so the estimate says there is no inefficiency anywhere in the industry. Nothing is wrong with the data when this happens: Simar and Wilson (2009) point out that wrong skew arises routinely when \eqn{\sigma_u} is small relative to \eqn{\sigma_v}, entirely within the assumed model. \code{"acols"} removes the third moment from the moment estimator, since that is the only ingredient which can produce the boundary; \code{"cmle"} keeps the likelihood but adds two constraints the assumed density implies, which the boundary does not satisfy. See \link{sfa-wrongskew} for the other options the package offers and how they differ.
+\bold{The wrong-skewness suite (\code{estimator = "acols"} and \code{"cmle"}).} Both address the same defect from opposite directions, and neither changes the model. Waldman (1982) showed that when the OLS residuals of a Normal-Half-Normal frontier are skewed the \emph{wrong} way -- positively, for a production frontier -- the OLS fit is a local maximum of the likelihood at \eqn{\hat\sigma_u = 0}, so the estimate says there is no inefficiency anywhere in the industry. Nothing is wrong with the data when this happens: Simar and Wilson (2009) point out that wrong skew arises routinely when \eqn{\sigma_u} is small relative to \eqn{\sigma_v}, entirely within the assumed model. \code{"acols"} removes the third moment from the moment estimator, since that is the only ingredient which can produce the boundary; \code{"cmle"} keeps the likelihood but adds two constraints the assumed density implies, which the boundary does not satisfy. See \link{sfa-wrongskew} for the other options the package offers and how they differ.
 }
 \author{David H. Bernstein and Alexander Stead}
 \note{Standard errors require optHessian set to TRUE. When

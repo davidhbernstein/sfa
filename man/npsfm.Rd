@@ -17,12 +17,12 @@
 \item{method}{Which estimator to use.
 \describe{
   \item{\code{"FLW"}}{Fan, Li and Weersink (1996). Estimates \eqn{E[y|x]} by kernel regression, then recovers the scale parameters from the residuals -- by maximizing their concentrated likelihood in \eqn{\lambda} when \code{dist = "hn"}, and by inverting central moments otherwise. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is smooth.}
-  \item{\code{"SVKZ"}}{Simar, Van Keilegom and Zelenyuk (2017). Runs three local-linear regressions -- \eqn{y} on \eqn{x}, then the squared and cubed residuals on \eqn{x} -- and inverts the local moments, so \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} both vary with the covariates. No optimizer runs. Normal-half normal only.}
-  \item{\code{"PSZ"} (or \code{"KPST"})}{Park, Simar and Zelenyuk. Local \emph{maximum likelihood}: at every evaluation point the frontier and both log variance components are given local-linear expansions and the kernel-weighted normal-half normal likelihood is maximized in those \eqn{3(k+1)} parameters. One optimization per observation, so it is much slower than the two above. \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates.}
+  \item{\code{"SVKZ"}}{Simar, Van Keilegom and Zelenyuk (2017). Runs three local-linear regressions -- \eqn{y} on \eqn{x}, then the squared and cubed residuals on \eqn{x} -- and inverts the local moments, so \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} both vary with the covariates. No optimizer runs. Normal-half-normal only.}
+  \item{\code{"PSZ"} (or \code{"KPST"})}{Park, Simar and Zelenyuk. Local \emph{maximum likelihood}: at every evaluation point the frontier and both log variance components are given local-linear expansions and the kernel-weighted normal-half-normal likelihood is maximized in those \eqn{3(k+1)} parameters. One optimization per observation, so it is much slower than the two above. \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates.}
   \item{\code{"MY"}}{Martins-Filho and Yao. Iterative local likelihood: alternates a local-linear fit of the frontier at every evaluation point, holding \eqn{(\lambda,\sigma)} fixed, with a global update of \eqn{(\lambda,\sigma)} from the resulting composed residuals, until the scale parameters stop moving. Cost is (observations \eqn{\times} iterations) optimizations. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is local.}
   \item{\code{"SZ"}}{Simar and Zelenyuk (2011). Not an estimator in its own right: it takes an already-estimated smooth frontier and passes its fitted values through an output-oriented DEA, imposing the monotonicity and (under \code{rts = "vrs"}/\code{"crs"}) convexity that a kernel fit does not guarantee. Supply the prior fit through \code{prior.fit}, or leave it \code{NULL} to fit \code{"SVKZ"} first. The DEA step is solved by the \pkg{DEA} package, which must be installed; it is implemented for production frontiers only.}
 } Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
-\item{dist}{Distribution of the one-sided inefficiency term, for \code{method = "FLW"} only: \code{"hn"} (half normal, the default), \code{"exp"} (exponential), \code{"gamma"}, or \code{"unif"} (uniform on \eqn{[0,b]}). Every other method is derived for the half-normal case and errors for anything else.}
+\item{dist}{Distribution of the one-sided inefficiency term, for \code{method = "FLW"} only: \code{"hn"} (half-normal, the default), \code{"exp"} (exponential), \code{"gamma"}, or \code{"unif"} (uniform on \eqn{[0,b]}). Every other method is derived for the half-normal case and errors for anything else.}
 \item{regtype}{Kernel regression type passed to \code{np::npregbw}: \code{"lc"} (local constant, the default) or \code{"ll"} (local linear). Applies to \code{"FLW"}; \code{"SVKZ"} is local linear throughout by construction.}
 \item{bw.sel}{Bandwidth selection method: \code{"cv.ls"} (least-squares cross-validation, the default) or \code{"cv.aic"}. Ignored when \code{bw} is supplied.}
 \item{bw}{Optional numeric vector of bandwidths, one per covariate. When supplied, cross-validation is skipped and these are used directly -- useful for undersmoothing, for sensitivity analysis, or simply to avoid paying for bandwidth selection repeatedly in a simulation.}
@@ -92,7 +92,7 @@ if (requireNamespace("np", quietly = TRUE)) {
   d  <- data.frame(y = m + rnorm(n, 0, 0.25) - abs(rnorm(n, 0, 0.6)),
                    x1 = x1, x2 = x2)
 
-  ## Fan, Li and Weersink, normal-half normal
+  ## Fan, Li and Weersink, normal-half-normal
   f <- npsfm(y ~ x1 + x2, data = d, method = "FLW", dist = "hn")
   f
   head(fitted(f))

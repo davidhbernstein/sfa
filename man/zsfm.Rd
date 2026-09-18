@@ -27,7 +27,7 @@ Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,rand.psoptim = NULL)}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
 }
-\details{The zero-inefficiency stochastic frontier model treats the sample as a mixture of two regimes: with probability \eqn{p} a firm sits exactly on the frontier (\eqn{u = 0}, noise only), and with probability \eqn{1 - p} it is drawn from an ordinary normal-half normal frontier. It is the natural specification when some fraction of the sample is thought to be fully efficient, which an ordinary frontier cannot represent because it forces \eqn{u > 0} almost surely.
+\details{The zero-inefficiency stochastic frontier model treats the sample as a mixture of two regimes: with probability \eqn{p} a firm sits exactly on the frontier (\eqn{u = 0}, noise only), and with probability \eqn{1 - p} it is drawn from an ordinary normal-half-normal frontier. It is the natural specification when some fraction of the sample is thought to be fully efficient, which an ordinary frontier cannot represent because it forces \eqn{u > 0} almost surely.
 
 Under \code{"ZISF"} the mixing probability is a single constant, parameterized as \eqn{p = \exp(-|\gamma|)}. That parameterization is exactly symmetric in \eqn{\gamma}: \eqn{+\gamma} and \eqn{-\gamma} give identical fits and the optimizer may return either, so the sign of the reported \code{gamma} carries no meaning. Under \code{"ZISF_Z"} the probability varies with covariates \eqn{z} through the link chosen by \code{logit}.
 

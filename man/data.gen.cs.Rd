@@ -35,16 +35,16 @@
   
   **Specific Model Outputs (y_pcs variants):**
 \itemize{
-\item \code{y_pcs}: Normal-Half Normal (N-HN): \eqn{v \sim N(0, \sigma_v^2)}, \eqn{u \sim |N(0, \sigma_u^2)|}.
+\item \code{y_pcs}: Normal-Half-Normal (N-HN): \eqn{v \sim N(0, \sigma_v^2)}, \eqn{u \sim |N(0, \sigma_u^2)|}.
 \item \code{y_pcs_z}: N-HN with Heteroskedastic \eqn{\sigma_u}: \eqn{\sigma_{u,i} = \exp(0.9 + 0.6 Z_i)}, where \eqn{Z} is a uniform variable.
 \item \code{y_pcs_t}: T-Half T (T-HT): \eqn{v \sim T(\text{df}=a) \cdot \sigma_v}, \eqn{u \sim |T(\text{df}=a)| \cdot \sigma_u}.
 \item \code{y_pcs_st}: the column that actually matches \code{\link{sfm}}'s \code{THT}. \code{y_pcs_t} above draws its two components as two \emph{independent} \code{rt()} variates, which shares the degrees of freedom but not the mixing variable, so the composed error is not skew-t and \code{THT} cannot recover it. \code{y_pcs_st} uses the single common \eqn{\lambda \sim \Gamma(a/2, a/2)} of Tancredi (2002), i.e. \eqn{y = h + (\epsilon - z)/\sqrt{\lambda}}. \code{y_pcs_t} is retained unchanged only for backward compatibility.
-\item \code{y_pcs_thn}: Student's t--half normal, matching \code{\link{sfm}}'s \code{tHN}: \eqn{v \sim T(\text{df}=a) \cdot \sigma_v} and \eqn{u \sim |N(0,\sigma_u^2)|}, drawn \emph{independently}. Heavy-tailed noise with a conventional one-sided term -- distinct from both \code{y_pcs_t} and \code{y_pcs_st}, in which the inefficiency is heavy-tailed too.
+\item \code{y_pcs_thn}: Student's t--half-normal, matching \code{\link{sfm}}'s \code{tHN}: \eqn{v \sim T(\text{df}=a) \cdot \sigma_v} and \eqn{u \sim |N(0,\sigma_u^2)|}, drawn \emph{independently}. Heavy-tailed noise with a conventional one-sided term -- distinct from both \code{y_pcs_t} and \code{y_pcs_st}, in which the inefficiency is heavy-tailed too.
 \item \code{y_pcs_tn}: Normal-Truncated Normal (N-TN): \eqn{v \sim N(0, \sigma_v^2)}, \eqn{u \sim TN(\mu, \sigma_u^2)} on \eqn{[0, \infty)}.
 \item \code{y_pcs_e}: Normal-Exponential (N-E): \eqn{v \sim N(0, \sigma_v^2)}, \eqn{u \sim Exp(\phi)}, where \eqn{\phi = 1/\sigma_u}.
 \item \code{y_pcs_c}: Cauchy-Half Cauchy (C-HC): \eqn{v \sim Cauchy(0, \sigma_v)}, \eqn{u \sim |Cauchy(0, \sigma_u)|}.
 \item \code{y_pcs_u}: Normal-Half Uniform (N-HU): \eqn{v \sim N(0, \sigma_v^2)}, \eqn{u \sim U(0, \sigma_u)}.
-\item \code{y_pcs_w}: Normal + Cauchy - Half Normal: \eqn{v \sim N(0, \sigma_v^2) + Cauchy(0, \sigma_v)}, \eqn{u \sim |N(0, \sigma_u^2)|}. This introduces a composite \eqn{v} term.
+\item \code{y_pcs_w}: Normal + Cauchy - Half-Normal: \eqn{v \sim N(0, \sigma_v^2) + Cauchy(0, \sigma_v)}, \eqn{u \sim |N(0, \sigma_u^2)|}. This introduces a composite \eqn{v} term.
   }
   
   **Note:** The \code{rtruncnorm} function is required for \code{y_pcs_tn} and loads with the package.  In isolation it could be loaded by using \code{library(truncnorm)}.
@@ -103,7 +103,7 @@ data_sfa <- data_gen_cs(
 # Display the first few rows of the generated data
 head(data_sfa)
 
-# Example of a Normal-Half Normal SFA model data
+# Example of a Normal-Half-Normal SFA model data
 summary(data_sfa$y_pcs)
 plot(density(data_sfa$y_pcs))
 }

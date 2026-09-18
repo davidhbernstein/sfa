@@ -48,7 +48,7 @@ library(sfa)
 cs <- data_gen_cs(N = 1000, rand = 1, sig_u = 0.3, sig_v = 0.3,
                   cons = 0.5, beta1 = 0.5, beta2 = 0.5, a = 4, mu = 1)
 
-## Normal-half normal frontier
+## Normal-half-normal frontier
 fit <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = cs)
 
 summary(fit)
@@ -72,6 +72,29 @@ pd <- data_gen_p(t = 10, N = 100, rand = 100, sig_u = 1, sig_v = 0.3,
 fit_p <- psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
               data = pd, individual = "name")
 ```
+
+## Which model should I use?
+
+Start from what your data and question look like:
+
+| Situation | Use |
+|---|---|
+| A cross-section, the standard case | `sfm()` with `"NHN"` or `"NE"`; then check the distribution (next rows) |
+| You are not sure which inefficiency distribution fits | `spec_test_all()` and `moment_range()` on OLS residuals before fitting; `vuong()` or `TIC()` to compare fits; `sfma()` to average over them |
+| Residuals are skewed the "wrong" way, so `sigma_u` collapses to 0 | `skewness_test()` and `inefficiency_test()` first; then `esfm()`, `sfm(estimator = "acols" \| "cmle")`, or `copsfm(vdist = "glogistic")` -- see `?sfa-wrongskew` |
+| Inefficiency depends on firm characteristics | `sfm(y ~ x \| z, model_name = "NHN_Z")` (or `"NE_Z"`); `muhet` with `"NTN"` for Battese and Coelli (1995) |
+| The noise variance depends on covariates | `vhet = ~ z_v` in `sfm()` |
+| Some firms are fully efficient | `zsfm()` |
+| Firms use different technologies | `lcsfm()` |
+| Deviations are two-sided (e.g. bargaining) | `ttsfm()` |
+| The sample is selected | `selsfm()` |
+| A regressor is endogenous | `ivsfm()` |
+| Noise and inefficiency may be dependent | `copsfm()`, preferring `copula = "frank"` or `"clayton"` |
+| You do not want to assume a functional form | `npsfm()` |
+| A panel, separating firm effects from inefficiency | `psfm()` with `"TRE"` (random effects) or `"TFE"` (fixed effects, needs long `T`) |
+| A panel with persistent *and* transient inefficiency | `psfm()` with `"GTRE"` / `"GTRE_Z"` |
+| A panel, without a distribution for inefficiency | `psfm()` with `"SSFE"`, `"SSRE"`, `"SSCRE"`, `"CSS"`, `"LS"` or `"KSS"` |
+| Inefficiency with a time pattern | `psfm()` with `"BC92"`, `"K1990"` or `"K1990modified"`; `"PL80"` if it is time-invariant |
 
 ## The nine entry points
 
@@ -102,7 +125,7 @@ it would give one character two meanings.
 
 | `model_name` | Distribution of `u` |
 |---|---|
-| `NHN`, `NHN_Z` | half normal (`_Z`: with variance determinants) |
+| `NHN`, `NHN_Z` | half-normal (`_Z`: with variance determinants) |
 | `NE`, `NE_Z` | exponential (`_Z`: with variance determinants) |
 | `NTN` | truncated normal |
 | `NR` | Rayleigh |
@@ -112,7 +135,7 @@ it would give one character two meanings.
 | `NGE` | generalized exponential |
 | `NLN` | lognormal |
 | `NW` | Weibull |
-| `tHN` | half normal, with Student-*t* noise |
+| `tHN` | half-normal, with Student-*t* noise |
 | `THT` | half *t*, with Student-*t* noise |
 | `TSL` | truncated skew-Laplace |
 | `NGB2` | generalized beta of the second kind — nests `NHN`, `NE`, `NG` and `NW` as limits, and the half-*t* exactly |
@@ -200,8 +223,8 @@ efficiency alongside the class-conditional predictions.
 
 ### `ttsfm()` — two tier
 
-`TTNE` (normal–exponential–exponential), `TTHN` (normal–half normal–half
-normal), and `TTNLS` (nonlinear least squares, no distributional assumption
+`TTNE` (normal–exponential–exponential), `TTHN` (normal–half-normal–half-normal),
+and `TTNLS` (nonlinear least squares, no distributional assumption
 beyond the means of the two one-sided components).
 
 ### `selsfm()` — sample selection
@@ -468,6 +491,37 @@ scale parameters, so read the names rather than assuming a position.
 errors, so only `fitted()`, `residuals()`, `nobs()`, `print()` and `summary()`
 apply; read the frontier, its gradients and the scale estimates off the returned
 object (`$frontier`, `$frontier.grad`, `$sigma.u`, `$sigma.v`).
+
+## Troubleshooting
+
+- **`sigma_u` is essentially zero, with a wrong-skew warning.** The OLS
+  residuals are skewed the wrong way, and the maximum likelihood estimate is
+  then OLS with no inefficiency. `fit$wrong_skew` and `fit$sigma_u_at_bound`
+  record it. This is usually a feature of the sample, not a bug: see the
+  wrong-skew row of [Which model should I use?](#which-model-should-i-use).
+- **Standard errors are `NA`.** A parameter sits on its bound, or the Hessian
+  cannot be inverted there, so the usual standard errors are not valid. They
+  are reported as `NA` on purpose. `sfa_diagnostics(fit)` reports how the
+  optimizer finished and whether the Hessian is positive definite.
+- **Different starting values give different fits.** Some likelihoods have
+  several local maxima. Compare `logLik()` across fits, or seed one fit with
+  another's estimates: `sfm(..., model_name = "NG", start_from = fit_ne)`.
+  To make a fit reproducible run to run, set `rand.psoptim` (and, for the
+  simulated-ML panel models, `rand.gtre`).
+- **`TIC()`, `vuong()` or `influence_sfa()` says the likelihood was not kept.**
+  Refit with `keep_objective = TRUE`.
+- **`fitted()`, `residuals()`, `predict()` or `efficiency(logDepVar = FALSE)`
+  fails for a fit made inside a function.** They rebuild the data from the
+  stored call. Pass the data explicitly as `newdata`.
+- **The dependent variable is in levels, not logs.** Use
+  `efficiency(fit, logDepVar = FALSE)`. For a cost frontier, fit with
+  `inefdec = FALSE`; efficiency is then minimum over actual cost.
+- **An unbalanced panel.** `psfm(model_name = "GTRE")` falls back from
+  `estimator = "fiml"` to `"sml"` with a warning. `KSS` and `PL80_MVTN` need a
+  balanced panel.
+- **A fit is slow.** Simulated-ML panel models scale with `halton_num`,
+  `copsfm()` with `n_nodes`, and `npsfm(method = "PSZ" | "MY")` runs an
+  optimization per observation.
 
 ## Simulating data
 

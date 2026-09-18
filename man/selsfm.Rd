@@ -4,8 +4,8 @@
 \description{
 Two models, chosen by \code{model_name}.
 
-\code{"greene"} (the default) fits Greene's (2010) sample-selection stochastic frontier: a normal--half
-normal frontier observed only for the subset of units that select into the
+\code{"greene"} (the default) fits Greene's (2010) sample-selection stochastic frontier: a normal--half-normal
+frontier observed only for the subset of units that select into the
 sample, where the unobservables driving selection are correlated with the
 \emph{noise} in the frontier. Estimation follows the two-step scheme of the
 paper -- a probit for the selection equation on the full sample, then maximum
