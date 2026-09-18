@@ -2,6 +2,36 @@
 
 ## Bug fixes
 
+* **`density_weights()` gave the same weight to every observation whose fitted
+  density fell below the smallest positive double, and lost the ordering among
+  them.** The weight was formed by evaluating the density on the natural scale,
+  where `.dens_nhn()` floors at `.Machine$double.xmin`, and then raising it to
+  the power `c`. Every observation past that floor -- `log f` below -708.4 --
+  arrived at the floor itself and came back with one identical weight. The
+  effect is largest exactly where the diagnostic is used: on a sharply peaked
+  fit (`sigma_v` near 0.04, `lambda` near 24, as maximum likelihood returns on
+  the coal data of Bernstein, Parmeter and Wright (2026)), 63 of 3511
+  observations shared a single weight of 1.7e-67 while their true log densities
+  spanned -4680 to -708, and `order(w)` -- the documented way to ask which
+  observations an estimator discounts most -- was wrong among them. The weight
+  is now formed as `exp(c * log f)`, normalised in logs before exponentiating.
+  A new `log` argument returns `log w` directly, which is what ranking or
+  thresholding should use: the smallest weights here run to `exp(-1042)` and
+  are not representable, let alone distinguishable, once exponentiated.
+  Weights that were already above the floor are unchanged to about 1e-14, and
+  no fitted value moves: `hscore()` and the robust objectives are bit-identical
+  before and after, and `calibrate_c()` shifts by about 1e-12 relative.
+
+* **The robust objectives formed `exp(loglik)^c` rather than `exp(c * loglik)`.**
+  `.robust_objective_vec()` and the calibration's `.per_obs_term()` exponentiated
+  the log-likelihood before applying the power, so an observation with `loglik`
+  below about -745 contributed exactly the `c`-limit of its term instead of a
+  value near it. This is now formed in the exponent throughout. No estimate
+  changes -- at those depths the recovered term is below the resolution of the
+  1 it is subtracted from, so the contribution is still `1/c` to the last bit --
+  but the objective is no longer discontinuous at the underflow boundary, which
+  matters for the numerical derivatives taken through it.
+
 * **`psfm(model_name = "FD")`, `"TFE"` and `"TFE_WMLE"` were not reproducible,
   and changed the caller's random-number stream.** Their variance components are
   seeded by an internal pooled fit whose own starting values were unseeded

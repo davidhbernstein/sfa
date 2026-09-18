@@ -232,3 +232,95 @@ test_that("hscore_select returns a coherent object", {
   ## the reported minimum really is the minimum over the scorable path
   expect_equal(sel$hscore, min(sel$path$hscore, na.rm = TRUE), tolerance = 1e-10)
 })
+
+## ---------------------------------------------------------------------------
+## Gap A39. The weights and the robust objectives are formed in logs, so an
+## observation whose density falls below the smallest positive double still
+## gets its own weight and keeps its place in the ordering.
+## ---------------------------------------------------------------------------
+
+## A sharply peaked fit against a spread of residuals, which is what these data
+## produce: maximum likelihood returns sigma_v near 0.04 and lambda near 24, and
+## then log f in the upper tail runs to several thousand below zero -- far past
+## log(.Machine$double.xmin) = -708.4. A deterministic grid keeps the test
+## exact rather than dependent on a draw landing in the tail.
+tail_grid <- function() list(e = seq(-2, 4, length.out = 400),
+                             sv = 0.0408, su = 0.9851, c = 0.2166)
+
+test_that("the tail design really does pass the natural-scale floor", {
+  g <- tail_grid()
+  lf <- sfa:::.dens_nhn(g$e, g$sv, g$su, log = TRUE)
+  expect_gt(sum(lf < log(.Machine$double.xmin)), 100)
+  expect_lt(min(lf), -4000)
+})
+
+test_that("weights past the floor keep their ordering", {
+  g  <- tail_grid()
+  lf <- sfa:::.dens_nhn(g$e, g$sv, g$su, log = TRUE)
+  w  <- density_weights(g$e, sigma_v = g$sv, sigma_u = g$su, c = g$c)
+
+  ## Forming f first and then raising it to the power c put 165 of these 400
+  ## observations on one identical positive weight and inverted the order
+  ## among them. The weight must be non-decreasing in the density.
+  expect_false(is.unsorted(w[order(lf)]))
+
+  ## What remains tied is tied at zero, which is the correct double for a
+  ## weight that is genuinely below the representable range -- not a floor.
+  expect_equal(unique(w[duplicated(w)]), 0)
+})
+
+test_that("log weights are exact where the natural scale cannot reach", {
+  g  <- tail_grid()
+  lf <- sfa:::.dens_nhn(g$e, g$sv, g$su, log = TRUE)
+  lw <- density_weights(g$e, sigma_v = g$sv, sigma_u = g$su, c = g$c, log = TRUE)
+
+  expect_equal(lw, g$c * (lf - max(lf)), tolerance = 1e-12)
+  expect_equal(max(lw), 0)
+  expect_equal(order(lw), order(lf))
+  ## strictly ordered, with no ties at all, over a span the natural scale
+  ## collapses to zero
+  expect_equal(anyDuplicated(lw), 0L)
+  expect_lt(min(lw), -1000)
+})
+
+test_that("log = TRUE and the default agree wherever the default is exact", {
+  set.seed(4)
+  e  <- rnorm(300, 0, 0.30) - abs(rnorm(300, 0, 0.60))
+  w  <- density_weights(e, sigma_v = 0.30, sigma_u = 0.60, c = 0.217)
+  lw <- density_weights(e, sigma_v = 0.30, sigma_u = 0.60, c = 0.217, log = TRUE)
+  expect_equal(exp(lw), w, tolerance = 1e-12)
+})
+
+test_that("log weights are zero at the maximum likelihood endpoint", {
+  e <- rnorm(50, 0, 0.3) - abs(rnorm(50, 0, 0.6))
+  expect_equal(density_weights(e, 0.30, 0.60, c = 0, log = TRUE), rep(0, 50))
+})
+
+test_that("normalize = FALSE returns c * log f unshifted", {
+  g  <- tail_grid()
+  lf <- sfa:::.dens_nhn(g$e, g$sv, g$su, log = TRUE)
+  lw <- density_weights(g$e, sigma_v = g$sv, sigma_u = g$su, c = g$c,
+                        normalize = FALSE, log = TRUE)
+  expect_equal(lw, g$c * lf, tolerance = 1e-12)
+})
+
+test_that("the robust objectives carry the density in the exponent", {
+  ## The ingredient is what changes: exp(loglik) is exactly zero once loglik
+  ## passes about -745, so raising it to the power c discarded the term
+  ## outright, whereas exp(c * loglik) is an ordinary number there.
+  cc <- 0.2166
+  expect_identical(exp(-3000)^cc, 0)
+  expect_gt(exp(cc * -3000), 0)
+
+  ll  <- c(-50, -800, -3000)
+  vec <- sfa:::.robust_objective_vec("mlqe", ll, c = cc)
+  expect_equal(vec, -(exp(cc * ll) - 1) / cc, tolerance = 1e-15)
+  expect_true(all(is.finite(vec)))
+  expect_false(is.unsorted(vec))
+
+  ## And the honest limit of that: at these depths the recovered term is far
+  ## below the resolution of the 1 it is subtracted from, so the contribution
+  ## is still 1/c to the last bit. Nothing anyone has fitted moves because of
+  ## this change -- it removes a discontinuity, it does not shift a maximiser.
+  expect_identical(vec[3], 1 / cc)
+})

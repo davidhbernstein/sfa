@@ -125,11 +125,12 @@ calibrate_c <- function(sigma_v, sigma_u,
 .per_obs_term <- function(method, e_base, b, log_sv, log_su, c) {
   sigma_v <- exp(log_sv); sigma_u <- exp(log_su)
   e <- e_base - b
-  f <- .dens_nhn(e, sigma_v, sigma_u)
+  ## In logs, for the same reason as .robust_objective_vec() (gap A39).
+  fc <- exp(c * .dens_nhn(e, sigma_v, sigma_u, log = TRUE))
   switch(method,
-    mlqe = (f^c - 1) / c,
-    psi  = f^c / c - .nhn_power_integral(sigma_v, sigma_u, 1 + c) / (1 + c),
-    mdpd = ((1 + c) / c) * f^c - .nhn_power_integral(sigma_v, sigma_u, 1 + c)
+    mlqe = (fc - 1) / c,
+    psi  = fc / c - .nhn_power_integral(sigma_v, sigma_u, 1 + c) / (1 + c),
+    mdpd = ((1 + c) / c) * fc - .nhn_power_integral(sigma_v, sigma_u, 1 + c)
   )
 }
 

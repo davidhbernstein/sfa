@@ -31,10 +31,14 @@
     return(-loglik)
   }
 
-  f <- exp(loglik)
+  ## exp(c * loglik) directly. Forming exp(loglik) first and then raising it
+  ## to the power c sends every observation whose density is below
+  ## .Machine$double.xmin to exactly zero, discarding a contribution that is
+  ## small but perfectly representable in this form (gap A39).
+  fc <- exp(c * loglik)
 
   if (method == "mlqe") {
-    return(-(f^c - 1) / c)
+    return(-(fc - 1) / c)
   }
 
   if (is.null(power_integral_fn)) {
@@ -43,10 +47,10 @@
   I <- power_integral_fn(1 + c)
 
   if (method == "psi") {
-    return(-(f^c / c - I / (1 + c)))
+    return(-(fc / c - I / (1 + c)))
   }
   if (method == "mdpd") {
-    return(-(((1 + c) / c) * f^c - I))
+    return(-(((1 + c) / c) * fc - I))
   }
 }
 
