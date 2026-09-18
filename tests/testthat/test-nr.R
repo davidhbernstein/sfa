@@ -15,7 +15,7 @@
   sigma <- sqrt(2*sigv^2 + sigu^2)
   z     <- (eps*sigu/sigv)/sigma
   log(sigv) - 2*log(sigma) - 0.5*(eps/sigv)^2 + 0.5*z^2 +
-    log(pmax(sqrt(2/pi)*exp(-0.5*z^2) - z*(1 - gsl::erf(z/sqrt(2))),
+    log(pmax(sqrt(2/pi)*exp(-0.5*z^2) - z*2*pnorm(-z),
              .Machine$double.xmin))
 }
 

@@ -26,8 +26,8 @@ Description: Maximum likelihood estimation of stochastic frontier models, in
     <doi:10.1016/j.jeconom.2015.06.013>. Technical efficiency prediction,
     marginal effects, and specification tests for wrong skewness, for the
     assumed inefficiency distribution and for heteroskedasticity are provided.
-Suggests: knitr, rmarkdown, testthat, sn, np, DEA, sandwich, lmtest, texreg, pbapply
-Imports: pso, numDeriv, gsl, plm, minqa, randtoolbox, mnormt, truncnorm, mvtnorm, Formula, methods, parallel, graphics, grDevices
+Suggests: knitr, rmarkdown, testthat, sn, np, DEA, sandwich, lmtest, texreg, pbapply, gsl
+Imports: pso, numDeriv, plm, minqa, randtoolbox, mnormt, truncnorm, mvtnorm, Formula, methods, parallel, graphics, grDevices
 Depends: R (>= 4.0.0)
 License: GPL (>= 2)
 Language: en-US

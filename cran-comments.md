@@ -20,7 +20,7 @@ Production fits, the default, were never affected, and are what the existing
 tests covered. The repair is one line; the regression test that pins it checks
 the composed density against its closed form in **both** orientations.
 
-Fifteen further defects in already-released code are fixed in the same submission,
+Sixteen further defects in already-released code are fixed in the same submission,
 all silent -- each returns a wrong or irreproducible result without an error:
 
 * A parameter converging **onto a bound** cost `copsfm()` every standard error
@@ -44,7 +44,7 @@ all silent -- each returns a wrong or irreproducible result without an error:
 * `psfm(model_name = "GTRE")` by simulated ML and `"GTRE_Z"` reported
   efficiency scores that differed between two fits of identical data, by up to
   0.4%, and advanced the caller's random-number stream. The scores come from
-  `tmvtnorm::ptmvnorm()`, a randomized quasi-Monte Carlo integrator, which drew
+  `tmvtnorm::ptmvnorm()` (now `mvtnorm::pmvnorm()`), a randomized quasi-Monte Carlo integrator, which drew
   from the session RNG. It now runs under a fixed local seed and the caller's
   RNG state is restored. Parameter estimates were unaffected.
 * `sfm(model_name = "NR")` computed the one-sided factor of its log-density as
@@ -85,6 +85,10 @@ all silent -- each returns a wrong or irreproducible result without an error:
 * `TIC()` returned -2.64e14 for a fit with a parameter on its bound, and
   `sfma(weights = "tic")` gave that model all the weight. It now refuses an
   indefinite Hessian or a non-positive penalty.
+* `sfm(model_name = "NG")` and `"NNAK"` could return a fit far worse than the
+  starting point their optimizer was handed (on one simulated sample -449.5
+  against a start of -259.6 in log-likelihood). The fit is now never worse
+  than that start.
 
 Eight further defects in released code made a call fail rather than return a
 wrong answer:
@@ -99,9 +103,7 @@ wrong answer:
   `sandwich` methods, `TIC()` and `vuong()` then failed on it. The retained
   likelihoods now return per-firm contributions.
 * `psfm(model_name = "SSRE")` and `"SSCRE"` stopped with a bare LAPACK error
-  on a singular random-effects fit. They now name the collinear columns, or,
-  for `"SSCRE"` on an unbalanced panel, explain that this is a current
-  limitation of that estimator and point to `"SSFE"`.
+  on a singular random-effects fit. They now name the collinear columns.
 * `psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with "0 < ctrl$rhoend
   is not TRUE" when the random-effects regression seeding them estimated zero
   firm-effect variance: the starting step then began at zero scale, leaving
@@ -142,6 +144,14 @@ every returns-to-scale setting before the swap.
 internal copies of the same computation (results verified bitwise identical),
 and `pbapply` only provided an optional progress bar that the code already
 guarded with `requireNamespace()`.
+
+`tmvtnorm` is replaced by `mvtnorm`, on which it was built, and `gsl` moves
+from `Imports` to `Suggests`, so installing from source no longer needs the
+GNU Scientific Library. `tmvtnorm::ptmvnorm()` over an orthant is exactly
+`mvtnorm::pmvnorm()`, and the efficiency scores are bitwise identical. `gsl`
+supplied only the parabolic cylinder function for `"NG"`/`"NNAK"`, now
+computed in R and agreeing with it to about 1e-10; the tests keep `gsl` as
+an independent reference.
 
 ## R CMD check results
 

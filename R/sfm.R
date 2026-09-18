@@ -1140,6 +1140,10 @@ sfm <- function(formula,
       }
     }
 
+    ## The start the stages below are handed -- for NG, the polished multistart
+    ## point -- kept so the fit can be checked against it (gap A25).
+    .start_ref <- start_v
+
     Opt.Nlminb <- opt.nlminb(
       fn = like.fn, start_v = start_v, lower.nlminb = lower_bob,
       gr = grad_fn, maxit.nlminb = maxit.nlminb,
@@ -1182,6 +1186,27 @@ sfm <- function(formula,
     if (optHessian == FALSE & PSopt == TRUE) {
       opt <- opt00
       st_err <- rep(NA, length(opt$par))
+    }
+
+    ## NG/NNAK: the stages can end worse than the start they were handed -- on one
+    ## sample NG's polished multistart point scored -267.8 and the fit came back
+    ## at -443 (gap A25). Never return worse than that start: polish from it too
+    ## and keep the better.
+    if (optHessian == TRUE && model_name %in% c("NG", "NNAK")) {
+      .ref_val <- tryCatch(like.fn(.start_ref), error = function(e) NA_real_)
+      if (is.finite(.ref_val) && (!is.finite(opt$value) || opt$value > .ref_val + 1e-6)) {
+        .lr <- lower.start(.start_ref, model_name, differ = 0.5)
+        .or <- opt.optim(
+          fn = like.fn, start_v = .start_ref, lower.optim = .lr$lower1,
+          upper.optim = .lr$upper1_open, maxit.optim = maxit.optim, opt.TF = optHessian,
+          method = Method, optHessian = TRUE, verbose = verbose
+        )
+        if (is.finite(.or$opt$value) && (!is.finite(opt$value) || .or$opt$value < opt$value)) {
+          opt <- .or$opt
+          start_v <- .or$start_v
+          start_feval <- .or$start_feval
+        }
+      }
     }
 
     ## A Hessian that cannot be inverted.

@@ -1826,18 +1826,9 @@
 
 
 
-## log D_nu(z) for nu < 0 by the integral representation
-##
-##   D_nu(z) = e^{-z^2/4} / Gamma(-nu) * int_0^inf t^{-nu-1} e^{-t^2/2 - z t} dt
-##
-## which holds for every nu < 0 and needs no special functions at all. Used
-## where gsl::hyperg_U throws or underflows, i.e. exactly where the shape
-## parameter is large.
-##
-## The integrand is evaluated in LOGS with its own maximum factored out, so
-## nothing overflows however large the shape gets: g(t) = (a-1)log t - t^2/2 -
-## z t peaks at the positive root of t^2 + z t - (a-1) = 0, and integrating
-## exp(g(t) - g(t*)) keeps every evaluated term at or below 1.
+## log D_nu(z) for nu < 0 by integrate(), one element at a time: too slow for a
+## likelihood, kept as the independent reference .log_pcf() is tested against.
+## It can miss a very narrow peak (large |z|); see test-log-pcf.R.
 .log_pcf_integral <- function(nu, z) {
   z <- as.numeric(z)
   nu <- rep_len(as.numeric(nu), length(z))
@@ -1878,63 +1869,144 @@
   }, numeric(1))
 }
 
-## Helper: log parabolic cylinder function log D_nu(z), for nu < 0
+## log D_nu(z) for nu < 0, in pure R (gap A25 retired gsl). With p = -nu,
+## D_nu(z) = exp(-z^2/4) / Gamma(p) * int_0^Inf t^(p-1) exp(-t^2/2 - z t) dt. The
+## integral is a power series in z where that does not cancel, and otherwise a
+## peak-centred trapezoid in log t. See notes/code_history/matrix_utils.md.
 .log_pcf <- function(nu, z) {
   z <- as.numeric(z)
-  ## nu may be a VECTOR, one order per observation: that is what lets the
-  ## gamma/Nakagami SHAPE depend on covariates (gap G5). A scalar recycles, so
-  ## every existing caller is unaffected.
+  ## nu may be a vector, one order per observation (gap G5); a scalar recycles.
   nu <- rep_len(as.numeric(nu), length(z))
-  a <- -nu
+  p <- -nu
   out <- rep(NA_real_, length(z))
-  ok <- is.finite(z) & is.finite(nu) & nu < 0
-  if (!any(ok)) {
+  ok <- which(is.finite(z) & is.finite(p) & p > 0)
+  if (!length(ok)) {
     return(out)
   }
-
-  hi <- ok & z > 0.5
-  lo <- ok & !(z > 0.5)
-
-  if (any(hi)) {
-    ## gsl::hyperg_U THROWS for a/2 >~ 16 at small arguments, and the call is
-    ## vectorized, so a single bad element used to null the whole vector and
-    ## take the entire fit down with it -- which is why NNAK "failed outright"
-    ## once its shape wandered above about 8. Two changes: fall back per
-    ## ELEMENT rather than all-or-nothing, and have something to fall back TO.
-    u <- tryCatch(gsl::hyperg_U(a[hi] / 2, 0.5, z[hi]^2 / 2), error = function(e) NULL)
-    v <- if (is.null(u)) rep(NA_real_, sum(hi)) else as.numeric(u)
-    val <- (nu[hi] / 2) * log(2) - z[hi]^2 / 4 + log(pmax(v, .Machine$double.xmin))
-    ## Underflow of U to exactly 0 is a silent precision failure, not an error:
-    ## log(xmin) is finite and wrong. Treat it as a miss too.
-    bad <- !is.finite(val) | !is.finite(v) | v <= 0
-    if (any(bad)) val[bad] <- .log_pcf_integral(nu[hi][bad], z[hi][bad])
-    out[hi] <- val
+  zz <- z[ok]
+  pp <- p[ok]
+  val <- rep(NA_real_, length(ok))
+  ## Below z = -sqrt(2 * EXP_CLIP_UPPER) the gsl code this replaced evaluated its
+  ## series at a CLIPPED argument, and overflowed to Inf at larger shapes. NG's
+  ## optimum can sit against that edge, so it is reproduced, not corrected (A25).
+  clip <- which(zz < -sqrt(2 * .SFA_CONSTANTS$EXP_CLIP_UPPER))
+  if (length(clip)) val[clip] <- .pcf_clipped(pp[clip], zz[clip])
+  ## Series where its cancellation ratio is small, binned by |z| so that a few
+  ## large arguments do not set the series length for every observation.
+  cand <- which(zz >= -10 & zz <= 12)
+  az <- abs(zz[cand])
+  for (b in list(cand[az <= 3], cand[az > 3 & az <= 6], cand[az > 6])) {
+    if (!length(b)) next
+    s <- .pcf_series(pp[b], zz[b])
+    good <- is.finite(s$ratio) & s$ratio > 0 & s$ratio < 1e5
+    val[b[good]] <- s$val[good]
   }
-  if (any(lo)) {
-    zz <- z[lo]
-    nl <- nu[lo]
-    ## Clip the 1F1 argument: exp(z^2/2) overflows past z ~ 37, and the series
-    ## branch only ever sees z <= 0.5 where the result is finite anyway.
-    q <- pmin(zz^2 / 2, .SFA_CONSTANTS$EXP_CLIP_UPPER)
-    br <- gsl::hyperg_1F1(-nl / 2, 0.5, q) / gamma((1 - nl) / 2) -
-      sqrt(2) * zz * gsl::hyperg_1F1((1 - nl) / 2, 1.5, q) / gamma(-nl / 2)
-    ## NOTE: the floor below is deliberately LEFT IN PLACE. The series is a
-    ## difference and can go non-positive where the two terms nearly cancel,
-    ## and log(pmax(br, xmin)) is then finite and wrong -- so replacing it with
-    ## the integral representation looks like a strict improvement. It is not.
-    ## `NG` evaluates on this branch for 99.8% of observations at its own
-    ## optimum, and the floor acts as a barrier keeping the optimizer out of
-    ## the sigma_v -> 0 corner where the composed likelihood is unbounded.
-    ## Removing it was measured: NG moved from (sigv 0.185, x1 0.560) to
-    ## (sigv 0.000, x1 0.775) against a true x1 of 0.5, reaching a HIGHER
-    ## likelihood (-438.02 vs -440.71) at a degenerate point. The barrier is
-    ## accidental but load-bearing; the reported NNAK failure was on the `hi`
-    ## branch and is fixed there. Revisit only alongside a proper boundary
-    ## penalty or constraint on sigma_v.
-    out[lo] <- (nl / 2) * log(2) + 0.5 * log(pi) - zz^2 / 4 +
-      log(pmax(br, .Machine$double.xmin))
+  r <- which(is.na(val))
+  if (length(r)) {
+    sub <- r[zz[r] > 0 & pp[r] < 4]
+    pk <- setdiff(r, sub)
+    if (length(sub)) val[sub] <- .pcf_subtract(pp[sub], zz[sub])
+    if (length(pk)) val[pk] <- .pcf_peak(pp[pk], zz[pk])
   }
+  out[ok] <- val
   out
+}
+
+## What the gsl version returned below the clip: its series
+## 2^(-p/2) sqrt(pi) e^(-z^2/4) [M(p/2, 1/2, q) / Gamma((1+p)/2) - sqrt(2) z M((1+p)/2, 3/2, q) / Gamma(p/2)]
+## at q = EXP_CLIP_UPPER instead of z^2/2, and Inf wherever a factor overflowed.
+.pcf_clipped <- function(p, z) {
+  q <- .SFA_CONSTANTS$EXP_CLIP_UPPER
+  ld <- log(.Machine$double.xmax)
+  lM1 <- .log_kummer_large(p / 2, 0.5, q)
+  lM2 <- .log_kummer_large((1 + p) / 2, 1.5, q)
+  lz <- log(sqrt(2) * abs(z))
+  t1 <- lM1 - lgamma((1 + p) / 2)
+  t2 <- lz + lM2 - lgamma(p / 2)
+  m <- pmax(t1, t2)
+  lbr <- m + log(exp(t1 - m) + exp(t2 - m))
+  out <- -(p / 2) * log(2) + 0.5 * log(pi) - z^2 / 4 + lbr
+  out[lM1 > ld | lM2 > ld | lz + lM2 > ld | lbr > ld] <- Inf
+  out
+}
+
+## log M(a, b, x) for large x > 0 from the asymptotic series
+## M ~ Gamma(b)/Gamma(a) e^x x^(a-b) sum_s (b-a)_s (1-a)_s / (s! x^s); the other
+## term is O(e^-x) smaller.
+.log_kummer_large <- function(a, b, x) {
+  term <- rep(1, length(a))
+  s_sum <- term
+  for (s in 0:400) {
+    term <- term * (b - a + s) * (1 - a + s) / ((s + 1) * x)
+    s_sum <- s_sum + term
+    if (all(abs(term) < 1e-17 * abs(s_sum))) break
+  }
+  lgamma(b) - lgamma(a) + x + (a - b) * log(x) + log(s_sum)
+}
+
+## The integral as a series in z: sum_k (-z)^k / k! 2^((p+k)/2 - 1) Gamma((p+k)/2),
+## even and odd terms each by T_(k+2) = T_k z^2 (p+k) / ((k+1)(k+2)). Returns
+## the log D value and the cancellation ratio sum|terms| / |sum|.
+.pcf_series <- function(p, z) {
+  a <- abs(z)
+  K <- 2L * ceiling(max(z^2 / 2 + sqrt(z^4 / 4 + p * z^2) + 12 * a + 12 * sqrt(p) + 60) / 2)
+  lT0 <- (p / 2 - 1) * log(2) + lgamma(p / 2)
+  lT1 <- ifelse(a > 0, log(pmax(a, 1e-300)) + (p - 1) / 2 * log(2) + lgamma((p + 1) / 2), -Inf)
+  m <- pmax(lT0, lT1)
+  se <- exp(lT0 - m)
+  so <- exp(lT1 - m)
+  te <- se
+  to <- so
+  z2 <- a^2
+  for (k in seq(0L, K - 2L, by = 2L)) {
+    te <- te * z2 * (p + k) / ((k + 1) * (k + 2))
+    to <- to * z2 * (p + k + 1) / ((k + 2) * (k + 3))
+    se <- se + te
+    so <- so + to
+  }
+  net <- se - sign(z) * so
+  list(val = -z^2 / 4 - lgamma(p) + m + log(pmax(net, 0)), ratio = (se + so) / net)
+}
+
+## log of int exp(k(s)) ds by the trapezoid rule on s = s0 + sig * x, x on a
+## fixed grid; s0 is at (or near) the peak of k, sig its curvature scale.
+.pcf_trap <- function(k, s0, sig, H = 0.1, L = 14, R = 10) {
+  x <- seq(-L, R, by = H)
+  K <- k(outer(sig, x) + s0)
+  k0 <- K[, which.min(abs(x))]
+  k0 + log(sig) + log(as.numeric(exp(K - k0) %*% rep(H, length(x))))
+}
+
+## The integrand in s = log t has one interior peak, at t0 below, for any p > 0.
+.pcf_peak <- function(p, z) {
+  t0 <- ifelse(z > 0, 2 * p / (z + sqrt(z^2 + 4 * p)), (-z + sqrt(z^2 + 4 * p)) / 2)
+  kfun <- function(S) {
+    E <- exp(S)
+    p * S - E * (E / 2 + z)
+  }
+  -z^2 / 4 - lgamma(p) + .pcf_trap(kfun, log(t0), 1 / sqrt(t0^2 + p))
+}
+
+## For z > 0 and small p the peak form converges slowly (a left tail of rate p),
+## so subtract int t^(p-1) e^(-zt) dt = Gamma(p) z^-p exactly and integrate the
+## remainder J, whose left tail decays at rate p + 2.
+.pcf_subtract <- function(p, z) {
+  lA <- lgamma(p) - p * log(z)
+  kfun <- function(S) p * S - z * exp(S) + log(-expm1(-exp(2 * S) / 2))
+  s <- log((p + 1) / z)
+  curv <- function(s) {
+    e <- exp(s)
+    u <- exp(2 * s) / 2
+    r <- 2 * u * exp(-u) / (-expm1(-u))
+    list(g1 = p - z * e + r, g2 = -z * e + 2 * r * (1 - u / (-expm1(-u))))
+  }
+  for (i in 1:30) {
+    d <- curv(s)
+    s <- s - pmax(pmin(d$g1 / d$g2, 2), -2)
+  }
+  sig <- 1 / sqrt(pmax(-curv(s)$g2, 1e-3))
+  lJ <- .pcf_trap(kfun, s, sig)
+  -z^2 / 4 - lgamma(p) + lA + log1p(-exp(lJ - lA))
 }
 
 

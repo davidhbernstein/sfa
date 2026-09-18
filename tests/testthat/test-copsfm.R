@@ -287,6 +287,7 @@ test_that("the generalized logistic has the moments the paper claims", {
 }
 
 test_that("the composed density IS Bonanno and Domma's Theorems 1 and 2", {
+  skip_if_not_installed("gsl")
   ## The strongest check available for this model: the paper publishes the
   ## density in closed form, as a sum of four Gauss hypergeometric terms, and
   ## the package computes it by quadrature. Neither derives from the other.

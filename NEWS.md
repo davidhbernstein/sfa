@@ -2,6 +2,15 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "NG")` and `"NNAK"` could return a fit far worse than a
+  point they had already reached.** The three optimizer stages start from the
+  best of NG's polished multistart candidates, and could end below it: on one
+  simulated sample the start scored -259.6 in log-likelihood and the fit came
+  back at -449.5. The fit is now never worse than that start; where the stages
+  end below it, the final stage is re-run from it and the better result kept.
+  Over 40 simulated samples this changed two fits by about 180 log-likelihood
+  points and left the rest within 0.5.
+
 * **`density_weights()` gave the same weight to every observation whose fitted
   density fell below the smallest positive double, and lost the ordering among
   them.** The weight was formed by evaluating the density on the natural scale,
@@ -235,6 +244,18 @@
   `PL80_MVTN` column now comes from an internal Gibbs sampler (checked against
   the exact truncated moments), so that column and `y_pl_mvtn` differ from
   earlier versions for the same seed; every other column is unchanged.
+
+* **`gsl` is no longer imported** (it moves to `Suggests`, where the tests use
+  it as an independent reference), so installing `sfa` from source no longer
+  needs the GNU Scientific Library. Its only use was the parabolic cylinder
+  function behind `sfm()`'s `"NG"` and `"NNAK"`, which is now computed in R:
+  a power series in the argument where that does not cancel, and a
+  peak-centred quadrature otherwise, agreeing with the `gsl` route to about
+  1e-10 in log. Below an argument of `-sqrt(1400)` the `gsl` code evaluated
+  its series at a clipped argument, and overflowed at larger shapes; that
+  behaviour is reproduced exactly rather than corrected, because it is what
+  keeps the optimizer out of the `sigma_v -> 0` corner where the composed
+  likelihood is unbounded.
 
 ## New features
 
