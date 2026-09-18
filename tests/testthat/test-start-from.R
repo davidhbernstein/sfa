@@ -66,7 +66,11 @@ test_that("seeding never makes the fit worse", {
       error = function(e) e
     )
     expect_false(inherits(b, "error"))
-    if (!is.na(ll(a))) expect_gte(ll(b), ll(a) - 1e-6)
+    ## 0.01, not 1e-6: since gap A40 both starts reach the same optimum here, and
+    ## two optimizer runs to one optimum agree only to their convergence
+    ## precision -- 7e-4 apart on the macOS runner for seed 4. A worse optimum is
+    ## far larger: the rescue this test exists for was 176 points.
+    if (!is.na(ll(a))) expect_gte(ll(b), ll(a) - 0.01)
   }
 })
 
