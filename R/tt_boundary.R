@@ -1,19 +1,6 @@
-## tt_boundary_report(): is a collapsed sigma_v the maximum, or did the
-## optimizer stop short?  Gap A20.
-##
-## Chris Parmeter asked for the exercise that settled ZISF's boundary question
-## to be repeated for the two-tier models: refit from several starts, score
-## every solution on ONE likelihood, and see whether the collapsed point is
-## actually the best. That is all this does.
-##
-## IT IS NOT A LIKELIHOOD-RATIO TEST and nothing here reports a p-value.
-## Chris Parmeter, 2026-09-11: "I am fine with a likelihood comparison as a
-## diagnostic, but I would avoid describing it as a conventional LR test
-## unless we establish the appropriate null distribution given the boundary
-## problem." The null sits ON the boundary of the parameter space, so the
-## usual chi-square reference does not apply, and no appropriate null
-## distribution has been established for this model. The output is a table of
-## log-likelihoods and a statement about which is largest.
+## tt_boundary_report(): is a collapsed sigma_v the maximum, or did the optimizer stop
+## short? Gap A20. A likelihood comparison across starts, NOT a likelihood-ratio test:
+## no p-value is reported. See notes/code_history/tt_boundary.md.
 
 tt_boundary_report <- function(object, data,
                                sigma_v_starts = c(0.05, 0.3, 1),

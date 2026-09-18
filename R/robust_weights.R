@@ -1,14 +1,6 @@
-## Density-power weights: what the robust criteria actually do to each
-## observation, and what they cannot see. Gap L17, from Bernstein, Parmeter
-## and Wright (2026). See notes/code_history/robust_tuning.md.
-##
-## The weight responds to an observation far from the fitted SURFACE. It has
-## no purchase on one that is wrong in a regressor and, because the surface
-## bends toward it, ends up close to that surface -- so a mis-recorded input
-## can be highly influential and still weigh nearly one. That is a property of
-## these estimators, not of this code: their bounded influence is bounded with
-## respect to RESPONSE contamination, conditional on the design. ?density_weights
-## says so, and points at influence_sfa() for the other half.
+## Density-power weights (gap L17): they respond to an observation far from the fitted
+## surface, not to a bad regressor the surface bends toward. See
+## notes/code_history/robust_weights.md.
 
 density_weights <- function(object, sigma_v = NULL, sigma_u = NULL, c = NULL,
                             normalize = TRUE) {

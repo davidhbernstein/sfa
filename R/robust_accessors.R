@@ -1,11 +1,5 @@
-## Adapters between the tuning/weight functions and an "sfareg" NHN fit.
-## Gap L17, supporting Bernstein, Parmeter and Wright (2026).
-## See notes/code_history/robust_tuning.md.
-##
-## These are the only pieces that touch the fitted-object layout, so they are
-## the only pieces to revisit if that layout changes. Everything else in
-## robust_hscore.R, robust_tuning.R and robust_weights.R works from a residual
-## vector and two scale parameters, and can be used without a fitted object.
+## Adapters between the tuning/weight functions and an "sfareg" NHN fit (gap L17): the
+## only code that touches the fitted-object layout. See notes/code_history/robust_accessors.md.
 
 ## The package depends on R >= 4.0.0, where base has no `%||%`.
 `%||%` <- function(a, b) if (is.null(a)) b else a

@@ -1,23 +1,6 @@
-## Kumbhakar, Tsionas and Sipilainen (2009), J Prod Anal 31:151-161: joint
-## estimation of TECHNOLOGY CHOICE and technical efficiency.
-## See notes/code_history/selsfm.md.
-##
-## Different model from Greene (2010), which selsfm() otherwise fits, and the
-## difference is the point. Greene has ONE frontier, observed only for the
-## selected, with the selection correlated with the NOISE v. Here both regimes
-## are observed, each with its OWN frontier and its own two scales, and the
-## choice depends on the INEFFICIENCY itself -- u plays a "dual role", lowering
-## output through the frontier and shifting the technology decision through the
-## choice equation. That is why neither two-step order works: the choice
-## equation cannot be a probit because u is unobserved, and fitting the
-## frontiers first ignores the endogeneity of the choice.
-##
-##   y_i | I_i, u_i ~ N(x_i'beta_{I_i} - u_i, sigma_{v,I_i}^2)
-##   P(I_i = 1 | u_i) = Phi(z_i'gamma + delta u_i)
-##   u_i | I_i       ~ N+(0, sigma_{u,I_i}^2)
-##
-## delta is the parameter the paper exists for: delta > 0 means the less
-## efficient are MORE likely to choose technology 1.
+## Kumbhakar, Tsionas and Sipilainen (2009), J Prod Anal 31:151-161: technology choice
+## and technical efficiency estimated jointly, the choice depending on u itself (delta).
+## See notes/code_history/selsfm_kts.md.
 
 ## Half-normal-weighted integral over u >= 0, mapped to [0,1] by the
 ## half-normal's own CDF: with w = 2 Phi(u/sigma) - 1 the weight becomes
@@ -29,17 +12,8 @@
   list(z = stats::qnorm((1 + gl$nodes) / 2), w = gl$weights)
 }
 
-## The joint density of (y_i, I_i), the paper's equation (14).
-##
-## A(sigma^2)   = int_0^inf Phi(z'gamma + delta u) f+(u|sigma) du          (10)
-## phi_i        = A(sigma_u0) / (1 + A(sigma_u0) - A(sigma_u1))            (9)
-## J(sigma^2)   = int_0^inf f_N(y | x'beta_I - u, sigma_vI) Phi(.)^I
-##                          (1-Phi(.))^(1-I) f+(u|sigma) du                (13)
-## p(y_i, I_i)  = phi_i J(sigma_u1) + (1 - phi_i) J(sigma_u0)              (14)
-##
-## phi_i does not depend on u, which is what lets (11) split into (12): the
-## marginal density of u is a MIXTURE of the two regimes' half-normals, so the
-## observation's density is the same mixture of the two inner integrals.
+## The joint density of (y_i, I_i), the paper's equation (14): a phi_i-weighted mixture
+## of the two regimes' inner integrals J(sigma_u1) and J(sigma_u0).
 .kts_loglik <- function(theta, y, X0, X1, Z, I, nd, S = 1) {
   k <- ncol(X0)
   m <- ncol(Z)
@@ -74,15 +48,8 @@
   ## The frontier residual uses the regime's OWN coefficients and scale.
   mu <- ifelse(I == 1, as.numeric(X1 %*% b1), as.numeric(X0 %*% b0))
   sv <- ifelse(I == 1, sv1, sv0)
-  ## NOT ifelse(I == 1, FF$hi, FF$lo). ifelse() returns the shape of its TEST,
-  ## so a length-n test against these n x q matrices silently collapses to the
-  ## FIRST COLUMN -- the choice probability would then be evaluated at one
-  ## quadrature node instead of varying with u, which removes the coupling
-  ## between u and the technology decision that this model is entirely about.
-  ## The likelihood still integrated to 1 with that bug, because the selection
-  ## factor became a constant in u and the two regimes still summed to one, so
-  ## the properness check could not catch it. What caught it was comparing the
-  ## fitted parameters against the truth on FRESH data.
+  ## NOT ifelse(): it returns the shape of its test, collapsing these n x q matrices to
+  ## their first column and removing the u-dependence of the choice probability.
   sel_rows <- function(FF) {
     m <- FF$hi
     if (any(I != 1)) m[I != 1, ] <- FF$lo[I != 1, , drop = FALSE]

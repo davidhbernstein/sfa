@@ -1,23 +1,6 @@
-## Hyvarinen-score evaluation for the robust divergence estimators. Gap L17,
-## from Bernstein, Parmeter and Wright (2026).
-## See notes/code_history/robust_tuning.md.
-##
-## The H-score of Hyvarinen (2005), in the form Sugasawa and Yonekura (2021)
-## use to tune robust divergences, is
-##
-##     H(c) = n^-1 sum_i { 2 D''(e_i) + D'(e_i)^2 },   D = (f^c - 1)/c,
-##
-## with derivatives taken with respect to the composed residual. Evaluated
-## directly, the second-derivative term carries f^(c-2). Because c < 1 the
-## exponent sits near -2, so any observation whose fitted density underflows
-## sends that term to infinity and the whole tuning candidate becomes
-## unevaluable -- silently, and in the direction of too little robustness,
-## because the candidates that survive are the ones closest to maximum
-## likelihood.
-##
-## Expanding 2D'' + (D')^2 analytically leaves the density raised only to the
-## positive powers c and 2c, so extreme residuals drive each term to zero
-## instead. .hscore_nhn() evaluates that expansion by signed log-sum-exp.
+## Hyvarinen-score evaluation for the robust divergence estimators (gap L17), expanded
+## so the density appears only to the powers c and 2c: an extreme residual cannot make
+## a tuning candidate unevaluable. See notes/code_history/robust_hscore.md.
 
 ## Signed log-sum-exp: given log|x_j| and sign(x_j), return log|sum x_j| and its
 ## sign, without forming any x_j on the natural scale.

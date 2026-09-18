@@ -82,24 +82,9 @@ lcsfm <- function(formula,
   Y <- DR2$Y
   data_i_vars <- DR2$data_i_vars
 
-  ## LATENT CLASS STOCHASTIC FRONTIER (Greene 2005; Orea and Kumbhakar 2004;
-  ## Caudill 2003). J technologies coexist in one sample and which one a firm
-  ## operates is unobserved, so every firm contributes to every class, weighted
-  ## by a class probability that may itself depend on covariates.
-  ##
-  ##   y_i = x_i'beta_j + v_ij - u_ij      for the class j the firm is in
-  ##   v_ij ~ N(0, sigv_j^2),  u_ij ~ N+(0, sigu_j^2)
-  ##   P(class j | q_i) = exp(q_i'delta_j) / sum_m exp(q_i'delta_m),  delta_J = 0
-  ##
-  ## and the likelihood mixes the J composed densities:
-  ##   log L_i = log sum_j P(j | q_i) f_j(eps_ij)
-  ##
-  ## This has its own entry point rather than living inside zsfm(): ZISF is the
-  ## restricted two-class case in which one class has no inefficiency at all,
-  ## but nobody looking for a latent class model would search for it inside a
-  ## function named for zero inefficiency. "LCM" gives the classes fixed
-  ## probabilities, "LCM_Z" lets the pipe segment parameterize them.
-  ## ---------------------------------------------------------------------
+  ## Latent class frontier (Greene 2005; Orea and Kumbhakar 2004; Caudill 2003): J
+  ## technologies, class unobserved, log L_i = log sum_j P(j | q_i) f_j(eps_ij). "LCM"
+  ## fixes the class probabilities, "LCM_Z" models them. See notes/code_history/lcsfm.md.
   if (length(penalty_c) != 1L || !is.numeric(penalty_c) || !is.finite(penalty_c) ||
     penalty_c < 0) {
     stop("lcsfm(): `penalty_c` must be a single finite number >= 0.",
@@ -116,27 +101,9 @@ lcsfm <- function(formula,
   }
 
   ## ---------------------------------------------------------------------
-  ## LCM_CN -- the contaminated normal frontier. Every parameter is common
-  ## across components EXCEPT the noise scale, so the noise density is a scale
-  ## mixture of normals and the composed error is heavier-tailed than a normal
-  ## without any of the frontier or inefficiency parameters varying.
-  ##
-  ## The composed density has a CLOSED FORM, and it is the reason this model is
-  ## worth having as its own branch rather than as a restricted "LCM". Since
-  ##
-  ##   f_eps(e) = int f_v(e + S u) f_u(u) du
-  ##
-  ## is linear in f_v, a mixture noise density passes straight through:
-  ##
-  ##   f_eps(e) = sum_j p_j * f_NHN(e; sigma_vj, sigma_u)
-  ##
-  ## a mixture of ORDINARY normal/half-normal densities sharing one sigma_u.
-  ## Verified against direct numerical integration to 3e-16 relative.
-  ##
-  ## This is also the specification for which the chi^2_{0:1} null of
-  ## lcsfm_homogeneity() is actually established -- one scalar parameter
-  ## differing between components -- which "LCM" is not. See
-  ## notes/code_history/lcsfm_homogeneity.md.
+  ## LCM_CN, the contaminated normal frontier: only the noise scale differs across
+  ## components, so f_eps is a closed-form mixture of NHN densities sharing sigma_u --
+  ## the specification lcsfm_homogeneity()'s chi^2_{0:1} null is established for.
   ## ---------------------------------------------------------------------
   if (identical(model_name, "LCM_CN")) {
     J <- n_class
@@ -318,19 +285,8 @@ lcsfm <- function(formula,
       eta - .log_row_sum_exp(eta)
     }
 
-    ## Chen et al. (2001)'s penalty, c * log(J^J * prod_j p_j), added when
-    ## penalty_c > 0. It is what makes the modified likelihood ratio test of
-    ## L3 valid: it forces every class probability away from 0 and from 1, so
-    ## the second class's parameters stay identified under the null.
-    ##
-    ## It vanishes at equal probabilities -- at J = 2, p = 0.5 gives
-    ## 2 log 2 + 2 log 0.5 = 0 -- which is why the null model is recovered
-    ## exactly and the statistic cannot come out negative.
-    ##
-    ## Defined on the UNCONDITIONAL class probabilities, so it is only offered
-    ## for "LCM", where they are constants. "LCM_Z" makes them a function of
-    ## covariates, which is outside the published result. See
-    ## notes/L3_mlrt_design.md.
+    ## Chen et al. (2001)'s penalty c log(J^J prod p_j), for L3's modified LR test: keeps
+    ## every class probability off 0 and 1, and is exactly 0 at equal probabilities. "LCM" only.
     .lcm_penalty <- function(x) {
       if (!isTRUE(penalty_c > 0)) return(0)
       lp <- .lcm_logpi(x)[1L, ]
@@ -403,13 +359,8 @@ lcsfm <- function(formula,
     out[2, ] <- st_err
     out[3, ] <- t_val
 
-    ## Posterior class probabilities, and efficiency.
-    ##
-    ## P(j | i) is the mixture's own answer to "which technology is this firm
-    ## on", and it is what the class-conditional JLMS scores have to be weighted
-    ## by: a firm's inefficiency is only defined relative to a frontier, and the
-    ## frontier it faces is uncertain. Reporting a single JLMS from the modal
-    ## class instead would throw away that uncertainty.
+    ## Posterior class probabilities P(j | i), which weight the class-conditional JLMS
+    ## scores: the firm's frontier is uncertain, so no single modal-class score is reported.
     lf <- .lcm_logf(opt$par)
     lpi <- .lcm_logpi(opt$par)
     log_f <- .log_row_sum_exp(lpi + lf)

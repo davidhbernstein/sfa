@@ -1,41 +1,10 @@
-## Starting values for the normal-exponential frontier.
-##
-## Derived in Bernstein, Parmeter and Wright, "Starting Values for the
-## Normal-Exponential Stochastic Frontier Model".  Replaces the flat
-## sigma_u = sigma_v = 0.1 that start_cs() used to hand NE regardless of the
-## scale of the data.
-##
-## Four estimators of sigma_u from the OLS residuals:
-##
-##   mu1-  sigma_u = -mean(e | e < 0)        cheap, low variance, INCONSISTENT
-##   mu3   sigma_u = (-m3/2)^(1/3)           COLS; consistent, high variance,
-##                                           undefined under wrong skew
-##   min   min(mu1-, mu3)
-##   bc    mu1- / h(lambda-hat)^w            exact bias correction; the default
-##
-## `bc` divides mu1- by its exact asymptotic bias factor h(lambda), so it
-## inherits mu1-'s smaller variance while being consistent.  h is 1 to machine
-## precision above lambda ~ 3, so at low noise `bc` and `mu1-` coincide.
-##
-## The exponent w shrinks the correction toward "no correction" when the bias
-## it removes is small next to the sampling noise of mu1- itself:
-##
-##   w = b^2 / (b^2 + V1/N),
-##
-## the share of mu1-'s MSE that the bias accounts for, evaluated at
-## lambda-hat.  It is tuning-free, and it exists because lambda-hat is noisy:
-## dividing by h(lambda-hat) when the true h is 1 buys nothing and costs
-## variance.  Over an 88-cell design it trades 2% of total MSE for a drop in
-## the worst-cell penalty from 2.00 to 1.76.  Set `shrink = FALSE` for the
-## unshrunk quotient.
+## Starting values for the normal-exponential frontier (Bernstein, Parmeter and Wright,
+## "Starting Values for the Normal-Exponential Stochastic Frontier Model"): four estimators
+## of sigma_u from OLS residuals; the default `bc` is mu1- corrected by h(lambda)^w.
+## See notes/code_history/ne_start.md.
 
-## The exact asymptotic bias factor of the mu1- start:
-##   plim(mu1-) / sigma_u = h(lambda) = [Psi + phi(lambda)/lambda]
-##                                      / [Phi(-lambda) + Psi],
-##   Psi(lambda) = exp(1/(2 lambda^2) - 1) Phi(lambda - 1/lambda).
-## h >= 1 always, h = 1 only as lambda -> Inf.  Formed on the log scale: the
-## exp overflows below lambda ~ 0.03 while the Phi underflows, and the two
-## cancel exactly in logs.
+## h(lambda) = plim(mu1-)/sigma_u >= 1, the exact asymptotic bias factor of the mu1-
+## start, formed in logs: its exp overflows below lambda ~ 0.03 as its Phi underflows.
 .ne_bias_factor <- function(lambda) {
   lambda <- pmax(lambda, 1e-8)
   Psi <- exp(1 / (2 * lambda^2) - 1 + stats::pnorm(lambda - 1 / lambda, log.p = TRUE))
@@ -62,15 +31,8 @@
   (26 + 9 * s + s^3) / 6
 }
 
-## lambda*(N): the tie point between the mu1- and mu3 starts at sample size N.
-## Below lambda*, mu3 has the smaller MSE; above it, mu1- does.  Uses the
-## first-order MSEs (bias^2 + AVar/N); the bracket starts at 0.3 because the
-## first-order comparison has a second, spurious root near lambda = 0.25 where
-## AVar3 ~ s^3 blows up.
-## Memoised: start_cs() is called once per fit but a Monte Carlo calls it
-## thousands of times at the same handful of sample sizes, and the uniroot
-## below is the most expensive thing in this file.  Keyed on N, which is the
-## only argument that varies in practice.
+## lambda*(N), where the mu1- and mu3 starts have equal first-order MSE. Memoised on N:
+## a Monte Carlo asks for the same few sample sizes thousands of times.
 .ne_lambda_star_cache <- new.env(parent = emptyenv())
 
 .ne_lambda_star <- function(N, interval = c(0.3, 40)) {
