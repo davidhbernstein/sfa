@@ -182,17 +182,26 @@ test_that("SSRE names the between-collinear columns instead of a LAPACK error", 
   expect_match(err, "SSFE")
 })
 
-test_that("SSCRE on an unbalanced panel says why, and SSRE/SSFE still fit", {
+## Gap A21. SSCRE's variance components are Swamy-Arora's for the model without
+## the Mundlak means. plm computes exactly those on a balanced panel; on an
+## unbalanced one its Swamy-Arora step was singular, and SSCRE refused to fit.
+test_that("SSCRE fits an unbalanced panel, with the no-Mundlak Swamy-Arora components", {
   d <- .ss_panel()
   set.seed(7)
   d <- d[-sample(nrow(d), 60), ]
-  err <- tryCatch(psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year"),
-    error = function(e) conditionMessage(e)
-  )
-  expect_type(err, "character")
-  expect_false(grepl("Lapack|dgesv", err))
-  expect_match(err, "unbalanced")
-  expect_match(err, "Mundlak")
+  cre <- psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year")
+  fe <- psfm(y ~ x1 + x2, "SSFE", d, individual = "name", time = "year")
+  expect_equal(coef(cre)[c("x1", "x2")], coef(fe)[c("x1", "x2")], tolerance = 1e-6)
+  e0 <- plm::ercomp(y ~ x1 + x2, d, effect = "individual", index = "name")
+  expect_equal(cre$ercomp$sigma2, e0$sigma2, tolerance = 1e-10)
+  expect_length(cre$exp_u_hat, nrow(d))
+  expect_true(all(is.finite(cre$exp_u_hat)))
   expect_s3_class(psfm(y ~ x1 + x2, "SSRE", d, individual = "name", time = "year"), "sfareg")
-  expect_s3_class(psfm(y ~ x1 + x2, "SSFE", d, individual = "name", time = "year"), "sfareg")
+})
+
+test_that("SSCRE's balanced-panel variance components are the no-Mundlak Swamy-Arora ones", {
+  d <- .ss_panel()
+  cre <- psfm(y ~ x1 + x2, "SSCRE", d, individual = "name", time = "year")
+  e0 <- plm::ercomp(y ~ x1 + x2, d, effect = "individual", index = "name")
+  expect_equal(cre$ercomp$sigma2, e0$sigma2, tolerance = 1e-10)
 })

@@ -285,9 +285,15 @@
   ## variable of the model -- if it is, plm really would clobber it.
   ## A singular between design otherwise surfaces as a bare LAPACK error.
   ## See notes/code_history/panel_classical.md ("Singular variance components").
+  ## SSCRE's variance components are Swamy-Arora's for the model WITHOUT the
+  ## Mundlak means (gap A21). plm's "swar" step returns exactly those on a
+  ## balanced panel but is singular on an unbalanced one, where "walhus" on the
+  ## augmented model returns the same components -- checked below, not assumed.
+  unbal <- cre && length(unique(as.integer(table(as.character(data[[individual]]))))) > 1L
   fit <- tryCatch(
     .quiet_time_index(plm::plm(form, data,
-      effect = "individual", model = "random", index = individual
+      effect = "individual", model = "random", index = individual,
+      random.method = if (unbal) "walhus" else NULL
     ), form),
     error = function(e) {
       if (!grepl("singular", conditionMessage(e), ignore.case = TRUE)) stop(e)
@@ -296,6 +302,22 @@
       )
     }
   )
+  if (unbal) {
+    e0 <- tryCatch(
+      .quiet_time_index(plm::ercomp(stats::formula(formula_x), data,
+        effect = "individual", index = individual
+      ), formula_x),
+      error = function(e) NULL
+    )
+    if (is.null(e0) || !isTRUE(all.equal(plm::ercomp(fit)$sigma2, e0$sigma2, tolerance = 1e-8))) {
+      stop("psfm(model_name = \"SSCRE\"): on this unbalanced panel the variance ",
+        "components could not be matched to Swamy-Arora's for the model without ",
+        "the Mundlak means, so SSCRE is not fitted. model_name = \"SSFE\" gives ",
+        "the same slopes on time-varying regressors.",
+        call. = FALSE
+      )
+    }
+  }
   cf <- stats::coef(fit)
   se <- summary(fit)$coefficients[, "Std. Error"]
 
@@ -342,23 +364,6 @@
       "  broader period groups or a time trend), or use model_name = \"SSFE\", ",
       "whose within\n",
       "  estimator does not use the between regression."
-    ))
-  }
-  Ti <- table(as.character(data[[individual]]))
-  if (identical(model_name, "SSCRE") && length(unique(as.integer(Ti))) > 1L) {
-    return(paste0(head,
-      "  SSCRE cannot currently be fitted to an unbalanced panel (T runs from ",
-      min(Ti), " to ", max(Ti), " across ", length(Ti), " firms).\n",
-      "  The cause is the Mundlak means SSCRE adds, not your formula: in the ",
-      "between-firm\n",
-      "  dimension each mean is identical to its regressor, and the default ",
-      "(Swamy-Arora)\n",
-      "  variance components for an unbalanced panel invert that between design.\n",
-      "  The SSCRE slopes on time-varying regressors equal the within estimates, ",
-      "so\n",
-      "  model_name = \"SSFE\" gives them; model_name = \"SSRE\" also fits. ",
-      "Balanced panels are\n",
-      "  unaffected."
     ))
   }
   paste0(head,

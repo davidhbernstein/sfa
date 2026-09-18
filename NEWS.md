@@ -172,14 +172,21 @@
   working around it by substituting a different variance-component method
   inside `plm()`.
 
+* **`psfm(model_name = "SSCRE")` could not fit an unbalanced panel**, and
+  most real panels are unbalanced. In the between-firm dimension each Mundlak
+  mean duplicates its regressor, so `plm`'s Swamy-Arora variance components
+  for an unbalanced panel hit an exactly singular system. `SSCRE`'s variance
+  components are now defined as the Swamy-Arora components of the model
+  *without* the Mundlak means. On a balanced panel that is exactly what it
+  computed before, so balanced results are unchanged; on an unbalanced one the
+  identical components come from `plm`'s Wallace-Hussain step on the augmented
+  model, checked to agree. The slopes on time-varying regressors still equal
+  the within estimates exactly.
+
 * **`psfm(model_name = "SSRE")` and `"SSCRE"` now explain a singular
   random-effects fit** instead of failing with a bare "Lapack routine dgesv:
   system is exactly singular". When the formula is collinear between firms the
-  message names the columns and suggests remedies. When `SSCRE` meets an
-  unbalanced panel it says so plainly: this is a current limitation of
-  `SSCRE`, caused by the Mundlak means it adds rather than by the user's
-  formula, and `SSFE` gives the same slopes on time-varying regressors.
-  Balanced panels are unaffected.
+  message names the columns and suggests remedies.
 
 ## Dependencies
 

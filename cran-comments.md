@@ -86,7 +86,7 @@ all silent -- each returns a wrong or irreproducible result without an error:
   `sfma(weights = "tic")` gave that model all the weight. It now refuses an
   indefinite Hessian or a non-positive penalty.
 
-Seven further defects in released code made a call fail rather than return a
+Eight further defects in released code made a call fail rather than return a
 wrong answer:
 
 * `psfm()` with `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` or `"SSFE"`
@@ -118,6 +118,10 @@ wrong answer:
   be positive definite" when a firm's posterior covariance lost positive
   definiteness to rounding. It is now repaired when the defect is
   rounding-sized; results where it was already valid are identical.
+* `psfm(model_name = "SSCRE")` refused every unbalanced panel: the Mundlak
+  means made `plm`'s Swamy-Arora step singular. It now uses the Swamy-Arora
+  components of the model without the means, which on a balanced panel are
+  exactly the ones it used before, so balanced results are unchanged.
 
 The release also adds three inefficiency/noise specifications, a
 wrong-skewness suite of two estimators and a diagnostic, and rewrites the
