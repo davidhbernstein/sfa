@@ -18,7 +18,13 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {os: macos-latest,   r: 'release'}
+          # Pinned while CRAN publishes no macOS binaries for R 4.6:
+          # bin/macosx/big-sur-arm64/contrib/ holds 4.2-4.5 only, so
+          # 'release' (now 4.6.1) finds nothing prebuilt, tries to build
+          # every dependency from source and dies in setup-r-dependencies.
+          # Verified 2026-09-20: the 4.5 tree has all of them. Put this
+          # back to 'release' once a 4.6 directory appears.
+          - {os: macos-latest,   r: '4.5'}
           - {os: windows-latest, r: 'release'}
           - {os: ubuntu-latest,  r: 'devel', http-user-agent: 'release'}
           - {os: ubuntu-latest,  r: 'release'}
