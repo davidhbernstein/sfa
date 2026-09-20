@@ -100,11 +100,8 @@ nobs.sfareg <- function(object, ...) {
   if (is.null(dcall)) {
     return(NA_integer_)
   }
-  ## The same identity problem .sfa_data() has (gap A47): the ordering below
-  ## saves the function-local case, but a name that is absent from the
-  ## formula's environment still falls through to whatever `dcall` happens to
-  ## name in globalenv(). Validate what comes back before counting its rows,
-  ## and report NA rather than a decoy's row count.
+  ## Validate what comes back before counting its rows: the ordering alone
+  ## still lets a decoy in globalenv() through (gap A47).
   for (e in .sfa_data_envs(object, rev(sys.frames()))) {
     cand <- tryCatch(eval(dcall, envir = e), error = function(err) NULL)
     if (is.null(cand)) next
@@ -120,23 +117,9 @@ nobs.sfareg <- function(object, ...) {
 
 ## predict() / fitted() / residuals() for "sfareg".
 
-## Recovering the data a fit was built from (gap A47).
-##
-## The old route was eval(object$call$data, parent.frame(3)) -- a FIXED frame
-## depth, correct only for the chain user -> fitted.sfareg -> .sfa_xb ->
-## .sfa_data. Two things were wrong with it. It missed the fit's own frame
-## whenever the model was fitted inside a function, so fitted(), residuals(),
-## predict() and efficiency(logDepVar = FALSE) all failed on a perfectly good
-## fit. Worse, when an UNRELATED object of the same name was visible at that
-## depth it resolved to that object and returned it unchecked, so the methods
-## answered silently from the wrong data. No fixed depth can be right for every
-## call path, so the depth is no longer what is relied on: environments are
-## searched in order of trust, and whatever comes back must identify itself as
-## this fit's data before it is used.
-
 ## Environments a fit's `data` argument might resolve in, most trustworthy
-## first. The formula's environment is where the model was specified, so it
-## reaches the function-local frame a fixed parent.frame() depth cannot.
+## first: the formula's environment reaches a function-local fit, which a
+## fixed parent.frame() depth cannot (gap A47).
 .sfa_data_envs <- function(object, frames = list()) {
   envs <- list()
   fenv <- if (inherits(object$formula, "formula")) environment(object$formula) else NULL
@@ -145,19 +128,8 @@ nobs.sfareg <- function(object, ...) {
   c(envs, list(globalenv()))
 }
 
-## Does `dat` identify itself as the frame this fit was built from? Three
-## tiers, strongest first; which are available depends on what the entry point
-## stored. Returns the verdict and the name of the strongest check that could
-## actually be applied, which the caller puts in its error message.
-##
-## Deliberately NOT used here: nobs.sfareg(). It re-evaluates the call itself
-## when the fit carries no $nobs field, so validating against it would check a
-## recovered frame against a count derived from the same recovery.
-## The rows a fit actually USED, given a frame it was (or might have been)
-## built from: complete cases across every pipe segment at once, response
-## included, which is the rule data_proc2() applies at data.processing.R:219.
-## Both the identity check and the design rebuild have to agree with it, or
-## they disagree with the fit (gap A44).
+## The rows a fit actually used: complete cases across every pipe segment at
+## once, response included, the rule data_proc2() applies (gap A44).
 .sfa_complete_rows <- function(object, dat) {
   vars <- tryCatch(
     intersect(all.vars(stats::formula(Formula::Formula(object$formula))), names(dat)),
@@ -170,6 +142,10 @@ nobs.sfareg <- function(object, ...) {
   if (all(keep)) dat else dat[keep, , drop = FALSE]
 }
 
+## Does `dat` identify itself as this fit's data? Three tiers, strongest
+## first; which apply depends on what the entry point stored. nobs.sfareg() is
+## deliberately not one of them -- it re-evaluates the call itself, so the
+## check would be circular (gap A47).
 .sfa_data_check <- function(object, dat) {
   no <- function(what) list(ok = FALSE, checked = what)
   dat <- tryCatch(as.data.frame(dat), error = function(e) NULL)
@@ -185,20 +161,16 @@ nobs.sfareg <- function(object, ...) {
     return(no("variables"))
   }
 
-  ## Tier 1, decisive wherever the fit kept its OLS residuals: rebuild them
-  ## from the candidate and compare. sfm() stores them signed by `inefdec`
-  ## (esfm.R), so either sign counts as a match. A tier that cannot be computed
-  ## falls through to the weaker ones rather than rejecting -- an lm() that
-  ## will not fit here is not evidence that the data is wrong.
+  ## Tier 1, decisive where the fit kept its OLS residuals: rebuild and
+  ## compare, either sign (sfm() stores them signed by `inefdec`). A tier that
+  ## cannot be computed falls through rather than rejecting.
   orr <- suppressWarnings(tryCatch(as.numeric(object$ols_residuals), error = function(e) NULL))
   if (length(orr)) {
     own <- tryCatch(
       {
         f1 <- stats::formula(Formula::Formula(object$formula), lhs = 1, rhs = 1)
-        ## On the rows the fit used, not on every row supplied: a row dropped
-        ## only for a missing variance determinant is still complete on the
-        ## frontier, so lm() would keep it and the lengths would disagree for
-        ## the right data (gap A44).
+        ## On the rows the fit used: lm() would keep a row dropped only for a
+        ## missing variance determinant, and the lengths would disagree.
         as.numeric(stats::resid(stats::lm(f1, data = .sfa_complete_rows(object, dat))))
       },
       error = function(e) NULL, warning = function(w) NULL
@@ -237,10 +209,8 @@ nobs.sfareg <- function(object, ...) {
     return(list(ok = nrow(dat) >= n_used, checked = "nobs"))
   }
 
-  ## Nothing but structure was available. zsfm() and ttsfm() fits land here:
-  ## they store no $nobs, no $data and no per-observation vector, so a
-  ## same-shaped decoy cannot be told apart from the real thing. The trust
-  ## ordering in .sfa_data_envs() is what protects those.
+  ## Structure only. zsfm()/ttsfm() land here and a same-shaped decoy passes;
+  ## the trust ordering is what protects them (gap A48).
   list(ok = TRUE, checked = "variables")
 }
 
@@ -282,15 +252,9 @@ nobs.sfareg <- function(object, ...) {
   dat <- .sfa_data(object, newdata)
   f1 <- stats::formula(Formula::Formula(object$formula), lhs = 1, rhs = 1)
 
-  ## A44: the fit dropped rows on complete.cases() across EVERY pipe segment at
-  ## once, response included (data.processing.R:219). The rebuild below sees
-  ## only the frontier, and delete.response() hides y from it, so a row missing
-  ## a variance determinant -- or missing the response -- survives here although
-  ## the fit never used it. The returned vector is then one row too long and
-  ## silently misaligned against u_hat/exp_u_hat; residuals() went further and
-  ## recycled the response against a shorter design. Apply the fit's own rule
-  ## before building. Not applied to `newdata`, where the caller chooses the
-  ## rows and there may be no response to be complete about.
+  ## Apply the fit's own row rule before building, or the rebuild keeps rows
+  ## the fit dropped and the result misaligns against u_hat (gap A44). Not for
+  ## `newdata`: there the caller chooses the rows.
   if (is.null(newdata)) {
     dat <- .sfa_complete_rows(object, dat)
   }
