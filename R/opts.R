@@ -3,6 +3,27 @@
 ## cannot collide with one of its own codes.
 .SFA_OPTIM_SKIPPED <- 99L
 
+## Does this point look like a real optimum, or like a boundary collapse? Used
+## only by the A42 guard in opt.optim(); it must reject the NR spike that
+## optim() is right to escape and accept an ordinary interior point. See
+## notes/code_history/opts.md.
+.sfa_point_credible <- function(fn, par, val, lower = NA, upper = NA) {
+  if (!is.finite(val)) return(FALSE)
+  ## Exactly 0 catches -0. A summed log-likelihood of exactly zero means every
+  ## density evaluated to exactly 1: a collapse, not a fit (gap A49).
+  if (val == 0) return(FALSE)
+  lo <- rep_len(lower, length(par))
+  up <- rep_len(upper, length(par))
+  if (any(is.finite(lo) & abs(par - lo) <= 1e-8 * pmax(1, abs(lo)))) return(FALSE)
+  if (any(is.finite(up) & abs(par - up) <= 1e-8 * pmax(1, abs(up)))) return(FALSE)
+  pc <- tryCatch(suppressWarnings(fn(par, per_obs = TRUE)), error = function(e) NULL)
+  if (!is.null(pc) && length(pc) > 1L && all(is.finite(pc))) {
+    if (all(pc == 0)) return(FALSE)
+    if (min(pc) == max(pc)) return(FALSE)
+  }
+  TRUE
+}
+
 ## opt.nlminb() -- primary optimization stage.
 opt.nlminb <- function(fn, start_v, lower.nlminb, upper.nlminb = Inf,
                        gr = NULL, maxit.nlminb = 500, nlminb.TF = TRUE,
@@ -159,6 +180,30 @@ opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF
     if (isTRUE(start_feval > opt$value)) {
       start_v <- opt$par
       start_feval <- fn(start_v)
+    }
+
+    ## A42. start_v/start_feval now hold the better of the two, but callers
+    ## report `opt`, so when optim() ends ABOVE the point it was handed the
+    ## better answer is computed and then discarded. Taking it unconditionally
+    ## is the known-wrong fix described above, so it is taken only when the
+    ## point looks like an optimum rather than a boundary collapse. See
+    ## notes/code_history/opts.md.
+    if (!is.null(opt) && is.finite(start_feval) &&
+      is.numeric(opt$value) && is.finite(opt$value) &&
+      opt$value > start_feval + 1e-10 &&
+      .sfa_point_credible(fn, start_v, start_feval, lower.optim, upper.optim)) {
+      h <- if (isTRUE(optHessian)) {
+        tryCatch(numDeriv::hessian(fn, start_v), error = function(e) NULL)
+      } else {
+        NULL
+      }
+      ## The reported point must carry its own Hessian, or the standard errors
+      ## would describe a point that is not the one being reported.
+      if (!isTRUE(optHessian) || (!is.null(h) && all(is.finite(h)))) {
+        opt$par <- start_v
+        opt$value <- start_feval
+        if (isTRUE(optHessian)) opt$hessian <- h
+      }
     }
   }
 
