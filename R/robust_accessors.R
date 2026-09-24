@@ -76,7 +76,12 @@
     stop("Could not match the frontier coefficients to the design matrix.",
       call. = FALSE)
   }
-  sgn <- if (isFALSE(eval(cl$inefdec, envir = env))) -1 else 1
+  ## Orientation through the one resolver, not an inline eval (gap A43).
+  cost <- .is_cost_fit(object)
+  if (is.na(cost)) {
+    stop(.cost_fit_unknown("residuals for this fit"), call. = FALSE)
+  }
+  sgn <- if (cost) -1 else 1
   as.numeric(sgn * (y - X[, names(beta), drop = FALSE] %*% beta))
 }
 

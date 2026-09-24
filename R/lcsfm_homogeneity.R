@@ -134,7 +134,13 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
       call. = FALSE
     )
   }
-  inefdec <- if (is.null(object$call$inefdec)) TRUE else object$call$inefdec
+  ## Resolve it, rather than forwarding the unevaluated call element: a fit
+  ## made as lcsfm(..., inefdec = flag) passed the symbol on (gap A43).
+  .cost <- .is_cost_fit(object)
+  if (is.na(.cost)) {
+    stop(.cost_fit_unknown("lcsfm_homogeneity()"), call. = FALSE)
+  }
+  inefdec <- !.cost
 
   ## One evaluation of the statistic on a given data frame: the penalised
   ## J-class maximum against the one-class maximum. Written once so that the
