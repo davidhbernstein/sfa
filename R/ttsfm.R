@@ -80,7 +80,7 @@
 ## cross-stage comparison elsewhere in the package trusted the reported values
 ## and picked a stage whose value was +3.6e17, which is why it was reverted.
 ## A stage whose parameters do not evaluate finitely is simply not a candidate.
-.tt_best_stage <- function(fn, cands, model_name, verbose = FALSE) {
+.tt_best_stage <- function(fn, cands, model_name, verbose = FALSE, optHessian = TRUE) {
   cands <- Filter(function(z) !is.null(z) && !is.null(z$par) && all(is.finite(z$par)), cands)
   if (!length(cands)) return(NULL)
   vals <- vapply(cands, function(z) {
@@ -93,7 +93,41 @@
     message(sprintf("ttsfm() %s: stage objectives %s -- keeping %s.", model_name,
       paste(sprintf("%s = %.4f", names(cands), vals), collapse = ", "), names(cands)[k]))
   }
-  list(opt = cands[[k]], which = names(cands)[k], values = vals)
+  ## Stages 1 and 2 return their OWN shapes, not optim()'s: bobyqa() gives
+  ## par/fval/feval/ierr/msg and psoptim() gives par/value/counts/convergence/
+  ## message. Neither carries a hessian. Returning one of them raw is gap A50.
+  ## See notes/code_history/ttsfm.md.
+  list(opt = .tt_as_optim(cands[[k]], fn, vals[[k]], names(cands)[k], optHessian),
+       which = names(cands)[k], values = vals)
+}
+
+## Put a non-optim stage into optim()'s shape, with a Hessian of its own so the
+## reported standard errors describe the point actually being reported -- the
+## same requirement opt.optim()'s A42 guard imposes on its substitution.
+.tt_as_optim <- function(z, fn, val, stage, optHessian) {
+  if (identical(stage, "optim")) {
+    return(z)
+  }
+  h <- NULL
+  if (isTRUE(optHessian)) {
+    h <- tryCatch(numDeriv::hessian(fn, z$par), error = function(e) NULL)
+    if (is.null(h) || !all(is.finite(h))) {
+      h <- matrix(NA_real_, length(z$par), length(z$par))
+    }
+  }
+  list(
+    par = z$par,
+    value = val,
+    counts = c(`function` = NA_integer_, gradient = NA_integer_),
+    ## The reported stage converged on its own terms; the non-zero-code warning
+    ## below is about optim(), which is not what is being reported here.
+    convergence = 0L,
+    message = sprintf(
+      "the stage-3 optim() result was not the best of the three stages; the %s result is reported",
+      stage
+    ),
+    hessian = h
+  )
 }
 
 ## Report the three scales on their NATURAL scale, with names that tell the two
@@ -691,7 +725,7 @@ ttsfm <- function(formula,
     ## off, and that is a request, not an accident.
     if (optHessian == TRUE) {
       .bs <- .tt_best_stage(fn, list(bobyqa = bob1, psoptim = opt00, optim = opt),
-                            model_name, verbose = verbose)
+                            model_name, verbose = verbose, optHessian = optHessian)
       if (!is.null(.bs) && !identical(.bs$which, "optim")) {
         warning(sprintf(
           "ttsfm() %s: the final optimizer stage did NOT attain the best objective -- %s reached %.4f against optim()'s %s, so the %s result is returned instead. The TTHN log-likelihood has a nearly flat direction in sigma_v (see ?ttsfm), and a later stage can travel along it without improving.",
