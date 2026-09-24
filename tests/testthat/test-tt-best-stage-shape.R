@@ -106,3 +106,31 @@ test_that("the substituted stage does not trigger the optim convergence warning"
   expect_identical(bs$opt$convergence, 0L)
   expect_match(bs$opt$message, "not the best of the three stages")
 })
+
+test_that("the substituted hessian is on the same scale optim() would have used", {
+  ## The point of the substitution is that SEs stay comparable no matter which
+  ## stage won. If numDeriv's hessian disagreed with optim(hessian = TRUE)'s,
+  ## a reported SE would mean different things on different seeds.
+  set.seed(11)
+  n <- 200
+  x <- rnorm(n)
+  y <- 1.4 + 0.7 * x + rnorm(n, 0, 0.5)
+  ## A real negative log-likelihood, the shape every ttsfm closure returns.
+  nll <- function(p) {
+    -sum(stats::dnorm(y, p[1] + p[2] * x, exp(p[3]), log = TRUE))
+  }
+  op <- stats::optim(c(1, 1, -1), nll, method = "BFGS", hessian = TRUE)
+
+  cands <- list(bobyqa = .bob_like(op$par, op$value),
+                optim = .optim_like(c(9, 9, 9), nll(c(9, 9, 9))))
+  bs <- .tt_best_stage(nll, cands, "TTHN")
+  expect_identical(bs$which, "bobyqa")
+
+  se_sub <- suppressWarnings(sqrt(diag(solve(bs$opt$hessian))))
+  se_opt <- suppressWarnings(sqrt(diag(solve(op$hessian))))
+  expect_equal(se_sub, se_opt, tolerance = 1e-5)
+  ## And they are real standard errors, not an artefact: the slope SE of an
+  ## OLS fit with the same design agrees.
+  expect_equal(se_sub[2], unname(summary(stats::lm(y ~ x))$coefficients[2, 2]),
+               tolerance = 5e-3)
+})
