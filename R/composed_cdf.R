@@ -309,11 +309,13 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
       return(isTRUE(object$inefdec))
     }
   }
-  v <- tryCatch(eval(object$call$inefdec), error = function(e) NULL)
-  if (is.null(v)) {
-    return(TRUE) ## sfm()'s own default
+  ## Everything else goes through the one resolver, which evaluates in the
+  ## formula's environment and reports NA rather than guessing (gap A43).
+  cost <- .is_cost_fit(object)
+  if (is.na(cost)) {
+    stop(.cost_fit_unknown("this fit"), call. = FALSE)
   }
-  if (is.character(v)) !grepl("cost", v, ignore.case = TRUE) else isTRUE(v)
+  !cost
 }
 
 
