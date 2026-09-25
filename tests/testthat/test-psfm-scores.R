@@ -73,13 +73,18 @@ test_that("a psfm() fit without a per-observation likelihood still says so", {
 test_that("keep_objective = TRUE warns for a psfm() model that cannot retain it", {
   skip_on_cran()
   d <- .score_panel()
+  ## SSFE is a within/LSDV estimator, not maximum likelihood, so there is no
+  ## likelihood to keep. PL80 used to sit here and no longer does -- it gained
+  ## per-firm contributions in 1.2.1.
   expect_warning(
-    fit <- psfm(y_ssfe ~ x1 + x2, model_name = "PL80", data = d,
+    fit <- psfm(y_ssfe ~ x1 + x2, model_name = "SSFE", data = d,
       individual = "name", time = "year", keep_objective = TRUE),
     "keep_objective = TRUE has no effect"
   )
   expect_null(fit$objective)
-  expect_error(estfun.sfareg(fit), "only with \"GTRE\"")
+  expect_error(estfun.sfareg(fit), "does not retain its likelihood")
+  ## The message names the models that DO work rather than a stale short list.
+  expect_error(estfun.sfareg(fit), "PL80")
 })
 
 test_that("keep_objective = TRUE does not warn for the models that retain it", {

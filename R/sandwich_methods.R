@@ -25,10 +25,13 @@ bread.sfareg <- function(x, ...) {
 estfun.sfareg <- function(x, ...) {
   if (is.null(x$objective)) {
     stop("estfun(): this fit does not retain its likelihood, so the score ",
-      "matrix cannot be built. Refit with keep_objective = TRUE: that works for ",
-      "sfm() fits, and for psfm() only with \"GTRE\" (estimator = \"sml\"), ",
-      "\"TRE\", \"GTRE_Z\" and \"TRE_Z\". Other psfm() models and the other ",
-      "entry points have no per-observation likelihood.",
+      "matrix cannot be built. Refit with keep_objective = TRUE. That works ",
+      "for every maximum-likelihood fit: sfm() (except robust = ), zsfm(), ",
+      "lcsfm(), ttsfm() (\"TTNE\", \"TTHN\"), copsfm(), selsfm(), ivsfm() ",
+      "(\"IVLIML\", \"IVCF\"), and psfm() with ",
+      paste(dQuote(.PSFM_SCORE_MODELS, FALSE), collapse = ", "),
+      ". The remaining psfm() models, ttsfm(\"TTNLS\") and ivsfm(\"C2SLS\") ",
+      "are not fit by maximum likelihood and have no score matrix.",
       call. = FALSE
     )
   }
@@ -73,9 +76,9 @@ estfun.sfareg <- function(x, ...) {
         } else {
           "  "
         },
-        "Per-observation contributions are available for sfm() fits and for ",
-        "psfm()'s GTRE, TRE, GTRE_Z and TRE_Z (per firm) from 1.2.1. A fit ",
-        "retained by an older version must be refit.",
+        "Every maximum-likelihood entry point supplies them as of 1.2.1, and ",
+        "psfm() supplies them per FIRM. A fit retained by an older version ",
+        "must be refit under the current one.",
         call. = FALSE
       )
     }

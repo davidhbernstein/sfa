@@ -1685,7 +1685,12 @@
 
 ## Negative summed log-likelihood. `gid` is an integer group id in 1..ngroups
 ## whose rows are already ordered within firm; the panel must be balanced.
-.csn_gtre_loglik <- function(par, Y, X, gid, ngroups, BigT, gh) {
+.csn_gtre_loglik <- function(par, Y, X, gid, ngroups, BigT, gh, per_obs = FALSE) {
+  ## The penalty keeps its length under per_obs: estfun() central-differences
+  ## this, and a scalar returned beside a length-ngroups vector would recycle.
+  .bail <- function() {
+    if (isTRUE(per_obs)) rep(-1e12 / ngroups, ngroups) else 1e12
+  }
   k <- ncol(X)
   b0 <- par[1]
   beta <- par[2:(k + 1)]
@@ -1696,7 +1701,7 @@
 
   P <- .csn_gtre_parts(sig_r, sig_v, sig_h, sig_u, BigT)
   if (is.null(P)) {
-    return(1e12)
+    return(.bail())
   }
 
   eps <- as.numeric(Y - b0 - X %*% beta)
@@ -1708,19 +1713,25 @@
     error = function(e) NULL
   )
   if (is.null(ld) || any(!is.finite(ld))) {
-    return(1e12)
+    return(.bail())
   }
 
   ## CDF term. Rank-one reduction, evaluated for all firms at once.
   Z <- E %*% t(P$R) ## ngroups x (T+1)
   lp <- tryCatch(.log_csn_cdf_rank1(Z, P$w, P$D, gh), error = function(e) NULL)
   if (is.null(lp) || any(!is.finite(lp))) {
-    return(1e12)
+    return(.bail())
   }
 
-  ll <- sum(ld + lp - P$log_c)
+  ll_i <- ld + lp - P$log_c
+  if (isTRUE(per_obs)) {
+    ## Positive, one entry per FIRM, non-finite floored rather than dropped.
+    ll_i[!is.finite(ll_i)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(ll_i))
+    return(as.numeric(ll_i))
+  }
+  ll <- sum(ll_i)
   if (!is.finite(ll)) {
-    return(1e12)
+    return(.bail())
   }
   -ll
 }
