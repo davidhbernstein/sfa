@@ -1,3 +1,12 @@
+## Which psfm() models are fit by maximum likelihood and can therefore hand a
+## per-firm score matrix to estfun(). Every one of these sums over FIRMS, so a
+## score row is a firm, not a firm-year -- see bread.sfareg() and `n_units`.
+## The rest are moment-based, FE/LSDV or sequential, and have no score.
+.PSFM_SCORE_MODELS <- c(
+  "GTRE", "TRE", "GTRE_Z", "TRE_Z", "GTRE_FML", "TFE_WMLE", "FD",
+  "PL80", "PL80_MVTN", "BC92", "K1990", "K1990modified"
+)
+
 psfm <- function(formula,
                  model_name = c(
                    "TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "TFE", "TFE_WMLE",
@@ -120,14 +129,16 @@ psfm <- function(formula,
     )
   }
 
-  ## Only the simulated-ML likelihoods can be retained; say so rather than
+  ## Not every estimator has a likelihood to retain; say so rather than
   ## silently returning a fit the score-based tools cannot use (gap H14).
-  if (isTRUE(keep_objective) && !model_name %in% c("GTRE", "TRE", "GTRE_Z", "TRE_Z")) {
+  if (isTRUE(keep_objective) && !model_name %in% .PSFM_SCORE_MODELS) {
     warning("keep_objective = TRUE has no effect for model_name = \"", model_name,
-      "\": only \"GTRE\" (estimator = \"sml\"), \"TRE\", \"GTRE_Z\" and \"TRE_Z\" ",
-      "retain their likelihood. Score-based tools (influence_sfa(), ",
-      "vcov(type = \"bhhh\"), sandwich and clustered standard errors, TIC(), ",
-      "vuong()) are unavailable for this fit.",
+      "\": it is not estimated by maximum likelihood, so it has no score ",
+      "matrix. The models that do retain a likelihood are ",
+      paste(dQuote(.PSFM_SCORE_MODELS, FALSE), collapse = ", "), ". ",
+      "Score-based tools (influence_sfa(), vcov(type = \"bhhh\"), sandwich ",
+      "and clustered standard errors, TIC(), vuong()) are unavailable for ",
+      "this fit.",
       call. = FALSE
     )
   }
@@ -265,7 +276,7 @@ psfm <- function(formula,
         individual = individual, inefdec_n = inefdec_n,
         maxit.optim = maxit.optim, Method = Method, optHessian = optHessian,
         start_val = start_val, verbose = verbose, call = call,
-        formula = formula
+        formula = formula, keep_objective = keep_objective
       ))
     }
 
@@ -1876,10 +1887,10 @@ psfm <- function(formula,
     ## Quadrature nodes for the rank-one CDF reduction, built once per fit.
     gh_fml <- .gauss_hermite_nodes(64L)
 
-    like.fml <- function(x) {
+    like.fml <- function(x, per_obs = FALSE) {
       .csn_gtre_loglik(x,
         Y = Y_vec, X = X_s, gid = gid,
-        ngroups = N, BigT = BigT, gh = gh_fml
+        ngroups = N, BigT = BigT, gh = gh_fml, per_obs = per_obs
       )
     }
 
@@ -2015,6 +2026,10 @@ psfm <- function(formula,
     results <- .report_panel_boundary(
       results, model_name, sig_h, sig_r, sqrt(sig_u^2 + sig_v^2)
     )
+    if (isTRUE(keep_objective)) {
+      results$objective <- like.fml
+      results$n_units <- N
+    }
     return(results)
   }
   if (model_name == "TFE_WMLE") {
@@ -2039,7 +2054,7 @@ psfm <- function(formula,
     ## computed once per model fit rather than once per likelihood eval.
     gh_tfe <- .gauss_hermite_nodes(64L)
 
-    like.tfe <- function(x) {
+    like.tfe <- function(x, per_obs = FALSE) {
       x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
       ## The domain test comes BEFORE the sqrt rather than after it. optim()'s
       ## numerical Hessian (hessian=TRUE) perturbs par by unconstrained finite
@@ -2049,7 +2064,9 @@ psfm <- function(formula,
       ## cases, without 13 warnings per fit.
       lambda_eff <- if (gamma == FALSE) x[1] else .gamma_to_lambda(x[1])
       if (!is.finite(lambda_eff)) {
-        return(1e12)
+        ## Keep the penalty's length under per_obs, or estfun()'s central
+        ## difference recycles a scalar against a length-N vector.
+        return(if (isTRUE(per_obs)) rep(-1e12 / N, N) else 1e12)
       }
 
       fn1 <- function(i) {
@@ -2072,6 +2089,12 @@ psfm <- function(formula,
         return(-prod_vec_n)
       }
       fn1_apply <- unlist(lapply(1:N, fn1))
+      if (isTRUE(per_obs)) {
+        ## fn1() returns the NEGATIVE contribution; flip it back, one per firm.
+        ll_i <- -fn1_apply
+        ll_i[!is.finite(ll_i)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(ll_i))
+        return(unname(ll_i))
+      }
       return(sum(fn1_apply[is.finite(fn1_apply)]))
     }
 
@@ -2165,6 +2188,10 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, r_hat_m, exp_u_hat, model_name, formula, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "r_hat_m", "exp_u_hat", "model_name", "formula", "data", "coefficients", "std.errors", "t.values", "call")
+    if (isTRUE(keep_objective)) {
+      results$objective <- like.tfe
+      results$n_units <- N
+    }
     return(results)
   }
   if (model_name == "TFE") {
@@ -2410,7 +2437,7 @@ psfm <- function(formula,
       }
     }
 
-    like.fd <- function(x) {
+    like.fd <- function(x, per_obs = FALSE) {
       for (q in seq_len(n_x_vars)) {
         v <- q + 3
         x_x_vec[q] <- x[v]
@@ -2454,6 +2481,12 @@ psfm <- function(formula,
 
       fn1_apply <- unlist(lapply(1:N, fn1))
 
+      if (isTRUE(per_obs)) {
+        ## fn1() returns the NEGATIVE contribution; flip it back, one per firm.
+        ll_i <- -fn1_apply
+        ll_i[!is.finite(ll_i)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(ll_i))
+        return(unname(ll_i))
+      }
       return(sum(fn1_apply[is.finite(fn1_apply)]))
     }
 
@@ -2555,6 +2588,10 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, u_hat, h_hat, exp_u_hat, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "u_hat", "h_hat", "exp_u_hat", "data", "coefficients", "std.errors", "t.values", "call")
+    if (isTRUE(keep_objective)) {
+      results$objective <- like.fd
+      results$n_units <- N
+    }
     return(results)
   }
   if (model_name == "GTRE_SEQ1") {
@@ -2721,14 +2758,21 @@ psfm <- function(formula,
       K1990modified = c("d", "e")
     )
 
-    like.pl <- function(x) {
+    like.pl <- function(x, per_obs = FALSE) {
       sigma_v <- x[1]
       sigma_u <- x[2]
       beta <- x[3:(2 + K_pl)]
       decay_par <- if (n_decay > 0) x[(3 + K_pl):(2 + K_pl + n_decay)] else numeric(0)
 
+      ## The penalty has to keep its length when per-firm contributions are
+      ## asked for: estfun() differences this, and a length-1 return next to a
+      ## length-N one silently recycles into a nonsense score column.
+      .bail <- function() {
+        if (isTRUE(per_obs)) rep(-1e12 / length(idx_by_firm), length(idx_by_firm)) else 1e12
+      }
+
       if (!all(is.finite(c(sigma_v, sigma_u, decay_par))) || sigma_v <= 0 || sigma_u <= 0) {
-        return(1e12)
+        return(.bail())
       }
 
       resid_all <- inefdec_n * (y_pl - as.vector(X_pl %*% beta))
@@ -2747,6 +2791,12 @@ psfm <- function(formula,
           pnorm(z, log.p = TRUE)
       }
       ll_vec <- mapply(ll_i, idx_by_firm, time_by_firm)
+      if (isTRUE(per_obs)) {
+        ## Positive, full length, non-finite floored rather than dropped --
+        ## the score matrix needs one row per firm in firm order.
+        ll_vec[!is.finite(ll_vec)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(ll_vec))
+        return(unname(ll_vec))
+      }
       -sum(ll_vec[is.finite(ll_vec)])
     }
 
@@ -2826,15 +2876,22 @@ psfm <- function(formula,
     colnames(out) <- par_names
     out[1, ] <- reparam(par_hat)
 
+    ## Built here rather than inside the st_err branch below, because vcov()
+    ## needs it too: this model ESTIMATES (sigma_v, sigma_u, beta, decay) and
+    ## REPORTS (beta, sigmaSq, gamma, decay), so the two scales differ by a
+    ## permutation as well as a transformation. Without it vcov() returned the
+    ## estimation-scale inverse Hessian under the reported names, which put
+    ## Var(sigma_v) on the intercept and Var(beta) on sigmaSq.
+    jac_rep <- tryCatch(numDeriv::jacobian(reparam, par_hat), error = function(e) NULL)
+
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(par_names))
     } else {
-      jac <- tryCatch(numDeriv::jacobian(reparam, par_hat), error = function(e) NULL)
       vc <- tryCatch(solve(opt$hessian), error = function(e) NULL)
-      if (is.null(jac) || is.null(vc)) {
+      if (is.null(jac_rep) || is.null(vc)) {
         rep(NA, length(par_names))
       } else {
-        suppressWarnings(sqrt(pmax(diag(jac %*% vc %*% t(jac)), 0)))
+        suppressWarnings(sqrt(pmax(diag(jac_rep %*% vc %*% t(jac_rep)), 0)))
       }
     }
     out[2, ] <- st_err
@@ -2871,6 +2928,11 @@ psfm <- function(formula,
       "out", "opt", "total_time", "model_name", "formula", "data", "exp_u_hat",
       "coefficients", "std.errors", "t.values", "call"
     )
+    if (!is.null(jac_rep)) results$par_scale <- jac_rep
+    if (isTRUE(keep_objective)) {
+      results$objective <- like.pl
+      results$n_units <- length(idx_by_firm)
+    }
     return(results)
   }
   if (model_name == "GTRE_SEQ2") {

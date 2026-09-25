@@ -54,21 +54,44 @@
   log(p)
 }
 
+## The out-of-domain penalty. NOT .SFA_CONSTANTS$MAX_VALUE, which is
+## .Machine$double.xmax: this is the one likelihood in the package handed
+## straight to stats::optim() with no derivative-free stage in front of it, so
+## L-BFGS-B differences the penalty against an ordinary value and
+## (1.8e308 - 239)/1e-8 overflows to Inf -- "non-finite value supplied by
+## optim" before the fit starts. ^0.1 is the same damping psfm() already
+## applies where an optimizer sees the penalty directly.
+.PL_MVTN_PEN <- function() .SFA_CONSTANTS$MAX_VALUE^0.1
+
 ## Negative summed log-likelihood. `par` is (sig_v, sig_u, rho, beta...);
 ## eps_list holds one T-vector of y - X beta per firm, rebuilt each call.
-.pl_mvtn_nll <- function(par, Y_list, X_list, BigT, inefdec_n = 1) {
+## With per_obs = TRUE it returns the POSITIVE per-FIRM contributions instead.
+.pl_mvtn_nll <- function(par, Y_list, X_list, BigT, inefdec_n = 1,
+                         per_obs = FALSE) {
   sig_v <- par[1]
   sig_u <- par[2]
   rho <- par[3]
   beta <- par[-(1:3)]
 
+  nfirm <- length(Y_list)
+  ## The penalty must keep its length when per-firm contributions are asked
+  ## for: estfun() central-differences this, and a scalar returned beside a
+  ## length-nfirm vector recycles into a meaningless score column.
+  .bail <- function() {
+    if (isTRUE(per_obs)) {
+      rep(-.PL_MVTN_PEN() / nfirm, nfirm)
+    } else {
+      .PL_MVTN_PEN()
+    }
+  }
+
   pr <- .pl_mvtn_parts(sig_u, rho, sig_v, BigT)
   if (is.null(pr)) {
-    return(.SFA_CONSTANTS$MAX_VALUE)
+    return(.bail())
   }
   logP0 <- .pl_mvtn_log_orthant(rep(0, BigT), pr$Sigma)
   if (!is.finite(logP0)) {
-    return(.SFA_CONSTANTS$MAX_VALUE)
+    return(.bail())
   }
 
   Qi <- pr$Q
@@ -76,7 +99,7 @@
   const <- -(BigT / 2) * log(2 * pi) - BigT * log(sig_v) -
     0.5 * pr$logdet_Sig + 0.5 * pr$logdet_Q - logP0
 
-  tot <- 0
+  ll_i <- numeric(nfirm)
   for (i in seq_along(Y_list)) {
     ## u <= 0 is PL's sign convention, i.e. inefficiency SUBTRACTS from a
     ## production frontier. inefdec_n flips it for a cost frontier.
@@ -86,12 +109,22 @@
     quad <- sum(eps^2) / s2 - as.numeric(crossprod(eps, Qe)) / s2^2
     lP <- .pl_mvtn_log_orthant(mu, Qi)
     if (!is.finite(lP)) {
-      return(.SFA_CONSTANTS$MAX_VALUE)
+      if (isTRUE(per_obs)) {
+        ll_i[i] <- -.PL_MVTN_PEN() / nfirm
+        next
+      }
+      return(.PL_MVTN_PEN())
     }
-    tot <- tot + const - 0.5 * quad + lP
+    ll_i[i] <- const - 0.5 * quad + lP
   }
+  if (isTRUE(per_obs)) {
+    ## Positive, one entry per FIRM, non-finite floored rather than dropped.
+    ll_i[!is.finite(ll_i)] <- -.PL_MVTN_PEN() / nfirm
+    return(ll_i)
+  }
+  tot <- sum(ll_i)
   if (!is.finite(tot)) {
-    return(.SFA_CONSTANTS$MAX_VALUE)
+    return(.PL_MVTN_PEN())
   }
   -tot
 }
@@ -101,7 +134,7 @@
 ## start_panel() machinery.
 .psfm_pl_mvtn <- function(data, y_var, x_vars_vec, individual, inefdec_n,
                           maxit.optim, Method, optHessian, start_val,
-                          verbose, call, formula) {
+                          verbose, call, formula, keep_objective = FALSE) {
   id_chr <- as.character(data[, individual])
   indiv <- unique(id_chr)
   gid <- match(id_chr, indiv)
@@ -155,12 +188,46 @@
   lower <- c(1e-3, 1e-3, -1 / (BigT - 1) + 0.02, rep(-Inf, np - 3))
   upper <- c(Inf, Inf, 0.95, rep(Inf, np - 3))
 
-  opt <- stats::optim(
-    par = start_v, fn = .pl_mvtn_nll, method = Method,
-    lower = lower, upper = upper, hessian = isTRUE(optHessian),
-    control = list(maxit = maxit.optim, trace = if (isTRUE(verbose)) 1 else 0),
-    Y_list = Y_list, X_list = X_list, BigT = BigT, inefdec_n = inefdec_n
+  ## Three stages, not one. The orthant probability inside the likelihood is
+  ## computed to limited precision, so its finite-difference gradient is
+  ## noisy and L-BFGS-B alone stops at points that are not maxima -- while
+  ## still reporting convergence = 0. A derivative-free stage between two
+  ## L-BFGS-B runs is the same scaffold every other psfm() model uses. It
+  ## leaves already-converged fits untouched and recovers several
+  ## log-likelihood points where the single stage quit early.
+  .nll <- function(p) {
+    .pl_mvtn_nll(p,
+      Y_list = Y_list, X_list = X_list, BigT = BigT, inefdec_n = inefdec_n
+    )
+  }
+  o0 <- stats::optim(
+    par = start_v, fn = .nll, method = Method,
+    lower = lower, upper = upper, hessian = FALSE,
+    control = list(maxit = maxit.optim, trace = if (isTRUE(verbose)) 1 else 0)
   )
+  polished <- tryCatch(
+    {
+      bo <- minqa::bobyqa(o0$par, .nll,
+        lower = lower, upper = pmin(upper, .Machine$double.xmax^0.25),
+        control = list(maxfun = 5000, iprint = if (isTRUE(verbose)) 1 else 0)
+      )
+      if (is.finite(bo$fval) && bo$fval <= o0$value) bo$par else o0$par
+    },
+    error = function(e) o0$par
+  )
+  opt <- stats::optim(
+    par = polished, fn = .nll, method = Method,
+    lower = lower, upper = upper, hessian = isTRUE(optHessian),
+    control = list(maxit = maxit.optim, trace = if (isTRUE(verbose)) 1 else 0)
+  )
+  ## Never return a worse point than the first stage found.
+  if (!is.finite(opt$value) || opt$value > o0$value) {
+    opt <- stats::optim(
+      par = o0$par, fn = .nll, method = Method,
+      lower = lower, upper = upper, hessian = isTRUE(optHessian),
+      control = list(maxit = 1L)
+    )
+  }
   total_time <- start.time() - Start.Time
 
   par_names <- c("sigv", "sigu", "rho", xn)
@@ -189,13 +256,27 @@
     }
   }
 
+  ## t(out), not out. Every other entry point stores the p x 3 transpose, and
+  ## the documented access is fit$out[, "par"] -- storing the 3 x p matrix
+  ## here made that error with "subscript out of bounds" on this model alone.
   results <- list(
-    out = out, opt = opt, total_time = total_time, start_v = start_v,
+    out = t(out), opt = opt, total_time = total_time, start_v = start_v,
     model_name = "PL80_MVTN", formula = formula,
     coefficients = out[1, ], std.errors = out[2, ], t.values = out[3, ],
     u_hat = u_hat, exp_u_hat = pmin(pmax(exp(-u_hat), 0), 1),
     BigT = BigT, call = call, data = data
   )
   class(results) <- "sfareg"
+  if (isTRUE(keep_objective)) {
+    ## Contributions are per FIRM, so n_units -- not nobs() -- is what
+    ## bread() must scale by.
+    results$objective <- function(par, per_obs = FALSE) {
+      .pl_mvtn_nll(par,
+        Y_list = Y_list, X_list = X_list, BigT = BigT,
+        inefdec_n = inefdec_n, per_obs = per_obs
+      )
+    }
+    results$n_units <- length(Y_list)
+  }
   results
 }

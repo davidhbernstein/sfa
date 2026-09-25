@@ -24,7 +24,54 @@
   `penalty_c > 0` the contributions are those of the *unpenalised* likelihood,
   since a penalty on the class probabilities is not a per-observation quantity.
 
+* **`psfm()`'s closed-form panel likelihoods supply per-firm scores too.**
+  `keep_objective = TRUE` now reaches `"GTRE_FML"`, `"TFE_WMLE"`, `"FD"`,
+  `"PL80"`, `"PL80_MVTN"`, `"BC92"`, `"K1990"` and `"K1990modified"`, joining
+  the four simulated-ML models. Every `psfm()` estimator that maximises a
+  log-likelihood can now produce a score matrix, and the remaining ones
+  (`"TFE"`, `"SSFE"`, `"SSRE"`, `"SSCRE"`, `"CSS"`, `"LS"`, `"KSS"`,
+  `"GTRE_SEQ1"`, `"GTRE_SEQ2"`) are moment-based, FE/LSDV or sequential and
+  warn that the argument has no effect. Contributions are per *firm*, so
+  `sandwich::vcovCL()` takes a cluster variable with one entry per firm and
+  the resulting errors are firm-clustered by construction.
+
+  This matters most where the Hessian path fails. `"FD"`'s Hessian is
+  routinely indefinite, so three of its five standard errors print as `NaN`;
+  the OPG returns all five, and they are large -- which is the honest answer
+  for parameters the near-zero Hessian eigenvalues said were barely
+  identified.
+
 ## Bug fixes
+
+* **`vcov()` was permuted for `psfm("PL80")`, `"BC92"`, `"K1990"` and
+  `"K1990modified"`.** These models estimate `(sigma_v, sigma_u, beta)` and
+  report `(beta, sigmaSq, gamma)`, so the two scales differ by a permutation
+  as well as a transformation. `vcov()` returned the estimation-scale inverse
+  Hessian under the reported names, which put `Var(sigma_v)` on the intercept
+  and `Var(beta)` on `sigmaSq`. On a 60-firm panel `confint()` reported the
+  intercept as `[1.0101, 1.0707]` where the printed standard error implies
+  `[0.9303, 1.1505]` -- 3.6 times too narrow, with every other row wrong in a
+  different direction. The delta-method Jacobian these fits already computed
+  for their own standard errors is now stored on the object and applied by
+  `vcov()`, so the two agree exactly.
+
+* **`psfm("PL80_MVTN")` stored `out` untransposed.** Every other entry point
+  stores the `p x 3` transpose, and the documented access `fit$out[, "par"]`
+  failed on this model alone with `subscript out of bounds`.
+
+* **`psfm("PL80_MVTN")` could fail to start, and could stop short of a
+  maximum.** Its out-of-domain penalty was `.Machine$double.xmax`; it is the
+  one likelihood handed straight to `optim()` with no derivative-free stage
+  in front of it, so L-BFGS-B differenced that penalty against an ordinary
+  value and overflowed, aborting the fit with `non-finite value supplied by
+  optim` on some samples. Separately, the orthant probability inside the
+  likelihood is computed to limited precision, so the finite-difference
+  gradient is noisy and a single L-BFGS-B run stopped at points that were not
+  maxima while still reporting `convergence = 0`. The penalty is now damped
+  and a derivative-free stage runs between two L-BFGS-B runs, as in every
+  other `psfm()` model. Already-converged fits are unchanged to the last
+  digit; where the single stage quit early the fit gains 5 to 7
+  log-likelihood points.
 
 * **`vcov()` returned standard errors on the wrong scale for `ttsfm()`,
   `copsfm()` and `ivsfm()`, and failed outright for `ivsfm("IVLIML")`.** These

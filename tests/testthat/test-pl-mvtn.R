@@ -38,9 +38,23 @@ test_that("the likelihood returns the penalty rather than erroring on bad input"
   Y <- split(d$y_pl_mvtn, d$name)
   X <- lapply(split(seq_len(nrow(d)), d$name), function(i) as.matrix(d[i, c("x1","x2")]))
   bad <- c(-1, 1, 0.5, 0.5, 0.5)          # sigma_v < 0
-  expect_equal(sfa:::.pl_mvtn_nll(bad, Y, X, 4), sfa:::.SFA_CONSTANTS$MAX_VALUE)
+  ## The penalty is MAX_VALUE^0.1, NOT MAX_VALUE. This is the one likelihood
+  ## handed straight to optim() with no derivative-free stage in front of it,
+  ## so L-BFGS-B differences the penalty against an ordinary value;
+  ## .Machine$double.xmax overflowed that difference to Inf and aborted the
+  ## fit with "non-finite value supplied by optim" (fixed in 1.2.1).
+  expect_equal(sfa:::.pl_mvtn_nll(bad, Y, X, 4), sfa:::.PL_MVTN_PEN())
+  expect_lt(sfa:::.PL_MVTN_PEN(), sfa:::.SFA_CONSTANTS$MAX_VALUE)
+  ## Differencing it must stay finite, which is the whole point.
+  expect_true(is.finite((sfa:::.PL_MVTN_PEN() - 239) / .Machine$double.eps^(1 / 3)))
   ok <- sfa:::.pl_mvtn_nll(c(0.3, 1, 0.5, 0.5, 0.5), Y, X, 4)
   expect_true(is.finite(ok))
+
+  ## Under per_obs the penalty keeps its length, or estfun()'s central
+  ## difference recycles a scalar against a length-N vector.
+  bad_i <- sfa:::.pl_mvtn_nll(bad, Y, X, 4, per_obs = TRUE)
+  expect_length(bad_i, length(Y))
+  expect_true(all(bad_i < 0))
 })
 
 test_that("the likelihood is maximized at the truth", {
