@@ -2,6 +2,39 @@
 
 ## Bug fixes
 
+* **`ttsfm(model_name = "TTHN")` could stop with `'x' must be an array of at
+  least two dimensions`.** When the three optimizer stages disagreed about
+  which reached the best objective, `ttsfm()` substituted the winning stage's
+  result into the fit -- but a `bobyqa()` or `psoptim()` object does not carry
+  the `hessian` that the standard-error step then asked for, so the fit died
+  after the work was done. The substituted result is now given `optim()`'s
+  shape, with a Hessian computed at its own parameters. The same substitution
+  also silently cost the fit its log-likelihood: `bobyqa()` reports the
+  objective as `fval` where `optim()` reports `value`, so a `bobyqa`-won TTHN
+  fit returned `NA` from `logLik()`, `AIC()` and `BIC()` with no warning.
+  Both are fixed together.
+
+  **One consequence worth knowing.** Where the stages tie -- and on this
+  likelihood they frequently tie to within rounding -- which stage "wins" is
+  decided by the last bits of the objective and can differ between platforms.
+  The substituted path computes its Hessian with `numDeriv`, while an
+  unsubstituted fit carries `optim()`'s own. On an ill-conditioned fit the two
+  estimators can disagree about whether the Hessian is positive definite, and
+  therefore about how many standard errors are reportable. This is a property
+  of the conditioning, not of the fix -- but before the fix these fits errored
+  rather than reporting anything at all.
+
+* **Cost frontiers could be read as production frontiers by three
+  post-estimation functions.** `composed_cdf()`, `lcsfm_homogeneity()` and the
+  robust residual accessor each decided orientation their own way. Two were
+  wrong in the same manner: a fit made with `inefdec` passed as a *variable*
+  rather than a literal -- `flag <- FALSE; sfm(..., inefdec = flag)` -- had the
+  unevaluated symbol forwarded or an unresolvable value silently treated as a
+  production frontier. A cost fit was then scored with the production sign, with
+  no error and no warning. All three now resolve orientation through the same
+  helper the rest of the package uses, and **stop with a message when the
+  orientation genuinely cannot be determined** rather than assuming one.
+
 * **`efficiency(logDepVar = FALSE)` gave cost frontiers the production
   formula.** On the level scale it returned `1 - u/f` for every fit; for a cost
   frontier, where `y = f + u + v`, efficiency is minimum over actual cost,
