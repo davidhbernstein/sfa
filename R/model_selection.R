@@ -96,7 +96,11 @@ TIC <- function(object, detail = FALSE) {
   ## `ratio` is the diagnostic worth reading: 1 means the information matrix
   ## equality holds and TIC has nothing to add over AIC. Far from 1 means the
   ## distributional assumption is doing real damage.
-  df <- length(object$coefficients)
+  ## The penalty is a trace on the ESTIMATION scale, so the df it is compared
+  ## against has to be the estimated count too -- otherwise ivsfm("IVLIML")
+  ## reports ratio = 11/6 = 1.83 and reads as a gross violation of the
+  ## information matrix equality when nothing is wrong.
+  df <- .sfa_npar(object)
   list(
     TIC = val,
     AIC = -2 * ll + 2 * df,

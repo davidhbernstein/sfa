@@ -61,9 +61,26 @@ returns a matrix of \code{NA}s with a warning.
 
 \code{logLik.sfareg} returns the maximized log-likelihood as an object of
 class \code{"logLik"}, with \code{"df"} and \code{"nobs"} attributes set so
-that \code{AIC()}/\code{BIC()} work automatically. Every estimator in this
-package minimizes the negative summed log-likelihood internally, so
-\code{logLik = -object$opt$value}. \strong{Exception:} \code{psfm()}'s
+that \code{AIC()}/\code{BIC()} work automatically.
+
+\strong{Two quantities that are easy to confuse.} \code{object$opt$value} is
+the OBJECTIVE the optimizer minimized, which is the negative summed
+log-likelihood for most but not all estimators here, and
+\code{object$coefficients} is what the fit REPORTS, which is not always what
+it estimated. \code{logLik()} therefore reads neither blindly: \code{"df"} is
+the number of parameters ESTIMATED (\code{length(object$opt$par)} where that
+exists), because \code{\link{ivsfm}}\code{("IVLIML")} maximizes over 11 and
+reports 6; and the returned value is the PLAIN log-likelihood, because
+\code{\link{lcsfm}} with \code{penalty_c > 0} maximizes a penalized
+likelihood and carries the unpenalized one separately.
+
+\strong{Estimators with no log-likelihood.} \code{\link{sfm}}'s robust
+divergence estimators (\code{robust = "mlqe"}, \code{"psi"} or
+\code{"mdpd"}) minimize a divergence rather than a negative log-likelihood,
+so \code{logLik()} returns \code{NA} with a warning and \code{AIC()}/
+\code{BIC()} propagate it. Their objective is not on the likelihood scale and
+must not be compared with one; \code{print()} names it accordingly.
+\strong{Exception:} \code{psfm()}'s
 \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} models are estimated by a
 moment-based procedure and \code{"SSFE"} by fixed-effects (LSDV)
 regression, not by maximum likelihood; none of the three carries an

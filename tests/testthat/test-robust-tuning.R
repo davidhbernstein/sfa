@@ -324,3 +324,73 @@ test_that("the robust objectives carry the density in the exponent", {
   ## this change -- it removes a discontinuity, it does not shift a maximiser.
   expect_identical(vec[3], 1 / cc)
 })
+
+## ---------------------------------------------------------------------------
+## opt$value is a DIVERGENCE for these fits, not a negative log-likelihood.
+
+test_that("logLik() refuses robust divergence fits instead of returning the objective", {
+  skip_on_cran()
+  d <- as.data.frame(cs_small(N = 300))
+  mle <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d)
+
+  ## The MLE is unaffected: -opt$value IS its log-likelihood.
+  expect_equal(as.numeric(logLik(mle)), -mle$opt$value)
+  expect_true(is.finite(AIC(mle)))
+
+  for (r in c("mlqe", "psi", "mdpd")) {
+    f <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d,
+      robust = r))
+    expect_identical(f$robust, r)
+    ## Returning -opt$value here handed the robust fit an AIC of -2471 against
+    ## the MLE's +609 -- a 3080-point advantage that is purely a change of
+    ## objective, reported with no warning. psi was worse still, at -58807.
+    expect_warning(ll <- logLik(f), "not defined for this fit")
+    expect_true(is.na(as.numeric(ll)))
+    expect_s3_class(ll, "logLik")
+    ## The attributes survive, so AIC()/BIC() propagate NA rather than erroring.
+    expect_equal(attr(ll, "df"), length(f$opt$par))
+    expect_equal(attr(ll, "nobs"), nrow(d))
+    expect_true(is.na(suppressWarnings(AIC(f))))
+    expect_true(is.na(suppressWarnings(BIC(f))))
+    ## estfun() and TIC() already refused these; logLik() now agrees with them
+    ## rather than quietly disagreeing. keep_objective = TRUE is needed to
+    ## reach the robust-specific refusal rather than the generic one.
+    fk <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d,
+      robust = r, keep_objective = TRUE))
+    expect_error(estfun.sfareg(fk), "robust divergence estimators")
+  }
+})
+
+test_that("estfun() refuses a robust fit for the right reason, not the generic one", {
+  skip_on_cran()
+  d <- as.data.frame(cs_small(N = 300))
+  ## Without keep_objective the objective check used to fire first, so a
+  ## robust fit was told to "Refit with keep_objective = TRUE" -- advice that
+  ## cannot help, because the refit then hits the robust refusal. The robust
+  ## check now comes first.
+  f <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d,
+    robust = "mdpd"))
+  expect_null(f$objective)
+  expect_error(estfun.sfareg(f), "robust divergence estimators")
+  ## And specifically does NOT send the user off to refit.
+  msg <- tryCatch(estfun.sfareg(f), error = function(e) conditionMessage(e))
+  expect_false(grepl("keep_objective", msg, fixed = TRUE))
+
+  ## A non-robust fit without keep_objective still gets the generic message.
+  g <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d)
+  expect_error(estfun.sfareg(g), "does not retain its likelihood")
+})
+
+test_that("print() names the objective it is showing", {
+  skip_on_cran()
+  d <- as.data.frame(cs_small(N = 300))
+  mle <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d)
+  expect_output(print(mle), "log likelihood:")
+
+  rob <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d,
+    robust = "mdpd"))
+  ## Was "log likelihood: 1240.59", which is an invitation to compare it with
+  ## a real one.
+  expect_output(print(rob), "mdpd objective \\(NOT a log likelihood\\)")
+  expect_failure(expect_output(print(rob), "^log likelihood:"))
+})
