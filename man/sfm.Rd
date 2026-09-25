@@ -150,12 +150,29 @@ likelihoods:
  \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u = 1} \tab exponential (\code{"NE"}) \cr
  \eqn{\nu_u \to \infty}, \eqn{\psi_u = 1} \tab gamma (\code{"NG"}) \cr
  \eqn{\nu_u \to \infty}, \eqn{\tau = \psi_u} \tab Weibull (\code{"NW"}), at scale \eqn{\sigma_u\psi_u^{1/\psi_u}} \cr
- \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half Student \eqn{t} with \eqn{\nu_u} degrees of freedom
+ \eqn{\tau = 1}, \eqn{\psi_u = 2} \tab half Student \eqn{t} with \eqn{\nu_u} degrees of freedom \cr
+ \eqn{\tau = \psi_u = 1} \tab Lomax (Pareto II), shape \eqn{\nu_u} and scale \eqn{\sigma_u\nu_u}
 }
 
-The half-\eqn{t} case is exact; the others are limits, and the tests check that
-the error against each falls like \eqn{1/\nu_u} rather than merely that it is
-small at one value.
+The half-\eqn{t} and Lomax cases are exact; the others are limits, and the
+tests check that the error against each falls like \eqn{1/\nu_u} rather than
+merely that it is small at one value.
+
+Note how the Lomax row sits against the exponential row above it: they carry
+the same restriction \eqn{\tau = \psi_u = 1} and differ only in whether
+\eqn{\nu_u} is sent to infinity or left free, exactly as the half-\eqn{t} row
+is the finite-\eqn{\nu_u} version of the half-normal row. So \code{"NGB2"}
+already reaches the heavy-tailed one-sided family that a separate
+\emph{Lomax} model would provide, and no such \code{model_name} is needed.
+
+\bold{One caveat specific to the Lomax region.} A Lomax with shape
+\eqn{\nu_u \le 1} has \bold{no finite mean}, and with \eqn{\nu_u \le 2} no
+finite variance. A \code{"NGB2"} fit that settles near \eqn{\tau = \psi_u = 1}
+with a small \eqn{\nu_u} is therefore in a region where \eqn{E[u]} does not
+exist, which is what \code{exp_u_hat} and the JLMS predictor are estimating.
+The fit itself is well defined -- the likelihood only needs the density -- but
+inefficiency summaries from it should not be read as estimates of a population
+mean that is not there.
 
 \bold{\eqn{\nu_u} has no interior maximum once the tail is not heavy, and a
 large fitted value is not an estimate.} Past a few hundred the density has

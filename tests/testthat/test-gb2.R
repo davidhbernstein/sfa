@@ -76,6 +76,24 @@ test_that("GB2 nests the distributions the paper says it nests", {
   ## The half-Student t is EXACT, not a limit: tau = 1, psi = 2, nu = df.
   expect_equal(ld(u, s, 4, 2, 1), log(2) + dt(u / s, df = 4, log = TRUE) - log(s),
     tolerance = 1e-12)
+
+  ## The Lomax is EXACT too, and was missing from the table until gap M2.
+  ## Reading .gb2_ld() against the standard GB2 (a, b, p, q) gives
+  ##   a = psi,  p = tau/psi,  q = nu/psi,  b = sigma nu^(1/psi),
+  ## and the Lomax is GB2 with a = 1, p = 1. So psi = tau = 1 with nu free is
+  ## Lomax(shape = nu, scale = sigma nu) -- the exponential row above with nu
+  ## FINITE, exactly as the half-t row is the finite-nu half-normal. Tested
+  ## across nu on both sides of 1, since below 1 the Lomax has no mean.
+  dlomax <- function(uu, shape, scale) {
+    (shape / scale) * (1 + uu / scale)^(-(shape + 1))
+  }
+  for (nu in c(0.5, 1, 2, 7, 40)) {
+    for (sg in c(0.3, 1.1, 2.5)) {
+      expect_equal(exp(ld(u, sg, nu, 1, 1)),
+        dlomax(u, shape = nu, scale = sg * nu),
+        tolerance = 1e-12, info = paste("Lomax nu", nu, "sigma", sg))
+    }
+  }
 })
 
 test_that("sfm(model_name = 'NGB2') returns a well-formed fit", {
