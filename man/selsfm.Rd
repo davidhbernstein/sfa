@@ -25,7 +25,8 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
        antithetics = FALSE, seed = NULL, inefdec = TRUE,
        maxit.bobyqa = 10000, maxit.psoptim = 1000, maxit.optim = 1000,
        start_val = FALSE, PSopt = FALSE, optHessian = TRUE,
-       Method = "L-BFGS-B", verbose = FALSE, rand.psoptim = NULL)
+       Method = "L-BFGS-B", verbose = FALSE, keep_objective = FALSE,
+       rand.psoptim = NULL)
 }
 \arguments{
 \item{selection}{A two-sided formula for the selection equation, \code{d ~ z1 + z2}.
@@ -61,6 +62,7 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
 \item{optHessian}{Compute the Hessian, and with it the standard errors.}
 \item{Method}{Method passed to \code{optim} for the final stage.}
 \item{verbose}{Report optimizer progress.}
+\item{keep_objective}{Logical. Retain the second-stage likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The contributions are over the \emph{selected} observations, which is the sum the second stage maximises. \bold{This is a two-step estimator:} \eqn{\hat\alpha} comes from the first-stage probit and enters the second stage as if known, so the OPG ignores first-stage estimation error exactly as the stored Hessian already does. It is the same conditional-on-\eqn{\hat\alpha} variance computed a different way, not a correction for it. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}
 }
 \details{

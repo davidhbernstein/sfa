@@ -4,6 +4,67 @@ coef.sfareg <- function(object, ...) {
   object$coefficients
 }
 
+## Map a covariance matrix from the ESTIMATION scale onto the scale coef()
+## reports. Several entry points do not estimate what they report: ttsfm(),
+## copsfm() and ivsfm() estimate LOG sigmas, ivsfm() reports
+## rho = t / sqrt(1 + t't), and ivsfm("IVLIML") additionally estimates
+## reduced-form parameters it never reports.
+##
+## Before this existed, vcov() named the estimation-scale matrix with the
+## reported names and returned it: on a copsfm() fit sqrt(diag(vcov(f)))
+## came back a factor of 1/sigma_u away from the sigma_u standard error the
+## fit itself printed, and on ivsfm("IVLIML") -- 11 estimated, 6 reported --
+## it failed outright in dimnames(). Both paths, Hessian and BHHH, go through
+## here so the two can no longer disagree.
+##
+## Order matters. Subsetting is done on the INVERSE, because the marginal
+## covariance of a sub-block is that block of the inverse, not the inverse of
+## the block; the latter conditions on the nuisance parameters being known and
+## understates every standard error.
+.sfa_map_vcov <- function(V, idx, jac, p, nm, what) {
+  if (is.matrix(jac)) {
+    ## J is (reported x estimated), so it subsets and transforms at once --
+    ## needed when a reported parameter is a non-diagonal function of several
+    ## estimated ones, as ivsfm()'s rho is.
+    if (ncol(jac) != nrow(V)) {
+      stop(what, ": the stored parameter Jacobian is ", nrow(jac), "x",
+        ncol(jac), " but the covariance has ", nrow(V),
+        " parameters; refit under the current version.",
+        call. = FALSE
+      )
+    }
+    V <- jac %*% V %*% t(jac)
+  } else {
+    if (!is.null(idx)) {
+      if (any(idx < 1L) || any(idx > nrow(V))) {
+        stop(what, ": the stored parameter index does not match the ",
+          "covariance; refit under the current version.",
+          call. = FALSE
+        )
+      }
+      V <- V[idx, idx, drop = FALSE]
+    }
+    if (!is.null(jac)) {
+      if (length(jac) != nrow(V)) {
+        stop(what, ": the stored parameter Jacobian does not match the ",
+          "covariance; refit under the current version.",
+          call. = FALSE
+        )
+      }
+      ## Diagonal delta method: V * J J' elementwise is diag(J) V diag(J).
+      V <- V * tcrossprod(jac)
+    }
+  }
+  if (nrow(V) != p) {
+    stop(what, ": the covariance maps onto ", nrow(V),
+      " parameters but the fit reports ", p, ".",
+      call. = FALSE
+    )
+  }
+  dimnames(V) <- list(nm, nm)
+  V
+}
+
 vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
   type <- match.arg(type)
   p <- length(object$coefficients)
@@ -12,7 +73,7 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
   ## BHHH: the inverse of the outer product of the per-observation scores.
   ## Worth having because it needs no Hessian at all -- it is defined whenever
   ## the scores are, which is exactly the case the default path fails on. When
-  ## the Hessian is singular vcov() currently falls back to a DIAGONAL
+  ## the Hessian is singular vcov() otherwise falls back to a DIAGONAL
   ## approximation, discarding every covariance; BHHH keeps them.
   ##
   ## It is only as good as the information-matrix equality, so it disagrees
@@ -32,15 +93,19 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
         call. = FALSE
       )
     }
-    dimnames(V) <- list(nm, nm)
-    return(V)
+    return(.sfa_map_vcov(V, attr(G, "par_index"), attr(G, "par_scale"),
+      p, nm, "vcov(type = \"bhhh\")"
+    ))
   }
 
   if (!is.null(object$opt) && !is.null(object$opt$hessian)) {
     V <- tryCatch(solve(object$opt$hessian), error = function(e) NULL)
     if (!is.null(V)) {
-      dimnames(V) <- list(nm, nm)
-      return(V)
+      V <- tryCatch(
+        .sfa_map_vcov(V, object$par_index, object$par_scale, p, nm, "vcov()"),
+        error = function(e) NULL
+      )
+      if (!is.null(V)) return(V)
     }
     warning("Hessian stored on this fit could not be inverted; falling back to a diagonal approximation built from the reported standard errors.", call. = FALSE)
   }

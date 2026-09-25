@@ -1,6 +1,53 @@
 # sfa 1.2.1
 
+## New features
+
+* **OPG (BHHH) standard errors are now available from every entry point whose
+  likelihood is separable per observation.** `keep_objective = TRUE` gains
+  `zsfm()`, `lcsfm()`, `ttsfm()` (`"TTNE"`, `"TTHN"`), `copsfm()`, `ivsfm()`
+  (`"IVLIML"`, `"IVCF"`) and `selsfm()`, joining `sfm()` and `psfm()`. Those
+  fits then support `vcov(type = "bhhh")`, `influence_sfa()`, the `sandwich`
+  methods, `TIC()` and `vuong()`. Because the OPG needs no Hessian at all, it
+  is defined in exactly the cases where the default path fails -- an
+  indefinite or non-invertible Hessian.
+
+  The estimators that maximise no log-likelihood have no score, and now say so
+  instead of returning a fit whose score-based tools are silently unavailable:
+  `ttsfm("TTNLS")` (nonlinear least squares) and `ivsfm("C2SLS")` (2SLS with a
+  corrected intercept) warn that `keep_objective = TRUE` has no effect, as
+  `psfm()` already did for its moment-based and FE estimators. `npsfm()` is
+  nonparametric and has no likelihood to retain.
+
+  Two caveats are documented rather than papered over. `selsfm()` is a
+  two-step estimator, so its OPG conditions on the first-stage probit exactly
+  as its Hessian already does; and for `lcsfm("LCM_CN")` with
+  `penalty_c > 0` the contributions are those of the *unpenalised* likelihood,
+  since a penalty on the class probabilities is not a per-observation quantity.
+
 ## Bug fixes
+
+* **`vcov()` returned standard errors on the wrong scale for `ttsfm()`,
+  `copsfm()` and `ivsfm()`, and failed outright for `ivsfm("IVLIML")`.** These
+  entry points estimate *log* sigmas and report sigmas, and `ivsfm()` reports
+  `rho = t/sqrt(1 + t't)`. Their reported standard errors have always carried
+  the delta-method correction, but `vcov()` did not: it named the
+  estimation-scale inverse Hessian with the reported names and returned it. So
+  `sqrt(diag(vcov(f)))` disagreed with the `sigma_u` standard error the same
+  fit printed by a factor of exactly `1/sigma_u` -- wrong in a way that looks
+  entirely plausible, and inherited by `confint()`, `lmtest::coeftest()` and
+  anything else built on `vcov()`. `ivsfm("IVLIML")` additionally estimates
+  reduced-form parameters it never reports, so naming an 11x11 matrix with 6
+  names failed with `length of 'dimnames' [1] not equal to array extent`.
+
+  `vcov()` now carries the fit's own Jacobian from the estimation scale onto
+  the reported one, and marginalises estimated-but-unreported parameters by
+  taking the corresponding block of the *inverse* rather than inverting the
+  block -- the latter conditions on the nuisance parameters being known and
+  understates every standard error. Both the Hessian and the BHHH path go
+  through the same map, so the two can no longer disagree about scale.
+  `influence_sfa()` was pairing estimation-scale scores with a reported-scale
+  covariance for the same reason, and is fixed with it.
+
 
 * **`ttsfm(model_name = "TTHN")` could stop with `'x' must be an array of at
   least two dimensions`.** When the three optimizer stages disagreed about

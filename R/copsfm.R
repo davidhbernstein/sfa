@@ -296,6 +296,7 @@ copsfm <- function(formula,
                    optHessian = TRUE,
                    Method = "L-BFGS-B",
                    verbose = FALSE,
+                   keep_objective = FALSE,
                    rand.psoptim = NULL) {
   call <- match.call()
   copula <- match.arg(copula)
@@ -440,8 +441,16 @@ copsfm <- function(formula,
   ## sfm()'s NGE, NLN and NW branches already use 1e12 for exactly this reason.
   .PEN <- 1e12
 
-  like.fn <- function(th) {
-    if (!all(is.finite(th))) return(.PEN)
+  ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
+  ## contributions instead of the negative sum, for estfun.sfareg() and
+  ## vcov(type = "bhhh"). The optimizers call this with one argument.
+  ## Note the scale: th holds LOG sigma_u and LOG sigma_v, so the scores are
+  ## on the log scale and vcov() delta-corrects them via `par_scale` below.
+  like.fn <- function(th, per_obs = FALSE) {
+    ## A refused draw must keep its length under per_obs; the scalar barrier
+    ## would collapse estfun()'s matrix to a single row.
+    .bail <- function() if (isTRUE(per_obs)) rep(-.PEN / n, n) else .PEN
+    if (!all(is.finite(th))) return(.bail())
     su <- exp(pmin(th[i_su], 12)); sv <- exp(pmin(th[i_sv], 12))
     ## CLAMPED, not rejected. The optimizers already hold th[i_av] inside these
     ## bounds; returning a huge penalty for the last ulp of floating-point slop
@@ -457,7 +466,8 @@ copsfm <- function(formula,
     cpar <- if (has_cop) min(max(th[i_c], cs$lo), cs$hi) else NULL
     eps <- S * as.numeric(y - X %*% th[i_b])
     ll <- .log_dens(eps, su, sv, av, cpar)
-    if (any(!is.finite(ll))) return(.PEN)
+    if (any(!is.finite(ll))) return(.bail())
+    if (isTRUE(per_obs)) return(ll)
     ## The scaffold MINIMIZES; every likelihood here returns the negative sum.
     -sum(ll)
   }
@@ -533,5 +543,18 @@ copsfm <- function(formula,
     "exp_u_hat", "S", "nobs", "n_nodes",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Optionally retain the objective for estfun()/vcov(type = "bhhh"), with
+  ## the map from the estimation-scale vector `th` onto the reported one.
+  ## These mirror `par` and `se` above exactly: same positions, and the same
+  ## delta-method factors the Hessian standard errors already carry.
+  results$par_index <- c(i_b, i_su, i_sv,
+    if (!is.na(i_av)) i_av else NULL,
+    if (has_cop) i_c else NULL
+  )
+  results$par_scale <- c(rep(1, length(i_b)), su, sv,
+    if (!is.na(i_av)) av else NULL,
+    if (has_cop) 1 else NULL
+  )
+  if (isTRUE(keep_objective)) results$objective <- like.fn
   results
 }

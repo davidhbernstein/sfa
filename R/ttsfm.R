@@ -20,10 +20,18 @@
 ## about -9.5e152 at n = 200 -- which is 140 orders of magnitude past
 ## .TT_PENALTY and undid the very thing that penalty was introduced for. It
 ## also mapped a +Inf log-density to a huge NEGATIVE one, hiding the cause.
-.tt_objective <- function(ll) {
+.tt_objective <- function(ll, per_obs = FALSE) {
   if (is.null(ll) || !length(ll) || any(!is.finite(ll))) {
+    ## A refused draw has to keep its length under per_obs, or estfun()
+    ## silently collapses the score matrix to one row. With no usable `ll`
+    ## there is no length to keep, so the scalar barrier stands and the
+    ## caller surfaces it.
+    if (isTRUE(per_obs) && !is.null(ll) && length(ll)) {
+      return(rep(-.TT_PENALTY / length(ll), length(ll)))
+    }
     return(.TT_PENALTY)
   }
+  if (isTRUE(per_obs)) return(ll)
   -sum(ll)
 }
 
@@ -164,9 +172,14 @@
 
   p2 <- par
   s2 <- se
+  ## d(reported)/d(estimated), one factor per parameter. Built here beside the
+  ## standard errors it scales so the two cannot drift apart: vcov(type =
+  ## "bhhh") applies exactly this vector to the OPG.
+  jac <- rep(1, length(par))
   sv <- exp(par[i_v])
   p2[i_v] <- sv
   s2[i_v] <- sv * se[i_v]
+  jac[i_v] <- sv
 
   hom_u <- nzu == 1L && identical(as.character(z_vars), "(Intercept)")
   hom_w <- nzw == 1L && identical(as.character(zp_vars), "(Intercept)")
@@ -174,15 +187,17 @@
     su <- zs(par[i_u])
     p2[i_u] <- su
     s2[i_u] <- su * dfac * se[i_u]
+    jac[i_u] <- su * dfac
   }
   if (hom_w) {
     sw <- zs(par[i_w])
     p2[i_w] <- sw
     s2[i_w] <- sw * dfac * se[i_w]
+    jac[i_w] <- sw * dfac
   }
 
   list(
-    par = p2, se = s2, tval = p2 / s2,
+    par = p2, se = s2, tval = p2 / s2, jac = jac,
     names = c(x_vars_vec, "sigma_v",
       if (hom_u) "sigma_u" else paste0("Zu.", z_vars),
       if (hom_w) "sigma_w" else paste0("Zw.", zp_vars)
@@ -209,11 +224,24 @@ ttsfm <- function(formula,
                   Method = "L-BFGS-B",
                   logit = TRUE,
                   verbose = FALSE,
+                  keep_objective = FALSE,
                   rand.psoptim = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+  ## TTNLS is nonlinear least squares, not maximum likelihood, so it has no
+  ## score. Say so rather than silently returning a fit whose score-based
+  ## tools are unavailable (the same reason psfm() warns).
+  if (isTRUE(keep_objective) && identical(model_name, "TTNLS")) {
+    warning("keep_objective = TRUE has no effect for model_name = \"TTNLS\": ",
+      "it is estimated by nonlinear least squares, not maximum likelihood, ",
+      "so it has no log-likelihood to retain and no score. Score-based tools ",
+      "(influence_sfa(), vcov(type = \"bhhh\"), the sandwich methods, TIC(), ",
+      "vuong()) are unavailable for this fit.",
+      call. = FALSE
+    )
+  }
   ## Scale the variance-determinant predictor sits on. ttsfm() has always used
   ## the standard deviation, like sfm(); "var" matches psfm() and the competing
   ## packages, so a delta can be compared across entry points. The default
@@ -319,7 +347,11 @@ ttsfm <- function(formula,
 
 
   if (model_name == "TTNE") {
-    fn <- function(p) {
+    ## `per_obs = TRUE` returns the per-observation log-likelihood
+    ## contributions instead of the negative sum, for estfun.sfareg() and
+    ## vcov(type = "bhhh"). p holds LOG sigmas; vcov() delta-corrects onto
+    ## the reported scale with `par_scale`.
+    fn <- function(p, per_obs = FALSE) {
       nr <- n_x_vars ## number of regressors in regression
       nzu <- n_z_vars ## number of determinants for u component
       nzw <- n_zp_vars ## number of determinants for w component
@@ -352,7 +384,7 @@ ttsfm <- function(formula,
 
       ## NOTE: fn is passed to minimizers (bobyqa/psoptim/optim all minimize
       ## by default, see opts.R -- none of them flip the sign).
-      return(.tt_objective(ll))
+      return(.tt_objective(ll, per_obs))
     }
 
     Start.Time <- start.time()
@@ -563,10 +595,23 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.ne.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    ## Rows actually used; bread() scales by this.
+    results$nobs <- length(as.numeric(Y))
+    ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
+    ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
+    ## Jacobian .tt_report() already built for the Hessian standard errors is
+    ## stored beside it and reused verbatim by vcov(); there is no second copy
+    ## of the transform to fall out of step.
+    results$par_scale <- RP$jac
+    if (isTRUE(keep_objective)) results$objective <- fn
     return(results)
   } else if (model_name == "TTHN") {
     ## Normal - Half Normal - Half Normal two-tier stochastic frontier.
-    fn <- function(p) {
+    ## `per_obs = TRUE` returns the per-observation log-likelihood
+    ## contributions instead of the negative sum, for estfun.sfareg() and
+    ## vcov(type = "bhhh"). p holds LOG sigmas; vcov() delta-corrects onto
+    ## the reported scale with `par_scale`.
+    fn <- function(p, per_obs = FALSE) {
       nr <- n_x_vars ## number of regressors in regression
       nzu <- n_z_vars ## number of determinants for u component
       nzw <- n_zp_vars ## number of determinants for w component
@@ -614,7 +659,7 @@ ttsfm <- function(formula,
         error = function(e) NULL
       ))
       if (is.null(PP)) {
-        return(.TT_PENALTY)
+        return(.tt_objective(NULL, per_obs))
       }
       D <- PP$p1 - PP$p2
 
@@ -636,6 +681,8 @@ ttsfm <- function(formula,
       ## is kept.
       dtol <- 8 * .Machine$double.eps * pmax(abs(PP$p1), abs(PP$p2))
       if (any(!is.finite(D)) || any(D <= pmax(dtol, .Machine$double.xmin))) {
+        ## Refuse the draw, but keep one entry per observation under per_obs.
+        if (isTRUE(per_obs)) return(rep(-.TT_PENALTY / length(D), length(D)))
         return(.TT_PENALTY)
       }
 
@@ -643,7 +690,7 @@ ttsfm <- function(formula,
 
       ## Same minimizer-sign convention as the TTNE branch above: return the
       ## NEGATIVE summed log-likelihood (bobyqa/psoptim/optim all minimize fn).
-      return(.tt_objective(ll))
+      return(.tt_objective(ll, per_obs))
     }
 
     Start.Time <- start.time()
@@ -862,10 +909,31 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.hn.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    ## Rows actually used; bread() scales by this.
+    results$nobs <- length(as.numeric(Y))
+    ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
+    ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
+    ## Jacobian .tt_report() already built for the Hessian standard errors is
+    ## stored beside it and reused verbatim by vcov(); there is no second copy
+    ## of the transform to fall out of step.
+    results$par_scale <- RP$jac
+    if (isTRUE(keep_objective)) results$objective <- fn
     return(results)
   } else if (model_name == "TTNLS") {
     ## Two-tier stochastic frontier via nonlinear least squares.
-    fn <- function(p) {
+    ## The `per_obs` formal is here only so all three of ttsfm()'s closures
+    ## share one signature -- R CMD check flags local functions of the same
+    ## name with different formals. TTNLS minimises a sum of squares, not a
+    ## log-likelihood, so it has no per-observation log-likelihood
+    ## contributions and refuses rather than inventing some; nothing calls it
+    ## this way, because TTNLS never stores its objective.
+    fn <- function(p, per_obs = FALSE) {
+      if (isTRUE(per_obs)) {
+        stop("TTNLS is estimated by nonlinear least squares and has no ",
+          "log-likelihood, so it has no per-observation contributions.",
+          call. = FALSE
+        )
+      }
       nr <- n_x_vars
       nzu <- n_z_vars
       nzw <- n_zp_vars

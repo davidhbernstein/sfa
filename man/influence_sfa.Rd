@@ -11,7 +11,7 @@ bound}.
 \usage{influence_sfa(object, scale = TRUE)}
 \arguments{
 \item{object}{An \code{"sfareg"} fit. It must retain its likelihood, so fit
-with \code{keep_objective = TRUE}; the score matrix cannot otherwise be built. For \code{\link{psfm}} panel fits (\code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"}, \code{"TRE_Z"}) the rows are firms, not observations, so the diagnostics measure the influence of deleting a whole firm.}
+with \code{keep_objective = TRUE}; the score matrix cannot otherwise be built. For \code{\link{psfm}} panel fits (\code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"}, \code{"TRE_Z"}) the rows are firms, not observations, so the diagnostics measure the influence of deleting a whole firm. From 1.2.1 \code{\link{zsfm}}, \code{\link{lcsfm}}, \code{\link{ttsfm}} (\code{"TTNE"}, \code{"TTHN"}), \code{\link{copsfm}}, \code{\link{ivsfm}} (\code{"IVLIML"}, \code{"IVCF"}) and \code{\link{selsfm}} can supply scores too; for those the influence is reported on the scale \code{coef} uses, which is not the scale they estimate on. For \code{\link{selsfm}} the rows are the selected observations only.}
 \item{scale}{Multiply the influence function by \eqn{n}, so that
 \code{influence[i, ]} approximates the effect on the estimate of deleting
 observation \eqn{i} and is therefore on the same scale as the coefficients.

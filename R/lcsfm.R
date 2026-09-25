@@ -16,6 +16,7 @@ lcsfm <- function(formula,
                   upper = NA,
                   Method = "L-BFGS-B",
                   verbose = FALSE,
+                  keep_objective = FALSE,
                   rand.psoptim = NULL) {
   ## call/model_name resolution ahead of .check_model_formula_pipes() -- see
   ## sfm.R's identical fix for why.
@@ -222,6 +223,16 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    ## Rows actually used, not rows supplied: bread() scales by this.
+    results$nobs <- length(as.numeric(Y))
+    ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") can
+    ## difference it into a per-observation score matrix after the fact.
+    ## NOTE for LCM_CN: like.fn's per_obs branch returns the UNPENALISED
+    ## per-observation contributions -- a penalty on the class probabilities
+    ## is not a per-observation quantity. With the default penalty_c = 0 the
+    ## two coincide exactly; with penalty_c > 0 the scores are those of the
+    ## unpenalised likelihood, so the OPG is not the penalised estimator's.
+    if (isTRUE(keep_objective)) results$objective <- like.fn
     return(results)
   }
 
@@ -407,6 +418,16 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    ## Rows actually used, not rows supplied: bread() scales by this.
+    results$nobs <- length(as.numeric(Y))
+    ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") can
+    ## difference it into a per-observation score matrix after the fact.
+    ## NOTE for LCM_CN: like.fn's per_obs branch returns the UNPENALISED
+    ## per-observation contributions -- a penalty on the class probabilities
+    ## is not a per-observation quantity. With the default penalty_c = 0 the
+    ## two coincide exactly; with penalty_c > 0 the scores are those of the
+    ## unpenalised likelihood, so the OPG is not the penalised estimator's.
+    if (isTRUE(keep_objective)) results$objective <- like.fn
     return(results)
   }
 

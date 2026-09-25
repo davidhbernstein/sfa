@@ -30,7 +30,26 @@ influence_sfa <- function(object, scale = TRUE) {
     stop("`object` must be an \"sfareg\" fit.", call. = FALSE)
   }
   G <- estfun.sfareg(object)          # n x p per-observation scores
-  V <- stats::vcov(object)            # inverse observed information
+  ## G is on the ESTIMATION scale, so it has to be paired with a covariance on
+  ## the SAME scale. vcov() reports on coef()'s scale, which for ttsfm(),
+  ## copsfm() and ivsfm() is a different one -- and for ivsfm("IVLIML"), which
+  ## estimates reduced-form parameters it never reports, a different LENGTH.
+  ## Mixing the two silently rescales every influence value, and d_i below is
+  ## only the metric-free quantity its comment claims when both agree.
+  jac <- object$par_scale
+  idx <- object$par_index
+  V <- if (is.null(jac) && is.null(idx)) {
+    stats::vcov(object)               # inverse observed information
+  } else {
+    Ve <- tryCatch(solve(object$opt$hessian), error = function(e) NULL)
+    if (is.null(Ve)) {
+      stop("influence_sfa(): this fit's Hessian could not be inverted on the ",
+        "estimation scale, so the influence function cannot be formed.",
+        call. = FALSE
+      )
+    }
+    Ve
+  }
   if (any(!is.finite(V))) {
     stop("influence_sfa(): this fit has no usable covariance matrix, so the ",
       "influence function cannot be formed. Refit with optHessian = TRUE, or ",
@@ -46,6 +65,14 @@ influence_sfa <- function(object, scale = TRUE) {
   ## than merely rankable.
   IF <- G %*% V
   if (isTRUE(scale)) IF <- IF * n
+  ## Map the influence onto the parameters the fit REPORTS -- the same delta
+  ## method and marginalisation vcov() applies.
+  if (is.matrix(jac)) {
+    IF <- IF %*% t(jac)
+  } else {
+    if (!is.null(idx)) IF <- IF[, idx, drop = FALSE]
+    if (!is.null(jac)) IF <- sweep(IF, 2L, jac, `*`)
+  }
   colnames(IF) <- names(object$coefficients)
 
   ## A single number per observation. s_i' V s_i is the natural quadratic form

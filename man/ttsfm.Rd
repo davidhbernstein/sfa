@@ -7,7 +7,8 @@ data, z_link = c("sd", "var"), maxit.bobyqa = 80000,
 maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0, start_val = FALSE, PSopt = FALSE,
 optHessian = TRUE, inefdec = TRUE, upper = NA,
-Method = "L-BFGS-B", logit = TRUE, verbose = FALSE, rand.psoptim = NULL)}
+Method = "L-BFGS-B", logit = TRUE, verbose = FALSE,
+keep_objective = FALSE, rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated. Use \code{y ~ x | zu | zw} to allow determinants \code{zu} of the first one-sided component and \code{zw} of the second.}
 \item{model_name}{model name for the estimation: \code{"TTNE"} for the Normal-Exponential-Exponential two-tier model, \code{"TTHN"} for the Normal-Half-Normal-Half-Normal two-tier model, or \code{"TTNLS"} for a nonlinear-least-squares two-tier estimator with no distributional assumption on \code{u}/\code{w} beyond their means. Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
@@ -27,6 +28,7 @@ Method = "L-BFGS-B", logit = TRUE, verbose = FALSE, rand.psoptim = NULL)}
 \item{Method}{The method to be used for optim. See 'Details' within optim.}
 \item{logit}{Choice of using logit function}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1, for \code{"TTNE"} and \code{"TTHN"}. It has no effect for \code{"TTNLS"}, which is nonlinear least squares rather than maximum likelihood and so has no score; that case warns. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}
 }
 \details{The two-tier stochastic frontier model (Polachek and Yoon, 1987) models the composed error as \eqn{v + u - w}, where \code{v} is a symmetric normal noise term and \code{u}, \code{w} are independent one-sided components. \code{"TTNE"} assumes \code{u} and \code{w} are exponential; \code{"TTHN"} assumes they are half-normal; \code{"TTNLS"} makes no distributional assumption and instead estimates \eqn{\sigma_u}/\eqn{\sigma_w} by nonlinear least squares via the scaling property. Determinants of \code{u} and \code{w} can be included via the second and third parts of a two-pipe formula, which parameterize \eqn{\sigma_u} and \eqn{\sigma_w} through a log link.

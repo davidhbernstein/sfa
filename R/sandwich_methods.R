@@ -47,8 +47,17 @@ estfun.sfareg <- function(x, ...) {
       call. = FALSE
     )
   }
-  nm <- names(x$coefficients)
+  ## Column names come from the ESTIMATION-scale vector, which is not always
+  ## the reported one. ttsfm(), copsfm() and ivsfm() estimate log-sigmas and
+  ## report sigmas, and ivsfm("IVLIML") estimates reduced-form nuisance
+  ## parameters it never reports -- so names(coefficients) can be the wrong
+  ## length or the wrong scale. Falling back to it blindly is how a score
+  ## matrix on the log scale gets labelled as if it were on the level scale.
   p <- length(par)
+  nm <- names(x$coefficients)
+  if (length(nm) != p) {
+    nm <- if (!is.null(names(par))) names(par) else paste0("par", seq_len(p))
+  }
 
   ll_i <- function(theta) {
     v <- tryCatch(x$objective(theta, per_obs = TRUE), error = function(e) NULL)
@@ -86,5 +95,10 @@ estfun.sfareg <- function(x, ...) {
   }
   ## A non-finite score would silently poison the whole meat matrix.
   sc[!is.finite(sc)] <- 0
+  ## How the reported parameters sit inside this estimation-scale vector.
+  ## vcov(type = "bhhh") needs both to get from here to a covariance on the
+  ## scale coef() reports: invert on THIS scale, then subset, then delta.
+  if (!is.null(x$par_index)) attr(sc, "par_index") <- x$par_index
+  if (!is.null(x$par_scale)) attr(sc, "par_scale") <- x$par_scale
   sc
 }

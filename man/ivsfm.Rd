@@ -16,7 +16,7 @@ ivsfm(formula, endogenous, instruments, data,
       inefdec = TRUE, maxit.bobyqa = 10000, maxit.psoptim = 1000,
       maxit.optim = 1000, start_val = FALSE, PSopt = FALSE,
       optHessian = TRUE, Method = "L-BFGS-B", verbose = FALSE,
-      rand.psoptim = NULL)
+      keep_objective = FALSE, rand.psoptim = NULL)
 }
 \arguments{
 \item{formula}{The structural frontier, \code{y ~ x1 + x2}, listing all
@@ -43,6 +43,7 @@ ivsfm(formula, endogenous, instruments, data,
 \item{optHessian}{Compute the Hessian, and with it the standard errors.}
 \item{Method}{Method passed to \code{optim} for the final stage.}
 \item{verbose}{Report optimizer progress.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1, for \code{"IVLIML"} and \code{"IVCF"}. It has no effect for \code{"C2SLS"}, which is two-stage least squares with a corrected intercept rather than maximum likelihood and so has no score; that case warns. For \code{"IVCF"} the reduced-form parameters are held at their OLS values, so the resulting standard errors -- like the Hessian ones -- condition on the first stage rather than correcting for it. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}
 }
 \details{

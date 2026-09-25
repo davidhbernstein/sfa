@@ -7,7 +7,7 @@ data, n_class = 2, maxit.bobyqa = 10000, maxit.psoptim = 1000,
 maxit.optim = 1000, REPORT = 1, trace = 0, pgtol = 0, 
 start_val = FALSE, PSopt = FALSE, optHessian = TRUE, 
 inefdec = TRUE, penalty_c = 0, upper = NA, Method = "L-BFGS-B", 
-verbose = FALSE, rand.psoptim = NULL)}
+verbose = FALSE, keep_objective = FALSE, rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated. For \code{"LCM_Z"} the second part gives the covariates driving class membership (\code{y ~ x | z}).}
 \item{model_name}{Which specification to fit. \code{"LCM"} holds the class probabilities constant across the sample and lets \bold{every} parameter vary by class; \code{"LCM_Z"} is \code{"LCM"} with the class probabilities depending on covariates supplied in the second part of the formula. \code{"LCM_CN"} is the \bold{contaminated normal} frontier, in which only the \emph{noise scale} varies between components and the frontier, the inefficiency scale and the class probabilities are all common -- see \sQuote{Details}. Matching ignores case, so \code{"lcm"}, \code{"LCM"} and \code{"Lcm"} are the same choice.}
@@ -27,6 +27,7 @@ verbose = FALSE, rand.psoptim = NULL)}
 \item{upper}{Vector of upper values for the optim package.}
 \item{Method}{The method to be used for optim. See 'Details' within optim.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The per-observation contributions are those of the mixture likelihood, \eqn{\log \sum_c \pi_c f_c(y_i)}, not of any one class. For \code{"LCM_CN"} with \code{penalty_c > 0} they are \emph{unpenalised} -- a penalty on the class probabilities is not a per-observation quantity -- so the OPG is that of the unpenalised likelihood; at the default \code{penalty_c = 0} the two coincide. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim. Default to \code{NULL}.}
 }
 \details{
