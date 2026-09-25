@@ -19,7 +19,7 @@ copsfm(formula, data,
        n_nodes = 128, maxit.bobyqa = 10000, maxit.psoptim = 1000,
        maxit.optim = 1000, start_val = FALSE, PSopt = FALSE,
        optHessian = TRUE, Method = "L-BFGS-B", verbose = FALSE,
-       rand.psoptim = NULL)
+       keep_objective = FALSE, rand.psoptim = NULL)
 }
 \arguments{
 \item{formula}{Two-sided formula for the frontier, \code{y ~ x1 + x2}. A
@@ -68,6 +68,7 @@ copsfm(formula, data,
   so a logistic with \eqn{\delta_v = 1} has standard deviation
   \eqn{\pi/\sqrt{3} = 1.814}.}
 \item{n_nodes}{Gauss--Legendre nodes for the integral over \eqn{u}.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data and the quadrature nodes alongside the results.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim, start_val, PSopt, optHessian,
   Method, verbose, rand.psoptim}{As in \code{\link{sfm}}.}
 }

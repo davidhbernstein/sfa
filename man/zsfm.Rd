@@ -6,7 +6,8 @@
 data, maxit.bobyqa = 10000,maxit.psoptim = 1000, maxit.optim = 1000, 
 REPORT = 1, trace = 0, pgtol = 0,start_val = FALSE,PSopt = FALSE, 
 optHessian = TRUE, inefdec = TRUE, upper = NA, 
-Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,rand.psoptim = NULL)}
+Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,
+keep_objective = FALSE,rand.psoptim = NULL)}
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
 \item{model_name}{Which mixture specification to fit. \code{"ZISF"} holds the probability of being fully efficient constant across the sample; \code{"ZISF_Z"} lets that probability depend on covariates supplied in the second part of the formula (\code{y ~ x | z}). See \sQuote{Details}. Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
@@ -25,6 +26,7 @@ Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,rand.psoptim = NULL)}
 \item{Method}{The method to be used for optim. See 'Details' within optim.}
 \item{logit}{Logical, \code{"ZISF_Z"} only. Link mapping the linear predictor \eqn{z'\gamma} to the probability of full efficiency. \code{TRUE} (the default) uses the logistic link \eqn{\Lambda(z'\gamma)}, which covers \eqn{(0,1)}. \code{FALSE} uses \eqn{\Phi(z'\gamma)/(1 + \Phi(z'\gamma))}, which is \bold{bounded above by 0.5}: under that link no observation can be assigned a probability of full efficiency exceeding one half, whatever the data. This is not the probit analogue of the default and is retained only for backward compatibility; prefer \code{logit = TRUE} unless you specifically want that restriction.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim.  Default to \code{NULL}.}
 }
 \details{The zero-inefficiency stochastic frontier model treats the sample as a mixture of two regimes: with probability \eqn{p} a firm sits exactly on the frontier (\eqn{u = 0}, noise only), and with probability \eqn{1 - p} it is drawn from an ordinary normal-half-normal frontier. It is the natural specification when some fraction of the sample is thought to be fully efficient, which an ordinary frontier cannot represent because it forces \eqn{u > 0} almost surely.

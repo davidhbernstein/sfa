@@ -15,6 +15,7 @@ zsfm <- function(formula,
                  Method = "L-BFGS-B",
                  logit = TRUE,
                  verbose = FALSE,
+                 keep_objective = FALSE,
                  rand.psoptim = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
@@ -92,7 +93,11 @@ zsfm <- function(formula,
 
 
   if (model_name %in% c("ZISF", "ZISF_Z")) {
-    like.fn <- function(x) {
+    ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
+    ## contributions instead of the negative sum, which is what
+    ## estfun.sfareg() differences to build the score matrix behind
+    ## vcov(type = "bhhh"). The optimizers call this with one argument.
+    like.fn <- function(x, per_obs = FALSE) {
       if (model_name %in% c("ZISF")) {
         x_x_vec <- x[4:as.numeric(n_x_vars + 3)]
       }
@@ -154,6 +159,13 @@ zsfm <- function(formula,
       like[like == -Inf] <- -sqrt(.Machine$double.xmax / length(like))
       like[like == Inf] <- -sqrt(.Machine$double.xmax / length(like))
       like[is.nan(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      ## The barrier above leaves NA untouched; per_obs must return one row
+      ## per observation, so anything still non-finite is floored here rather
+      ## than dropped the way the summed branch drops it.
+      if (isTRUE(per_obs)) {
+        like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+        return(like)
+      }
 
       return(-sum(like[is.finite(like)]))
     }
@@ -344,6 +356,11 @@ zsfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "jlms", "post.prob",
         "coefficients", "std.errors", "t.values", "call"
       )
+      ## Rows actually used, not rows supplied: bread() scales by this.
+      results$nobs <- length(as.numeric(Y))
+      ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") and
+      ## sfa_diagnostics() can difference it after the fact.
+      if (isTRUE(keep_objective)) results$objective <- like.fn
     }
     return(results)
   } else {

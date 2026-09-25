@@ -20,6 +20,7 @@ selsfm <- function(selection,
                    optHessian = TRUE,
                    Method = "L-BFGS-B",
                    verbose = FALSE,
+                   keep_objective = FALSE,
                    rand.psoptim = NULL) {
   call <- match.call()
   model_name <- match.arg(model_name)
@@ -207,16 +208,26 @@ selsfm <- function(selection,
   ## Greene's (15). Everything is kept in logs: the summand underflows to zero
   ## in the tails long before the log-sum-exp does.
   cz <- .SFA_CONSTANTS
-  like.fn <- function(theta) {
+  ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
+  ## contributions (over the SELECTED subsample) instead of the negative sum;
+  ## estfun.sfareg() differences it into the score matrix behind
+  ## vcov(type = "bhhh"). The optimizers call this with one argument.
+  like.fn <- function(theta, per_obs = FALSE) {
+    ## A refused draw has to keep its shape under per_obs: returning the
+    ## scalar barrier would hand estfun() a length-1 "score" and silently
+    ## collapse the matrix.
+    .bail <- function() {
+      if (isTRUE(per_obs)) rep(-cz$MAX_VALUE / n_sel, n_sel) else cz$MAX_VALUE
+    }
     su <- abs(theta[1L])
     sv <- abs(theta[2L])
     rho <- theta[3L]
     beta <- theta[4L:length(theta)]
 
-    if (!all(is.finite(theta))) return(cz$MAX_VALUE)
+    if (!all(is.finite(theta))) return(.bail())
     su <- max(su, cz$MIN_POSITIVE)
     sv <- max(sv, cz$MIN_POSITIVE)
-    if (abs(rho) >= 1) return(cz$MAX_VALUE)
+    if (abs(rho) >= 1) return(.bail())
 
     r0 <- as.numeric(y - X %*% beta)
     ## v_ir, one column per draw.
@@ -229,7 +240,8 @@ selsfm <- function(selection,
     log_phi <- stats::pnorm(zarg, log.p = TRUE)
 
     ll_i <- .log_row_sum_exp(log_dens + log_phi) - log(R)
-    if (any(!is.finite(ll_i))) return(cz$MAX_VALUE)
+    if (any(!is.finite(ll_i))) return(.bail())
+    if (isTRUE(per_obs)) return(ll_i)
     ## The scaffold MINIMIZES; every likelihood in this package returns the
     ## negative summed log-likelihood.
     -sum(ll_i)
@@ -324,6 +336,13 @@ selsfm <- function(selection,
     "sim_type", "n_selected", "n_total", "S", "nobs",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
+  ## CAVEAT: selsfm() is Greene's TWO-STEP estimator -- alpha_hat comes from
+  ## the first-stage probit and enters the second stage as if known. The OPG
+  ## therefore ignores first-stage estimation error, exactly as the stored
+  ## Hessian already does. It is not a correction for that; it is the same
+  ## conditional-on-alpha_hat variance computed a different way.
+  if (isTRUE(keep_objective)) results$objective <- like.fn
   ## `nobs` is the SELECTED count, not the rows supplied. The second-stage
   ## likelihood is a sum over the selected observations only, so that is the n
   ## that BIC() must divide by; without this nobs.sfareg() falls through to

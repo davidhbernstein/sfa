@@ -18,9 +18,22 @@ ivsfm <- function(formula,
                   optHessian = TRUE,
                   Method = "L-BFGS-B",
                   verbose = FALSE,
+                  keep_objective = FALSE,
                   rand.psoptim = NULL) {
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+  ## C2SLS is 2SLS with a corrected intercept, not maximum likelihood, so it
+  ## has no score. Say so rather than returning a fit whose score-based tools
+  ## are silently unavailable.
+  if (isTRUE(keep_objective) && identical(model_name, "C2SLS")) {
+    warning("keep_objective = TRUE has no effect for model_name = \"C2SLS\": ",
+      "it is two-stage least squares with a corrected intercept, not maximum ",
+      "likelihood, so it has no log-likelihood to retain and no score. Use ",
+      "\"IVLIML\" or \"IVCF\" for score-based tools (influence_sfa(), ",
+      "vcov(type = \"bhhh\"), the sandwich methods, TIC(), vuong()).",
+      call. = FALSE
+    )
+  }
   Start.Time <- Sys.time()
 
   for (nm in c("formula", "endogenous", "instruments")) {
@@ -225,8 +238,18 @@ ivsfm <- function(formula,
   diag(ch0) <- log(pmax(diag(ch0), 1e-6))
   ch0 <- ch0[lower.tri(ch0, diag = TRUE)]
 
-  like.core <- function(th, use_full) {
-    if (!all(is.finite(th))) return(cz$MAX_VALUE)
+  ## `per_obs = TRUE` returns the per-observation log-likelihood contributions
+  ## instead of the negative sum, for estfun.sfareg() and vcov(type = "bhhh").
+  ## th is the ESTIMATION-scale vector: log sigmas, the raw t behind rho, and
+  ## (IVLIML only) reduced-form parameters that are never reported. vcov()
+  ## maps it onto the reported scale with the `par_scale` Jacobian below.
+  like.core <- function(th, use_full, per_obs = FALSE) {
+    ## A refused draw keeps one entry per observation under per_obs; the
+    ## scalar barrier would collapse estfun()'s score matrix.
+    .bail <- function() {
+      if (isTRUE(per_obs)) rep(-cz$MAX_VALUE / n, n) else cz$MAX_VALUE
+    }
+    if (!all(is.finite(th))) return(.bail())
     beta <- th[i_b]
     su <- exp(pmin(th[i_su], 12))
     sv <- exp(pmin(th[i_sv], 12))
@@ -239,7 +262,7 @@ ivsfm <- function(formula,
 
     ## L^{-1} xi, by triangular solve rather than an explicit inverse.
     Zi <- tryCatch(forwardsolve(Lc, t(Xi)), error = function(e) NULL)
-    if (is.null(Zi)) return(cz$MAX_VALUE)
+    if (is.null(Zi)) return(.bail())
     Zi <- t(Zi)                                  # n x m
 
     ## mu_c,i = Sigma_v,xi Sigma_xixi^{-1} xi_i  =  sigma_v * r' L^{-1} xi_i
@@ -259,11 +282,12 @@ ivsfm <- function(formula,
     ll2 <- -m * cz$LOG_SQRT_2PI - sum(log(diag(Lc))) - 0.5 * rowSums(Zi^2)
 
     tot <- ll1 + ll2
-    if (any(!is.finite(tot))) return(cz$MAX_VALUE)
+    if (any(!is.finite(tot))) return(.bail())
+    if (isTRUE(per_obs)) return(tot)
     -sum(tot)
   }
 
-  like.fn <- function(th) like.core(th, full)
+  like.fn <- function(th, per_obs = FALSE) like.core(th, full, per_obs)
 
   start_v <- c(b_2sls, log(su0), log(sv0), rep(0, n_q), rep(0, m))
   if (has_int) start_v[1L] <- start_v[1L] + S * su0 * sqrt(2 / pi)
@@ -459,5 +483,29 @@ ivsfm <- function(formula,
     "rho", "vcov_rho", "sigma_c", "b_2sls", "wrong_skew", "S", "nobs", "uhet",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Optionally retain the objective for estfun()/vcov(type = "bhhh"), with a
+  ## FULL delta-method Jacobian rather than a diagonal one. Two reasons it has
+  ## to be a matrix here:
+  ##
+  ##   * rho = t / sqrt(1 + t't) is a vector function of the whole t block, so
+  ##     d rho / d t is the dense (I - rho rho')/ss that the Hessian path
+  ##     already applies as J_rho -- reused verbatim, not recomputed.
+  ##   * IVLIML additionally estimates Pi and chol(Sigma_xi), which it never
+  ##     reports. Those columns are zero here, so J marginalises them: the
+  ##     reported block of the INVERSE, which is what vcov() forms, rather
+  ##     than the inverse of the reported block.
+  {
+    p_rep <- length(par)
+    Jm <- matrix(0, p_rep, length(th))
+    Jm[cbind(seq_along(i_b), i_b)] <- 1
+    Jm[length(i_b) + 1L, i_su] <- su
+    Jm[length(i_b) + 2L, i_sv] <- sv
+    if (n_q) {
+      Jm[cbind(length(i_b) + 2L + seq_along(i_d), i_d)] <- 1
+    }
+    Jm[(p_rep - m + 1L):p_rep, i_t] <- J_rho
+    results$par_scale <- Jm
+  }
+  if (isTRUE(keep_objective)) results$objective <- like.fn
   results
 }
