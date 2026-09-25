@@ -311,6 +311,17 @@ pcs_c <- function(Y, inefdec = TRUE, Method = formals(psfm)$Method) {
 }
 
 
+## What -opt$value actually is for this fit.
+.sfa_objective_label <- function(x) {
+  if (!is.null(x$robust) && !identical(x$robust, "mle")) {
+    paste0(x$robust, " objective (NOT a log likelihood):")
+  } else if (isTRUE(x$penalty_c > 0)) {
+    "penalised log likelihood:"
+  } else {
+    "log likelihood:"
+  }
+}
+
 summary.sfareg <- function(object, ...) {
   # Perform specific summary calculations and formatting
   cat("--- SFA Regression Model Summary ---\n")
@@ -319,7 +330,10 @@ summary.sfareg <- function(object, ...) {
   cat("Model Output:\n")
   print(object$out)
   if (is.numeric(object$opt$value)) {
-    cat("log likelihood:", -object$opt$value, "\n")
+    ## Named for what it actually is: the robust estimators minimise a
+    ## divergence, and calling that a log-likelihood invites comparisons
+    ## across objectives that are not comparable.
+    cat(.sfa_objective_label(object), -object$opt$value, "\n")
   }
   .sfa_report_convergence(object)
   .sfa_report_boundary(object)
@@ -336,7 +350,7 @@ print.sfareg <- function(x, ...) {
 
   print(x$out)
   if (is.numeric(x$opt$value)) {
-    cat("log likelihood:", -x$opt$value, "\n")
+    cat(.sfa_objective_label(x), -x$opt$value, "\n")
   }
   .sfa_report_convergence(x)
   .sfa_report_boundary(x)

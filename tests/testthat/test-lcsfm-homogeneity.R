@@ -61,12 +61,27 @@ test_that("the penalty vanishes at equal class probabilities", {
 test_that("penalty_c changes the objective but not the reported log-likelihood", {
   skip_on_cran()
   d <- lcm_one_class()
-  f <- lcsfm(y ~ x1, model_name = "LCM", data = d, n_class = 2, penalty_c = 1)
+  f <- lcsfm(y ~ x1, model_name = "LCM", data = d, n_class = 2, penalty_c = 1,
+    keep_objective = TRUE)
   ## opt$value is the PENALISED objective; the plain log-likelihood is carried
   ## separately so logLik() cannot silently report a penalised number.
-  expect_equal(f$logLik_unpenalised, -f$opt$value + f$penalty)
+  ##
+  ## like.fn returns -(L + P), so -opt$value is L + P and the plain
+  ## log-likelihood is -opt$value MINUS P. This used to be stored as
+  ## -opt$value + P, i.e. L + 2P, which put the "unpenalised" figure further
+  ## from L than the penalised objective it was meant to correct -- and the
+  ## assertion here pinned that arithmetic instead of checking the claim in
+  ## this test's own name.
+  expect_equal(f$logLik_unpenalised, -f$opt$value - f$penalty)
   expect_lte(f$penalty, 0)
   expect_identical(f$penalty_c, 1)
+
+  ## The claim itself, against the definition: the per_obs branch returns the
+  ## UNPENALISED contributions, so their sum IS the log-likelihood.
+  expect_equal(as.numeric(logLik(f)),
+    sum(f$objective(f$opt$par, per_obs = TRUE)), tolerance = 1e-6)
+  ## And it is not the penalised objective, which is what was reported before.
+  expect_false(isTRUE(all.equal(as.numeric(logLik(f)), -f$opt$value)))
 
   ## With penalty_c = 0 the penalty is EXACTLY zero, not merely small.
   f0 <- lcsfm(y ~ x1, model_name = "LCM", data = d, n_class = 2)

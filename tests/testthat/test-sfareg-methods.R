@@ -16,6 +16,9 @@ test_that("coef/vcov/logLik/nobs are mutually consistent", {
 
   ll <- logLik(fit)
   expect_s3_class(ll, "logLik")
+  ## df is the number ESTIMATED. For sfm() that equals the number reported,
+  ## but the two differ for ivsfm("IVLIML") -- see test-model-selection.R.
+  expect_equal(attr(ll, "df"), length(fit$opt$par))
   expect_equal(attr(ll, "df"), length(coef(fit)))
   expect_equal(attr(ll, "nobs"), nrow(d))
   ## AIC/BIC follow from logLik, so check they agree with the definition.

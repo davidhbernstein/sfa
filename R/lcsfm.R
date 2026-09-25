@@ -213,7 +213,10 @@ lcsfm <- function(formula,
 
     results <- list(
       t(out), c(opt), End.Time, start_v, model_name, formula, post, J,
-      class_prob, .pen, -opt$value + .pen, penalty_c,
+      ## MINUS .pen, not plus -- see the identical correction in the
+      ## LCM/LCM_Z block below. like.fn returns -(L + P), so -opt$value is
+      ## L + P and the plain log-likelihood is -opt$value - P.
+      class_prob, .pen, -opt$value - .pen, penalty_c,
       out["par", ], out["st_err", ], out["t-val", ], call
     )
     class(results) <- "sfareg"
@@ -404,11 +407,18 @@ lcsfm <- function(formula,
     ## the log-likelihood, so the penalty and the plain log-likelihood are
     ## carried separately; lcsfm_homogeneity() needs both, and .sfa_penalty is
     ## exactly 0 (not merely small) whenever penalty_c is 0.
-    .pen <- .lcm_penalty(start_v)
+    ## At opt$par, which is what out[1, ] reports and what post.prob is built
+    ## from -- not start_v, which the optimizer stages overwrite.
+    .pen <- .lcm_penalty(opt$par)
     results <- list(
       t(out), c(opt), End.Time, start_v, model_name, formula, jlms, post.prob,
       jlms_class, class_assign, class_prob, J,
-      .pen, -opt$value + .pen, penalty_c,
+      ## MINUS .pen, not plus. like.fn returns -(L + P), so -opt$value is
+      ## L + P and the plain log-likelihood is -opt$value - P. Adding it gave
+      ## L + 2P, double-counting the penalty downward (P <= 0 always, by
+      ## Jensen), so the stored "unpenalised" figure was further from the
+      ## truth than the penalised objective it was meant to correct.
+      .pen, -opt$value - .pen, penalty_c,
       out["par", ], out["st_err", ], out["t-val", ], call
     )
     class(results) <- "sfareg"

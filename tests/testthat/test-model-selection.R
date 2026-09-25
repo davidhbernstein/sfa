@@ -213,3 +213,63 @@ test_that("TIC() refuses a fit whose Hessian is not positive definite, and sfma'
   ## The excluded candidate is named rather than dropped silently.
   expect_true(any(grepl("NR gets no TIC weight", msgs, fixed = TRUE)))
 })
+
+## ---------------------------------------------------------------------------
+## Degrees of freedom are the number of parameters ESTIMATED, not reported.
+
+test_that("df counts estimated parameters, so AIC cannot under-penalise IVLIML", {
+  skip_on_cran()
+  set.seed(9)
+  n <- 300
+  w1 <- rnorm(n); w2 <- rnorm(n); x1 <- rnorm(n)
+  x2 <- 0.7 * w1 + 0.5 * w2 + rnorm(n)
+  y <- 1 + 0.5 * x1 + 0.5 * x2 - abs(rnorm(n, 0, 0.8)) + rnorm(n, 0, 0.3)
+  di <- data.frame(y = y, x1 = x1, x2 = x2, w1 = w1, w2 = w2)
+
+  L <- suppressWarnings(ivsfm(y ~ x1 + x2, endogenous = ~x2,
+    instruments = ~ w1 + w2, model_name = "IVLIML", data = di,
+    keep_objective = TRUE))
+
+  ## IVLIML maximises over the reduced-form nuisance parameters it never
+  ## reports: 11 estimated, 6 reported. Taking length(coefficients) as df
+  ## charged AIC and BIC for 6, a free 2 * 5 = 10 AIC points against any model
+  ## that reports what it estimates -- enough to reverse the choice against
+  ## IVCF on this data.
+  expect_gt(length(L$opt$par), length(coef(L)))
+  expect_equal(attr(logLik(L), "df"), length(L$opt$par))
+  expect_equal(AIC(L), -2 * as.numeric(logLik(L)) + 2 * length(L$opt$par),
+    tolerance = 1e-8)
+  expect_equal(BIC(L),
+    -2 * as.numeric(logLik(L)) + log(nobs(L)) * length(L$opt$par),
+    tolerance = 1e-8)
+
+  C <- suppressWarnings(ivsfm(y ~ x1 + x2, endogenous = ~x2,
+    instruments = ~ w1 + w2, model_name = "IVCF", data = di,
+    keep_objective = TRUE))
+  expect_equal(length(C$opt$par), length(coef(C)))
+  ## The two log-likelihoods are near-identical here, so the ranking is
+  ## decided by the penalty alone. The model that estimates 11 must not win.
+  expect_lt(abs(as.numeric(logLik(L)) - as.numeric(logLik(C))), 1)
+  expect_gt(AIC(L), AIC(C))
+
+  ## TIC's penalty is a trace on the ESTIMATION scale, so its ratio has to be
+  ## read against the estimated df. Against the reported 6 it came out near 2
+  ## and looked like a gross violation of the information matrix equality;
+  ## against 11 it sits near 1, which is what a correctly specified model
+  ## should give.
+  td <- TIC(L, detail = TRUE)
+  expect_equal(td$df, length(L$opt$par))
+  expect_equal(td$AIC, AIC(L), tolerance = 1e-8)
+  expect_lt(abs(td$ratio - 1), 0.5)
+})
+
+test_that("df falls back to the reported count when a fit has no optimizer", {
+  skip_on_cran()
+  dp <- panel_small(t = 6, N = 40)
+  f <- suppressWarnings(psfm(y_ssfe ~ x1 + x2, model_name = "SSFE",
+    data = dp, individual = "name"))
+  expect_null(f$opt$par)
+  ll <- suppressWarnings(logLik(f))
+  expect_true(is.na(as.numeric(ll)))
+  expect_equal(attr(ll, "df"), length(coef(f)))
+})

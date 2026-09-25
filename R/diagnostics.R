@@ -60,6 +60,15 @@ sfa_diagnostics <- function(object, ...) {
   }
   pnames <- names(object$coefficients)
   if (is.null(pnames)) pnames <- paste0("par", seq_along(object$coefficients))
+  ## Everything below that is indexed by opt$par -- the Hessian, the numerical
+  ## gradient, the likelihood slices -- lives on the ESTIMATION scale, which
+  ## is not always the reported one. ivsfm("IVLIML") estimates 11 parameters
+  ## and reports 6, so labelling an 11-vector with `pnames` named entries 4-6
+  ## "sigma_u", "sigma_v", "rho_x2" -- three names belonging to different
+  ## quantities -- and left the rest NA. The correlation diagnostic is the one
+  ## exception: it is built from vcov(), which is already on the reported
+  ## scale, so it keeps `pnames`.
+  enames <- .sfa_est_names(object)
   opt <- object$opt
 
   ## ---- convergence ----------------------------------------------------
@@ -78,10 +87,16 @@ sfa_diagnostics <- function(object, ...) {
     ),
     message = if (!is.null(opt$message)) opt$message else NA_character_,
     counts = opt$counts,
-    logLik = if (is.numeric(opt$value)) -opt$value else NA_real_
+    ## Via logLik(), not -opt$value: the robust divergence estimators minimise
+    ## something that is not a log-likelihood, and lcsfm(penalty_c > 0)
+    ## maximises a penalised one. `objective` keeps the raw achieved value,
+    ## which is what a convergence diagnostic actually wants.
+    logLik = suppressWarnings(as.numeric(stats::logLik(object))),
+    objective = if (is.numeric(opt$value)) -opt$value else NA_real_,
+    objective_type = .sfa_objective_label(object)
   )
 
-  hess <- .sfa_hess_diag(opt$hessian, pnames)
+  hess <- .sfa_hess_diag(opt$hessian, enames)
   corr <- .sfa_corr_diag(object, pnames)
 
   ## ---- gradient, only if the objective was retained --------------------
@@ -89,12 +104,14 @@ sfa_diagnostics <- function(object, ...) {
   if (is.function(object$objective) && !is.null(opt$par)) {
     g <- tryCatch(numDeriv::grad(object$objective, opt$par), error = function(e) NULL)
     if (!is.null(g) && all(is.finite(g))) {
-      names(g) <- pnames
+      names(g) <- enames
       ## Scale-free version: a gradient of 1e-3 means very different things
       ## for a parameter of size 0.001 and one of size 1000.
-      rel <- abs(g) * pmax(abs(opt$par), 1) / max(abs(conv$logLik), 1)
+      ## Scaled by the achieved objective, which exists for every fit --
+      ## conv$logLik is NA for the robust estimators.
+      rel <- abs(g) * pmax(abs(opt$par), 1) / max(abs(conv$objective), 1, na.rm = TRUE)
       grad <- list(gradient = g, max_abs = max(abs(g)),
-                   relative = stats::setNames(rel, pnames), max_rel = max(rel))
+                   relative = stats::setNames(rel, enames), max_rel = max(rel))
     }
   }
 
@@ -174,6 +191,7 @@ sfa_diagnostics <- function(object, ...) {
 
   out <- list(
     model_name = object$model_name, call = object$call, pnames = pnames,
+    enames = enames,
     estimates = object$coefficients, convergence = conv, hessian = hess,
     correlation = corr, gradient = grad, flags = flags,
     has_objective = is.function(object$objective)
@@ -186,6 +204,15 @@ print.sfadiag <- function(x, ...) {
   cat("--- sfa optimizer diagnostics ---\n")
   cat("Model:      ", x$model_name, "\n", sep = "")
   cat("Parameters: ", length(x$pnames), " (", paste(x$pnames, collapse = ", "), ")\n", sep = "")
+  ## When the two scales differ, say so: everything below this line -- the
+  ## Hessian, the gradient, the slices -- is about the ESTIMATED vector, not
+  ## the reported one, and silently showing six names for eleven numbers is
+  ## how the gradient came to be mislabelled.
+  if (!identical(x$enames, x$pnames)) {
+    cat("Estimated:  ", length(x$enames), " (", paste(x$enames, collapse = ", "),
+      ")\n", sep = "")
+    cat("            the diagnostics below are on this ESTIMATION scale.\n")
+  }
 
   cat("\nConvergence\n")
   cat("  code       : ", x$convergence$code, "  -- ", x$convergence$meaning, "\n", sep = "")
@@ -195,10 +222,22 @@ print.sfadiag <- function(x, ...) {
       paste(names(x$convergence$counts), x$convergence$counts, sep = "=", collapse = "  "),
       "\n", sep = "")
   }
-  if (is.finite(x$convergence$logLik)) cat("  logLik     : ", signif(x$convergence$logLik, 8), "\n", sep = "")
+  if (is.finite(x$convergence$logLik)) {
+    cat("  logLik     : ", signif(x$convergence$logLik, 8), "\n", sep = "")
+  }
+  ## Shown whenever it is NOT simply the log-likelihood already printed above,
+  ## so a robust fit reports its divergence under its own name rather than
+  ## silently reporting nothing.
+  if (is.finite(x$convergence$objective) &&
+    !isTRUE(all.equal(x$convergence$objective, x$convergence$logLik))) {
+    cat("  ", x$convergence$objective_type, " ",
+      signif(x$convergence$objective, 8), "\n", sep = "")
+  }
 
   if (!is.null(x$hessian)) {
-    cat("\nHessian (of the negative log-likelihood)\n")
+    ## "objective", not "negative log-likelihood": for a robust fit this is
+    ## the Hessian of the divergence.
+    cat("\nHessian (of the minimised objective)\n")
     cat("  eigenvalues     : ", paste(signif(x$hessian$eigenvalues, 4), collapse = "  "), "\n", sep = "")
     cat("  condition number: ", format(x$hessian$condition, digits = 5), "\n", sep = "")
     cat("  positive definite: ", x$hessian$pos_def, "\n", sep = "")
@@ -252,7 +291,9 @@ plot.sfareg <- function(x, which = 1:4, n_grid = 41, span = 0.25, ...) {
     )
   }
 
-  np <- length(d$pnames)
+  ## The slices and the gradient bars index opt$par, so they are counted and
+  ## labelled on the estimation scale.
+  np <- length(d$enames)
   op <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(op), add = TRUE)
   npanel <- length(which) + if (3L %in% which) np - 1L else 0L
@@ -296,8 +337,8 @@ plot.sfareg <- function(x, which = 1:4, n_grid = 41, span = 0.25, ...) {
         if (is.null(val) || !is.finite(val)) NA_real_ else -val
       }, numeric(1))
       graphics::plot(grid, ll,
-        type = "l", xlab = d$pnames[j], ylab = "log-likelihood",
-        main = paste("slice:", d$pnames[j])
+        type = "l", xlab = d$enames[j], ylab = "objective",
+        main = paste("slice:", d$enames[j])
       )
       graphics::abline(v = par_hat[j], lty = 2)
       graphics::points(par_hat[j], -x$opt$value, pch = 19, col = "red")
@@ -307,8 +348,8 @@ plot.sfareg <- function(x, which = 1:4, n_grid = 41, span = 0.25, ...) {
   if (4L %in% which) {
     g <- d$gradient$gradient
     graphics::barplot(g,
-      names.arg = d$pnames, las = 2, cex.names = 0.7,
-      main = "gradient at the optimum", ylab = "d(-logLik)/d(par)"
+      names.arg = d$enames, las = 2, cex.names = 0.7,
+      main = "gradient at the optimum", ylab = "d(objective)/d(par)"
     )
     graphics::abline(h = 0)
   }

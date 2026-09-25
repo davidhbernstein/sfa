@@ -16,6 +16,17 @@
 \item{span}{Half-width of each slice, as a fraction of \code{max(|estimate|, 1)}. Defaults to \code{0.25}.}
 \item{\dots}{Currently unused.}
 }
+
+\section{Which scale each diagnostic is on}{
+The Hessian, the gradient and the likelihood slices are indexed by the vector
+the optimizer worked on, so they are named with \code{enames}. The parameter
+correlation is built from \code{\link[stats]{vcov}}, which is already on the
+reported scale, so it is named with \code{pnames}. Where the two differ,
+\code{print()} says so. \code{convergence$logLik} is the log-likelihood and
+is \code{NA} where none is defined (the robust divergence estimators);
+\code{convergence$objective} is the value the optimizer actually achieved,
+whatever objective that was, and \code{objective_type} names it.
+}
 \details{
 Every stochastic frontier fit in this package runs a staged minimizer and stores \code{optim()}'s convergence code, message, evaluation counts and numerically differentiated Hessian. None of that was reported: a fit that stopped on the iteration cap printed exactly like a converged one. \code{sfa_diagnostics()} is the reporting side of that.
 
@@ -36,7 +47,7 @@ Every stochastic frontier fit in this package runs a staged minimizer and stores
 \bold{Flags} are raised for a non-zero convergence code, a Hessian that is not positive definite or is worse than \eqn{10^{8}} conditioned, any parameter pair correlated beyond \eqn{|0.95|}, and a large relative gradient. They are phrased as statements about what the fit means, not as generic warnings.
 }
 \value{
-\code{sfa_diagnostics()} returns an object of class \code{"sfadiag"}: a list with \code{model_name}, \code{call}, \code{pnames}, \code{estimates}, \code{convergence} (code, meaning, message, counts, logLik), \code{hessian} (eigenvalues, condition, pos_def, flat_direction), \code{correlation} (matrix, worst_pair, worst_value); \code{convergence} additionally carries \code{benign_nonzero} and \code{unverified_nonzero}, \code{gradient} (gradient, max_abs, relative, max_rel; \code{NULL} without a retained objective), \code{flags}, and \code{has_objective}.
+\code{sfa_diagnostics()} returns an object of class \code{"sfadiag"}: a list with \code{model_name}, \code{call}, \code{pnames} (the REPORTED parameter names), \code{enames} (the ESTIMATION-scale names, which differ where a fit estimates parameters it does not report, as \code{\link{ivsfm}}\code{("IVLIML")} does), \code{estimates}, \code{convergence} (code, meaning, message, counts, logLik, objective, objective_type), \code{hessian} (eigenvalues, condition, pos_def, flat_direction), \code{correlation} (matrix, worst_pair, worst_value); \code{convergence} additionally carries \code{benign_nonzero} and \code{unverified_nonzero}, \code{gradient} (gradient, max_abs, relative, max_rel; \code{NULL} without a retained objective), \code{flags}, and \code{has_objective}.
 
 \code{plot.sfareg()} is called for its side effect and returns the \code{"sfadiag"} object invisibly. \code{print.sfadiag()} returns its argument invisibly.
 }

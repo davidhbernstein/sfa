@@ -23,23 +23,24 @@ bread.sfareg <- function(x, ...) {
 ## Per-observation scores d loglik_i / d theta (n x p), by central differences of the
 ## likelihood kept by keep_objective = TRUE, step scaled per parameter.
 estfun.sfareg <- function(x, ...) {
-  if (is.null(x$objective)) {
-    stop("estfun(): this fit does not retain its likelihood, so the score ",
-      "matrix cannot be built. Refit with keep_objective = TRUE. That works ",
-      "for every maximum-likelihood fit: sfm() (except robust = ), zsfm(), ",
-      "lcsfm(), ttsfm() (\"TTNE\", \"TTHN\"), copsfm(), selsfm(), ivsfm() ",
-      "(\"IVLIML\", \"IVCF\"), and psfm() with ",
-      paste(dQuote(.PSFM_SCORE_MODELS, FALSE), collapse = ", "),
-      ". The remaining psfm() models, ttsfm(\"TTNLS\") and ivsfm(\"C2SLS\") ",
-      "are not fit by maximum likelihood and have no score matrix.",
-      call. = FALSE
-    )
-  }
   if (!is.null(x$robust) && !identical(x$robust, "mle")) {
     stop("estfun(): the robust divergence estimators (robust = ",
       dQuote(x$robust), ") do not maximise a log-likelihood, so a score ",
       "matrix is not defined for them. sandwich-based standard errors do not ",
       "apply; sfm() already reports sandwich-form errors for those fits.",
+      call. = FALSE
+    )
+  }
+  if (is.null(x$objective)) {
+    stop("estfun(): this fit does not retain its likelihood, so the score ",
+      "matrix cannot be built. Refit with keep_objective = TRUE. That works ",
+      "for every maximum-likelihood fit: sfm() (except its robust ",
+      "divergence estimators), zsfm(), ",
+      "lcsfm(), ttsfm() (\"TTNE\", \"TTHN\"), copsfm(), selsfm(), ivsfm() ",
+      "(\"IVLIML\", \"IVCF\"), and psfm() with ",
+      paste(dQuote(.PSFM_SCORE_MODELS, FALSE), collapse = ", "),
+      ". The remaining psfm() models, ttsfm(\"TTNLS\") and ivsfm(\"C2SLS\") ",
+      "are not fit by maximum likelihood and have no score matrix.",
       call. = FALSE
     )
   }
@@ -57,10 +58,7 @@ estfun.sfareg <- function(x, ...) {
   ## length or the wrong scale. Falling back to it blindly is how a score
   ## matrix on the log scale gets labelled as if it were on the level scale.
   p <- length(par)
-  nm <- names(x$coefficients)
-  if (length(nm) != p) {
-    nm <- if (!is.null(names(par))) names(par) else paste0("par", seq_len(p))
-  }
+  nm <- .sfa_est_names(x)
 
   ll_i <- function(theta) {
     v <- tryCatch(x$objective(theta, per_obs = TRUE), error = function(e) NULL)
