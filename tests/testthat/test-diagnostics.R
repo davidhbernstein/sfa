@@ -214,3 +214,65 @@ test_that("plot() draws, and degrades rather than misleading", {
   ## asking only for an impossible panel is an error, not an empty device
   expect_error(plot(g, which = 3), "Nothing to plot")
 })
+
+## ---------------------------------------------------------------------------
+## The diagnostics are about the ESTIMATION-scale vector, and must be labelled
+## on that scale. ivsfm("IVLIML") estimates 11 parameters and reports 6.
+
+test_that("sfa_diagnostics labels estimation-scale quantities on that scale", {
+  skip_on_cran()
+  set.seed(9)
+  n <- 300
+  w1 <- rnorm(n); w2 <- rnorm(n); x1 <- rnorm(n)
+  x2 <- 0.7 * w1 + 0.5 * w2 + rnorm(n)
+  y <- 1 + 0.5 * x1 + 0.5 * x2 - abs(rnorm(n, 0, 0.8)) + rnorm(n, 0, 0.3)
+  di <- data.frame(y = y, x1 = x1, x2 = x2, w1 = w1, w2 = w2)
+  f <- suppressWarnings(ivsfm(y ~ x1 + x2, endogenous = ~x2,
+    instruments = ~ w1 + w2, model_name = "IVLIML", data = di,
+    keep_objective = TRUE))
+  d <- sfa_diagnostics(f)
+
+  expect_gt(length(f$opt$par), length(coef(f)))
+  expect_length(d$enames, length(f$opt$par))
+  expect_length(d$pnames, length(coef(f)))
+
+  ## The gradient runs over opt$par. Labelling it with the six reported names
+  ## gave entries 4-6 the names "sigma_u", "sigma_v", "rho_x2" -- which belong
+  ## to different quantities -- and left five NAs.
+  g <- d$gradient$gradient
+  expect_length(g, length(f$opt$par))
+  expect_false(any(is.na(names(g))))
+  expect_identical(names(g), d$enames)
+  expect_identical(names(d$gradient$relative), d$enames)
+
+  ## The correlation diagnostic is built from vcov(), which IS on the reported
+  ## scale, so it keeps the reported names.
+  expect_equal(dim(d$correlation$correlation),
+    c(length(coef(f)), length(coef(f))))
+
+  ## print() discloses the second scale rather than showing six names for
+  ## eleven numbers.
+  expect_output(print(d), "Estimated:")
+  expect_output(print(d), "ESTIMATION scale")
+})
+
+test_that("sfa_diagnostics does not call a divergence a log-likelihood", {
+  skip_on_cran()
+  d <- as.data.frame(cs_small(N = 300))
+  f <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d,
+    robust = "mdpd", keep_objective = TRUE))
+  dg <- sfa_diagnostics(f)
+  ## Was -opt$value under the name logLik.
+  expect_true(is.na(dg$convergence$logLik))
+  ## The achieved objective is still reported -- it is what a convergence
+  ## diagnostic wants -- but under its own name.
+  expect_equal(dg$convergence$objective, -f$opt$value)
+  expect_match(dg$convergence$objective_type, "mdpd")
+  expect_match(dg$convergence$objective_type, "NOT a log likelihood")
+  expect_output(print(dg), "NOT a log likelihood")
+
+  ## An ordinary MLE fit is unchanged: logLik is finite and equals -opt$value.
+  m <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d, keep_objective = TRUE)
+  dm <- sfa_diagnostics(m)
+  expect_equal(dm$convergence$logLik, -m$opt$value)
+})

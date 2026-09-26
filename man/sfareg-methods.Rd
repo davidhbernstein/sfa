@@ -33,7 +33,7 @@ list by hand.
   \item{\dots}{Currently unused; included for S3 method consistency.}
 }
 \details{
-\bold{BHHH standard errors.} \code{vcov(fit, type = "bhhh")} returns the inverse of the outer product of the per-observation scores instead of the inverse Hessian. Its value is that it needs no Hessian at all: it is defined whenever the scores are, which is exactly the case where the default path fails. When the Hessian is singular \code{vcov} otherwise falls back to a \emph{diagonal} approximation built from the reported standard errors, discarding every covariance; BHHH keeps them. It requires \code{keep_objective = TRUE} for the same reason \code{estfun} does, and is returned on the same scale \code{coef} reports (see below). It is not the default, because it is only as good as the information-matrix equality and so disagrees with the Hessian under misspecification -- which is useful when the two are compared on purpose and misleading when they are not.
+\bold{BHHH standard errors.} \code{vcov(fit, type = "bhhh")} returns the inverse of the outer product of the per-observation scores instead of the inverse Hessian. Its value is that it needs no Hessian at all: it is defined whenever the scores are, which is exactly the case where the default path fails. When the Hessian is singular \code{vcov} otherwise falls back to a \emph{diagonal} approximation built from the reported standard errors, discarding every covariance; BHHH keeps them. It requires \code{keep_objective = TRUE} for the same reason \code{estfun} does, and is returned on the same scale \code{coef} reports (see below). It is not the default, because it is only as good as the information-matrix equality and so disagrees with the Hessian under misspecification -- which is useful when the two are compared on purpose and misleading when they are not. At a parameter bound the scores in the constrained directions are not defined: the likelihood returns a stability penalty rather than a value, so \code{estfun} falls back to a one-sided difference on the admissible side, uses zero where neither side is admissible, and warns. BHHH errors built from such a fit understate the uncertainty in those directions.
 
 \bold{Robust and clustered standard errors.} \code{vcov} returns the inverse Hessian, which is valid only if the likelihood is correctly specified and the observations are independent -- neither being safe to assume in applied frontier work. Registering \code{bread} and \code{estfun} makes the \pkg{sandwich} package operate on these fits, so \code{sandwich::sandwich()} gives Huber--White errors and \code{sandwich::vcovCL()} gives clustered ones, and either can be handed to \code{lmtest::coeftest()}:
 
@@ -61,9 +61,26 @@ returns a matrix of \code{NA}s with a warning.
 
 \code{logLik.sfareg} returns the maximized log-likelihood as an object of
 class \code{"logLik"}, with \code{"df"} and \code{"nobs"} attributes set so
-that \code{AIC()}/\code{BIC()} work automatically. Every estimator in this
-package minimizes the negative summed log-likelihood internally, so
-\code{logLik = -object$opt$value}. \strong{Exception:} \code{psfm()}'s
+that \code{AIC()}/\code{BIC()} work automatically.
+
+\strong{Two quantities that are easy to confuse.} \code{object$opt$value} is
+the OBJECTIVE the optimizer minimized, which is the negative summed
+log-likelihood for most but not all estimators here, and
+\code{object$coefficients} is what the fit REPORTS, which is not always what
+it estimated. \code{logLik()} therefore reads neither blindly: \code{"df"} is
+the number of parameters ESTIMATED (\code{length(object$opt$par)} where that
+exists), because \code{\link{ivsfm}}\code{("IVLIML")} maximizes over 11 and
+reports 6; and the returned value is the PLAIN log-likelihood, because
+\code{\link{lcsfm}} with \code{penalty_c > 0} maximizes a penalized
+likelihood and carries the unpenalized one separately.
+
+\strong{Estimators with no log-likelihood.} \code{\link{sfm}}'s robust
+divergence estimators (\code{robust = "mlqe"}, \code{"psi"} or
+\code{"mdpd"}) minimize a divergence rather than a negative log-likelihood,
+so \code{logLik()} returns \code{NA} with a warning and \code{AIC()}/
+\code{BIC()} propagate it. Their objective is not on the likelihood scale and
+must not be compared with one; \code{print()} names it accordingly.
+\strong{Exception:} \code{psfm()}'s
 \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} models are estimated by a
 moment-based procedure and \code{"SSFE"} by fixed-effects (LSDV)
 regression, not by maximum likelihood; none of the three carries an

@@ -120,19 +120,86 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
   matrix(NA_real_, p, p, dimnames = list(nm, nm))
 }
 
+## Degrees of freedom: the number of parameters ESTIMATED, which is not always
+## the number reported. ivsfm("IVLIML") maximises over 11 and reports 6, so
+## taking length(coefficients) charged AIC and BIC for 6 -- a free gift of
+## 2 * 5 = 10 AIC points against any model that reports what it estimates.
+## Falls back to the reported count for the estimators that carry no $opt.
+## Names for the ESTIMATION-scale parameter vector, which is not always the
+## reported one. ttsfm(), copsfm() and ivsfm() estimate log-sigmas and report
+## sigmas; ivsfm("IVLIML") estimates 11 and reports 6. Anything indexed by
+## opt$par -- the score matrix, the Hessian, a numerical gradient, a
+## likelihood slice -- must be labelled with these, or entry j carries the
+## name of a different parameter.
+.sfa_est_names <- function(object) {
+  par <- object$opt$par
+  if (is.null(par)) {
+    nm <- names(object$coefficients)
+    return(if (is.null(nm)) {
+      paste0("par", seq_along(object$coefficients))
+    } else {
+      nm
+    })
+  }
+  p <- length(par)
+  nm <- names(object$coefficients)
+  if (length(nm) != p) {
+    nm <- if (!is.null(names(par))) names(par) else paste0("par", seq_len(p))
+  }
+  nm
+}
+
+.sfa_npar <- function(object) {
+  p <- if (!is.null(object$opt$par)) length(object$opt$par) else 0L
+  if (p < 1L) length(object$coefficients) else as.integer(p)
+}
+
 logLik.sfareg <- function(object, ...) {
+  ## The robust divergence estimators minimise an MLq / psi / density-power
+  ## objective, NOT a negative log-likelihood, so -opt$value is not a log
+  ## likelihood and AIC()/BIC() built on it are not comparable with anything.
+  ## Measured on a 300-observation NHN fit: AIC came back -2471 against the
+  ## MLE's +609, handing the robust fit a 3080-point advantage that is purely
+  ## a change of objective. estfun() and TIC() already refuse these fits; this
+  ## refuses them in the same terms rather than returning a plausible number.
+  if (!is.null(object$robust) && !identical(object$robust, "mle")) {
+    warning("logLik(): the robust divergence estimators (robust = ",
+      dQuote(object$robust, FALSE), ") minimise a divergence, not a negative ",
+      "log-likelihood, so logLik() -- and AIC()/BIC() with it -- is not ",
+      "defined for this fit. Refit with robust = \"mle\" to compare models on ",
+      "the likelihood.",
+      call. = FALSE
+    )
+    val <- NA_real_
+    attr(val, "df") <- .sfa_npar(object)
+    attr(val, "nobs") <- nobs.sfareg(object)
+    class(val) <- "logLik"
+    return(val)
+  }
   if (is.null(object$opt) || is.null(object$opt$value)) {
     warning("This fit has no stored optimizer output (e.g. psfm()'s GTRE_SEQ1/GTRE_SEQ2 are moment-based, not maximum likelihood), so logLik() is not defined for it.", call. = FALSE)
     ## Return a properly classed logLik carrying NA rather than a bare
     ## NA_real_.
     val <- NA_real_
-    attr(val, "df") <- length(object$coefficients)
+    attr(val, "df") <- .sfa_npar(object)
     attr(val, "nobs") <- nobs.sfareg(object)
     class(val) <- "logLik"
     return(val)
   }
-  val <- -object$opt$value
-  attr(val, "df") <- length(object$coefficients)
+  ## opt$value is the OBJECTIVE the optimizer minimised, which is not always
+  ## the negative log-likelihood. lcsfm("LCM_CN") with penalty_c > 0 maximises
+  ## a penalised likelihood and stores the plain one separately; reporting the
+  ## penalised objective here overstated logLik by the penalty and understated
+  ## AIC by twice it -- a bias that always favoured the regularised fit, which
+  ## is backwards, since a penalty is not evidence.
+  val <- if (is.numeric(object$logLik_unpenalised) &&
+    length(object$logLik_unpenalised) == 1L &&
+    is.finite(object$logLik_unpenalised)) {
+    object$logLik_unpenalised
+  } else {
+    -object$opt$value
+  }
+  attr(val, "df") <- .sfa_npar(object)
   attr(val, "nobs") <- nobs.sfareg(object)
   class(val) <- "logLik"
   val

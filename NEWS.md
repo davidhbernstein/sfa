@@ -43,6 +43,114 @@
 
 ## Bug fixes
 
+* **`estfun()` could difference against a numerical-stability penalty and
+  return scores of order 1e150.** When a finite-difference step leaves a
+  likelihood's admissible region the closure returns a large penalty as a
+  sentinel. That penalty is *finite*, so it passed the existing
+  `is.finite()` guard and was differenced like an ordinary value, filling the
+  meat matrix with enormous numbers that looked like numbers. Any fit resting
+  at or near a parameter bound was affected, which is the worst case for it to
+  reach: the OPG is offered precisely because it needs no Hessian and so works
+  where the default path fails. Steps that leave the region now fall back to a
+  one-sided difference on the admissible side, are zero only where both sides
+  are inadmissible, and raise a warning saying the fit sits at a bound and
+  that OPG/BHHH errors understate uncertainty in those directions.
+
+* **`sfa_diagnostics()` labelled estimation-scale quantities with reported
+  names.** The Hessian, the numerical gradient and `plot()`'s likelihood
+  slices are all indexed by `opt$par`, which for `ivsfm("IVLIML")` has 11
+  entries against 6 reported names. The gradient came back as
+  `(Intercept), x1, x2, sigma_u, sigma_v, rho_x2, NA, NA, NA, NA, NA` --
+  entries 4 to 6 carrying names that belong to different quantities, which is
+  worse than no name at all. These now use the estimation-scale names, and
+  `print()` discloses the second scale when it differs. The correlation
+  diagnostic deliberately keeps the reported names, because it is built from
+  `vcov()`, which is already on that scale.
+
+  `sfa_diagnostics()$convergence$logLik` went through `-opt$value` and so
+  reported a divergence for robust fits; it now goes through `logLik()`. The
+  achieved objective is still reported, as `objective`, under a name that
+  says which objective it is.
+
+* **`estfun()` gave robust fits advice that could not help them.** The
+  "no retained likelihood" check ran before the robust check, so a robust fit
+  made without `keep_objective = TRUE` was told to refit with it -- and the
+  refit then hit the robust refusal. The robust check now runs first.
+
+* **`logLik()`, `AIC()` and `BIC()` returned the divergence objective for
+  robust fits.** `sfm(robust = "mlqe" | "psi" | "mdpd")` minimises an MLq,
+  psi or density-power divergence, not a negative log-likelihood, so
+  `-opt$value` is not a log-likelihood and criteria built on it are not
+  comparable with anything. On a 300-observation NHN fit the numbers were:
+
+  | fit | `logLik()` | `AIC()` |
+  |---|---|---|
+  | `mle` | -299.50 | 608.99 |
+  | `mlqe` | -256.77 | 523.53 |
+  | `psi` | +29408.72 | -58807.43 |
+  | `mdpd` | +1240.59 | -2471.18 |
+
+  Comparing `AIC(mle)` against `AIC(robust)` -- the obvious thing to do --
+  made the robust fit look better by 3080 points, entirely from the change of
+  objective, with no warning. `mlqe` is the most dangerous of the three
+  because -256.77 sits plausibly beside the MLE's -299.50. `estfun()` and
+  `TIC()` already refused these fits in explicit terms; `logLik()` now
+  refuses in the same terms, returning `NA` with a warning and keeping its
+  `df`/`nobs` attributes so `AIC()`/`BIC()` propagate `NA` rather than error.
+  `sfma()` was never exposed: it passes `robust` to every candidate, and
+  since robust supports `"NHN"` only, the others fail and it stops first.
+
+* **`print()` and `summary()` labelled that same number "log likelihood".**
+  They now name the objective they are showing -- `mdpd objective (NOT a log
+  likelihood):` for a robust fit, `penalised log likelihood:` when
+  `penalty_c > 0` -- and are unchanged for ordinary maximum-likelihood fits.
+
+* **`logLik()` reported the penalised objective for `lcsfm()` fits with
+  `penalty_c > 0`, and the field meant to prevent that was itself wrong.**
+  `like.fn()` returns `-(L + P)` for log-likelihood `L` and penalty `P`, so
+  `-opt$value` is `L + P`; the plain log-likelihood is `-opt$value - P`. Both
+  the `LCM_CN` and the `LCM`/`LCM_Z` branches stored `-opt$value + P`, giving
+  `L + 2P` -- so the "unpenalised" figure was *further* from the truth than
+  the penalised objective it was meant to correct. `P` is at most zero (by
+  Jensen, `J log J + sum log pi <= 0`), so both understated the
+  log-likelihood and `AIC()`/`BIC()` over-penalised the fit.
+
+  Measured on a 600-observation two-class mixture with 74/26 shares at
+  `penalty_c = 20`: `logLik()` returned -804.49 where the log-likelihood is
+  -799.35, understating by 5.14 and overstating `AIC()` by 10.28. The error
+  is zero at `penalty_c = 0` and grows with the penalty and with class
+  imbalance, so it is invisible in the balanced case.
+
+  `logLik()` now reads the corrected field, and the `LCM_CN` penalty is
+  evaluated at the parameters the fit actually reports. Verified against the
+  definition: `logLik()` equals `sum(objective(par, per_obs = TRUE))`, the
+  sum of the unpenalised per-observation contributions, at every
+  `penalty_c` tested.
+
+  `lcsfm_homogeneity()`'s MLR statistic is **unaffected** -- it uses the
+  penalised objective deliberately, since the penalty is what makes the
+  likelihood ratio "modified". Only the reported diagnostic changes.
+
+* **`AIC()`, `BIC()` and `TIC()` under-penalised `ivsfm("IVLIML")`.** Its
+  degrees of freedom came from `length(coefficients)`, the number of
+  parameters *reported*. IVLIML maximises over reduced-form nuisance
+  parameters it never reports -- 11 estimated, 6 reported -- so it was charged
+  for 6, a free `2 * 5 = 10` AIC points against any model that reports what it
+  estimates. On a 300-observation sample whose two log-likelihoods differ by
+  0.005, `AIC()` preferred IVLIML by 0.010; with the correct df it prefers
+  IVCF by 9.99, so the defect was large enough to reverse the choice.
+
+  `TIC(detail = TRUE)` inherited it in a second place. Its `penalty` is a
+  trace computed on the *estimation* scale, so comparing it against the
+  reported count gave `ratio = 11.898 / 6 = 1.98`, which reads as a gross
+  violation of the information matrix equality. Against the estimated count
+  it is `11.898 / 11 = 1.08` -- what a correctly specified model should give.
+
+  `df` is now the estimated count wherever the fit carries an optimizer,
+  falling back to the reported count for the moment-based and FE estimators
+  that do not. Every other model in the package reports exactly what it
+  estimates, so nothing else changes.
+
 * **`vcov()` was permuted for `psfm("PL80")`, `"BC92"`, `"K1990"` and
   `"K1990modified"`.** These models estimate `(sigma_v, sigma_u, beta)` and
   report `(beta, sigmaSq, gamma)`, so the two scales differ by a permutation
