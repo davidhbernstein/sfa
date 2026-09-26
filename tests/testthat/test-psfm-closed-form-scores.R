@@ -21,24 +21,41 @@
   expect_equal(sum(ll), -fit$objective(par), tolerance = 1e-8)
   expect_identical(fit$n_units, N)
 
-  G <- estfun.sfareg(fit)
+  G <- suppressWarnings(estfun.sfareg(fit))
   expect_equal(dim(G), c(N, length(fit$coefficients)), info = label)
   expect_true(all(is.finite(G)), info = label)
   ## First-order conditions: the scores vanish at the optimum. That is the
   ## property that makes them scores rather than arbitrary differences.
-  expect_lt(max(abs(colSums(G))) / nrow(G), 1e-3)
+  ##
+  ## They do NOT hold at a BOUND, where the gradient is free to be non-zero
+  ## pointing out of the admissible region, so asserting them there tests a
+  ## property the model does not have. estfun() reports whether any difference
+  ## left the region; when one did, the assertion is skipped rather than
+  ## loosened. FD reaches such a point on the CI platforms and not on macOS,
+  ## which is how this surfaced -- see notes/code_history/sandwich_methods.md.
+  ## The caller checks that SOME model still exercised the assertion, so this
+  ## exemption cannot quietly empty the test.
+  foc <- identical(attr(G, "n_bailed"), 0L)
+  if (foc) expect_lt(max(abs(colSums(G))) / nrow(G), 1e-3)
   ## bread() scales by the score unit count, not nobs() = N * T.
-  expect_equal(bread.sfareg(fit), stats::vcov(fit) * N)
+  expect_equal(suppressWarnings(bread.sfareg(fit)), stats::vcov(fit) * N)
+  invisible(foc)
 }
 
 test_that("the closed-form time-decay panel models retain per-firm contributions", {
   skip_on_cran()
   d <- .cf_panel()
+  asserted <- logical(0)
   for (m in c("PL80", "BC92", "K1990", "K1990modified")) {
     fit <- suppressWarnings(psfm(y_bc92 ~ x1 + x2, model_name = m, data = d,
       individual = "name", time = "year", keep_objective = TRUE))
-    .cf_check(fit, 40L, m)
+    asserted <- c(asserted, .cf_check(fit, 40L, m))
   }
+  ## Teeth. The boundary exemption in .cf_check() is correct but it must not
+  ## be able to skip EVERY model and leave a test that asserts nothing about
+  ## the first-order conditions.
+  expect_true(any(asserted),
+    info = "no closed-form model exercised the FOC assertion")
 })
 
 test_that("PL80's vcov() is on the REPORTED scale, not the estimation scale", {
