@@ -92,3 +92,61 @@ test_that("the sandwich methods are REGISTERED, not merely defined", {
   expect_match(ns, "S3method\\(sandwich::bread, *sfareg\\)")
   expect_match(ns, "S3method\\(sandwich::estfun, *sfareg\\)")
 })
+
+## ---------------------------------------------------------------------------
+## The bail penalty is a sentinel, not a likelihood value. A central difference
+## that straddles the edge of the admissible region differences against it and
+## produces a score of order 1e150 which passes every is.finite() guard -- so
+## the meat matrix fills with numbers that look like numbers. FD hit this on
+## all five CI platforms and on none of the local ones, which is why it is
+## pinned here against a SYNTHETIC likelihood rather than against a fit: the
+## branch has to run everywhere, not only where an optimizer happens to land.
+## ---------------------------------------------------------------------------
+
+test_that("estfun() does not difference against a bail penalty", {
+  pen <- .SFA_CONSTANTS$MAX_VALUE^0.1
+  n <- 5L
+  ## Ordinary at and below theta[1] == 1, inadmissible above it: what a fit
+  ## resting on an upper bound looks like to a two-sided difference.
+  ll <- function(theta, per_obs = FALSE) {
+    v <- if (theta[1] > 1) rep(-pen / n, n) else seq_len(n) * theta[1] + theta[2]
+    if (isTRUE(per_obs)) v else -sum(v)
+  }
+  fit <- structure(list(
+    objective = ll,
+    opt = list(par = c(a = 1, b = 0.5)),
+    coefficients = c(a = 1, b = 0.5)
+  ), class = "sfareg")
+
+  expect_warning(G <- estfun.sfareg(fit), "admissible region")
+  expect_identical(attr(G, "n_bailed"), n)
+
+  ## d/da of (i * a + b) is i, and d/db is 1. The upper step is inadmissible,
+  ## so column `a` must come from the BACKWARD difference and still be exact.
+  expect_equal(unname(G[, "a"]), as.numeric(seq_len(n)), tolerance = 1e-6)
+  expect_equal(unname(G[, "b"]), rep(1, n), tolerance = 1e-6)
+
+  ## Teeth: differencing against the penalty would give about -1e35 here, so
+  ## this bound fails loudly if the guard is ever removed.
+  expect_true(max(abs(G)) < 1e3)
+})
+
+test_that("estfun() zeroes a score only when BOTH sides are inadmissible", {
+  pen <- .SFA_CONSTANTS$MAX_VALUE^0.1
+  n <- 4L
+  ## Admissible only exactly at theta[1] == 1 -- an isolated feasible point,
+  ## so neither one-sided difference exists either.
+  ll <- function(theta, per_obs = FALSE) {
+    v <- if (abs(theta[1] - 1) > 1e-12) rep(-pen / n, n) else seq_len(n) + theta[2]
+    if (isTRUE(per_obs)) v else -sum(v)
+  }
+  fit <- structure(list(
+    objective = ll,
+    opt = list(par = c(a = 1, b = 0.5)),
+    coefficients = c(a = 1, b = 0.5)
+  ), class = "sfareg")
+
+  expect_warning(G <- estfun.sfareg(fit), "admissible region")
+  expect_equal(unname(G[, "a"]), rep(0, n))
+  expect_true(all(is.finite(G)))
+})

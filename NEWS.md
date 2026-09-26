@@ -43,6 +43,19 @@
 
 ## Bug fixes
 
+* **`estfun()` could difference against a numerical-stability penalty and
+  return scores of order 1e150.** When a finite-difference step leaves a
+  likelihood's admissible region the closure returns a large penalty as a
+  sentinel. That penalty is *finite*, so it passed the existing
+  `is.finite()` guard and was differenced like an ordinary value, filling the
+  meat matrix with enormous numbers that looked like numbers. Any fit resting
+  at or near a parameter bound was affected, which is the worst case for it to
+  reach: the OPG is offered precisely because it needs no Hessian and so works
+  where the default path fails. Steps that leave the region now fall back to a
+  one-sided difference on the admissible side, are zero only where both sides
+  are inadmissible, and raise a warning saying the fit sits at a bound and
+  that OPG/BHHH errors understate uncertainty in those directions.
+
 * **`sfa_diagnostics()` labelled estimation-scale quantities with reported
   names.** The Hessian, the numerical gradient and `plot()`'s likelihood
   slices are all indexed by `opt$par`, which for `ivsfm("IVLIML")` has 11
