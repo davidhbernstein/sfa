@@ -14,8 +14,18 @@
   if (val == 0) return(FALSE)
   lo <- rep_len(lower, length(par))
   up <- rep_len(upper, length(par))
-  if (any(is.finite(lo) & abs(par - lo) <= 1e-8 * pmax(1, abs(lo)))) return(FALSE)
-  if (any(is.finite(up) & abs(par - up) <= 1e-8 * pmax(1, abs(up)))) return(FALSE)
+  ## AT a bound, or BEYOND it. The two used to be different: these tests read
+  ## `abs(par - lo) <= tol`, which rejects a point resting on the floor and
+  ## accepts one sitting below it -- so the gate refused the boundary and
+  ## admitted the region past it, which is strictly worse. psfm("TRE_Z") is
+  ## how that surfaced: sigma_r = -0.2 against a floor of MIN_POSITIVE is
+  ## 0.2 away from it, far outside the tolerance, so a negative standard
+  ## deviation passed as a credible point. `<=` in place of `abs(...) <=`
+  ## covers both cases and is the whole fix.
+  tol_lo <- 1e-8 * pmax(1, abs(lo))
+  tol_up <- 1e-8 * pmax(1, abs(up))
+  if (any(is.finite(lo) & par <= lo + tol_lo)) return(FALSE)
+  if (any(is.finite(up) & par >= up - tol_up)) return(FALSE)
   pc <- tryCatch(suppressWarnings(fn(par, per_obs = TRUE)), error = function(e) NULL)
   if (!is.null(pc) && length(pc) > 1L && all(is.finite(pc))) {
     if (all(pc == 0)) return(FALSE)
