@@ -36,6 +36,21 @@ test_that(".sfa_point_credible rejects a collapse and accepts an interior point"
   expect_false(.sfa_point_credible(fn, c(0, 3), 5, lo, up))
   expect_false(.sfa_point_credible(fn, c(2, 10), 5, lo, up))
 
+  ## BEYOND a bound. This is the case the gate used to accept, and it is worse
+  ## than the two above: a point outside the feasible region is not a candidate
+  ## optimum at all. psfm("TRE_Z") reached one -- sigma_r = -0.2 against a
+  ## floor of MIN_POSITIVE -- and the old `abs(par - lo) <= tol` test measured
+  ## it as 0.2 away from the bound and so passed it as credible.
+  expect_false(.sfa_point_credible(fn, c(-0.2, 3), 5, lo, up))
+  expect_false(.sfa_point_credible(fn, c(2, 25), 5, lo, up))
+  ## A negative scale where the floor is a small positive number: the shape of
+  ## the TRE_Z case exactly.
+  expect_false(.sfa_point_credible(fn, c(-0.2, 3), 5, c(1e-10, 0), up))
+
+  ## Still accepted: comfortably interior, and interior but near-ish a bound
+  ## without being within tolerance of it.
+  expect_true(.sfa_point_credible(fn, c(0.5, 3), 5, lo, up))
+
   ## Every per-observation contribution identical, or all exactly zero.
   fn_zero <- function(p, per_obs = FALSE) {
     v <- rep(0, 5)

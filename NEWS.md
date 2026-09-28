@@ -82,6 +82,18 @@
   `vcov(type = "sandwich")` and `vcov(type = "clustered")`, which apply the
   mapping. Where the two scales agree the results are unchanged.
 
+* **The optimizer's credibility gate accepted points outside the feasible
+  region.** `.sfa_point_credible()` decides whether an earlier optimizer stage
+  reached a point worth re-polishing from. It correctly refused a point resting
+  ON a parameter bound -- the signature of a scale driven to its floor -- but
+  tested that with `abs(par - lo) <= tol`, which measures distance rather than
+  direction. A point sitting BELOW the floor is far from it by that measure and
+  so was admitted, meaning the gate refused the boundary and accepted the region
+  beyond it. `psfm("TRE_Z")` is how this surfaced: `sigma_r = -0.2` against a
+  floor of `MIN_POSITIVE` reads as 0.2 away from the bound, so a negative
+  standard deviation passed as a credible optimum. Points outside their bounds
+  in either direction are now rejected.
+
 * **`psfm(model_name = "TRE_Z")` could report a NEGATIVE `sigma_r`.** The
   sign of `sigma_r` is not identified: it enters the likelihood only as a
   scale on simulation draws that are symmetric about zero, so `+sigma_r` and
