@@ -62,8 +62,22 @@ test_that("opt.optim keeps a better stage-2 point instead of discarding it", {
   ))
   ## Before the guard this reported 294.1174926; stage 2 had reached
   ## 293.9555300 and optim() ended above it.
+  ##
+  ## The target moved to 293.9854332 on 2026-09-27, and the 0.03 it went UP by
+  ## is not a regression. The old 293.9555300 was reached at a NEGATIVE
+  ## sigma_r: sigma_r's sign is unidentified (it scales draws symmetric about
+  ## zero), TRE_Z was the one psfm() block that let bobyqa run unbounded
+  ## below, and the negative root wins by a sliver that is only the asymmetry
+  ## of a finite Halton set. Evaluating THIS fit's objective at -sigma_r still
+  ## returns 293.9558, which is where the old number came from. Flooring the
+  ## scales costs that sliver and returns a valid standard deviation; see
+  ## test-psfm-tre-z-sigr.R. The `< 294.0` bound below is what carries A42's
+  ## own property, and it still separates this from the 294.1174926 the
+  ## discarding bug produced.
   expect_lt(as.numeric(fit$opt$value), 294.0)
-  expect_equal(as.numeric(fit$opt$value), 293.95553, tolerance = 1e-4)
+  expect_equal(as.numeric(fit$opt$value), 293.98543, tolerance = 1e-4)
+  ## The reported scale must be a scale.
+  expect_gte(unname(coef(fit)[2]), 0)
 
   ## What is reported must stay self-consistent: logLik() reads $opt$value, and
   ## the Hessian must describe the point being reported, not the one optim

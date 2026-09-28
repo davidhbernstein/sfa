@@ -43,6 +43,30 @@
 
 ## Bug fixes
 
+* **`psfm(model_name = "TRE_Z")` could report a NEGATIVE `sigma_r`.** The
+  sign of `sigma_r` is not identified: it enters the likelihood only as a
+  scale on simulation draws that are symmetric about zero, so `+sigma_r` and
+  `-sigma_r` describe the same model and fit equally well (flipping it moves
+  the objective by 8e-6 in relative terms; flipping `sigma_v`, whose sign is
+  pinned by `sigma_u / sigma_v`, moves it by a factor of 7). `TRE_Z` was the
+  only `psfm()` model that gave `bobyqa` an unbounded lower limit instead of
+  a per-parameter vector flooring the two scale parameters, so it was the
+  only one that could settle on the negative root -- about 7% of samples,
+  against none for `TRE`, `GTRE`, `GTRE_Z` or `GTRE_FML`. Every later
+  optimizer stage floors `sigma_r` at `MIN_POSITIVE`, so once `bobyqa`
+  returned a negative value it was already outside their box and could not be
+  corrected. `sigma_r` is now floored from the first stage. Affected fits
+  return the positive value of the same magnitude; a sample with no
+  detectable random effect goes to the boundary rather than to a negative
+  number.
+
+  This also removes a spurious convergence failure. The `convergence/`
+  harness read `sigma_r`'s MSE as flat in the sample size -- slope +0.010 at
+  R2 0.008, where every other parameter of the same model passes at root-n --
+  because roughly one fit in fourteen contributed the squared distance
+  between `+sigma_r` and `-sigma_r` regardless of n. On absolute values the
+  same archive gives slope -0.949. The estimator was consistent all along.
+
 * **`estfun()` could difference against a numerical-stability penalty and
   return scores of order 1e150.** When a finite-difference step leaves a
   likelihood's admissible region the closure returns a large penalty as a

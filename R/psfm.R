@@ -1724,7 +1724,16 @@ psfm <- function(formula,
 
     Start.Time <- start.time()
 
-    Opt.Bobyqa <- opt.bobyqa(fn = fn, start_v = start_v, lower.bobyqa = -Inf, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
+    ## sigma_v and sigma_r are floored here, not left at -Inf. This is the
+    ## only psfm() block that handed bobyqa an unbounded lower limit, and
+    ## sigma_r's SIGN is not identified: it enters the likelihood only as
+    ## x[2] * R_h1, a scale on symmetric draws, so +sigma_r and -sigma_r fit
+    ## equally well. bobyqa therefore reached the negative root on about 7%
+    ## of samples and every later stage inherited it -- their own lower1
+    ## floors are positive, so the value was already outside the box and no
+    ## longer correctable. The reported standard deviation came out negative.
+    lower_tz <- c(rep(.SFA_CONSTANTS$MIN_POSITIVE, 2), rep(-Inf, length(start_v) - 2L))
+    Opt.Bobyqa <- opt.bobyqa(fn = fn, start_v = start_v, lower.bobyqa = lower_tz, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
     start_v <- Opt.Bobyqa$start_v
     start_feval <- Opt.Bobyqa$start_feval
     bob1 <- Opt.Bobyqa$bob1
