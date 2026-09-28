@@ -35,7 +35,12 @@ test_that("the scores vanish at the optimum, which is what makes them scores", {
   expect_true(all(rel < 1e-3), info = paste(signif(rel, 3), collapse = ", "))
 })
 
-test_that("bread is n times the covariance", {
+## bread() is on the ESTIMATION scale. For sfm(), which reports what it
+## estimates, that IS n times the reported covariance -- so this identity
+## holds here and is asserted here, but it is NOT general: for ttsfm(),
+## copsfm(), ivsfm() and psfm()'s PL80 family the two scales differ and
+## bread() is deliberately not vcov() * n. See test-vcov-types.R.
+test_that("bread is n times the covariance on a fit that reports what it estimates", {
   skip_on_cran()
   o <- .sw_fit(N = 200)
   expect_equal(sfa:::bread.sfareg(o$fit), vcov(o$fit) * nobs(o$fit))

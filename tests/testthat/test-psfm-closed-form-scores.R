@@ -37,8 +37,22 @@
   ## exemption cannot quietly empty the test.
   foc <- identical(attr(G, "n_bailed"), 0L)
   if (foc) expect_lt(max(abs(colSums(G))) / nrow(G), 1e-3)
-  ## bread() scales by the score unit count, not nobs() = N * T.
-  expect_equal(suppressWarnings(bread.sfareg(fit)), stats::vcov(fit) * N)
+  ## bread() scales by the score unit count, not nobs() = N * T. That is the
+  ## property this line exists for and it is unchanged.
+  ##
+  ## What DID change, 2026-09-28: bread() is now on the ESTIMATION scale, to
+  ## match estfun(). It used to be vcov(fit) * N, the REPORTED scale, and
+  ## sandwich::sandwich() composed the two into a mixed-scale product -- finite,
+  ## plausible and wrong for every model whose scales differ, which includes
+  ## this PL80 family. So the comparison is against the estimation-scale
+  ## inverse Hessian, and the reported-scale identity is asserted separately
+  ## below only where the two scales are known to agree.
+  expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
+    unname(solve(fit$opt$hessian) * N), tolerance = 1e-8, info = label)
+  if (is.null(fit$par_index) && is.null(fit$par_scale)) {
+    expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
+      unname(stats::vcov(fit) * N), tolerance = 1e-8, info = label)
+  }
   invisible(foc)
 }
 

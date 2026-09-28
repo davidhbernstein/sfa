@@ -8,16 +8,49 @@
 ## The "bread" of the sandwich: n times the inverse of the negative Hessian of
 ## the summed log-likelihood, i.e. n * vcov.
 bread.sfareg <- function(x, ...) {
-  V <- stats::vcov(x)
-  ## psfm() scores are per firm, so the bread must scale by the same unit
-  ## count estfun() returns rows for; nobs() (N*T) would inflate it by T^2.
+  ## ON THE ESTIMATION SCALE, to match estfun(). This used to return
+  ## vcov(x) * n, which is the REPORTED scale, and sandwich::sandwich()
+  ## composes the two into bread %*% meat %*% bread without knowing they
+  ## disagree. Where the two scales have the same dimension that produced
+  ## finite, plausible, WRONG numbers -- on ttsfm("TTNE") the sigma standard
+  ## errors came out 29% low, 18% low and 26% high, each in a different
+  ## direction, while the betas (whose Jacobian is 1) were right. Where the
+  ## dimensions differ it produced "non-conformable arguments", which is how
+  ## ivsfm("IVLIML") surfaced it.
+  ##
+  ## So sandwich::sandwich() and sandwich::vcovCL() now return an
+  ## ESTIMATION-scale covariance: internally consistent, and for IVLIML
+  ## defined at all. For a covariance on the scale coef() reports, use
+  ## vcov(type = "sandwich") or vcov(type = "clustered"), which map through
+  ## par_index and par_scale afterwards. For every model whose two scales
+  ## agree -- sfm(), zsfm(), lcsfm(), psfm()'s TRE/GTRE family -- the two are
+  ## identical and nothing changes.
   n <- if (!is.null(x$n_units)) x$n_units else stats::nobs(x)
   if (!is.finite(n)) {
     stop("bread(): the number of observations is unavailable for this fit.",
       call. = FALSE
     )
   }
-  V * n
+  H <- if (!is.null(x$opt)) x$opt$hessian else NULL
+  if (!is.null(H)) {
+    Hi <- tryCatch(solve(H), error = function(e) NULL)
+    if (!is.null(Hi)) {
+      nmE <- .sfa_est_names(x)
+      dimnames(Hi) <- list(nmE, nmE)
+      return(Hi * n)
+    }
+  }
+  ## No usable Hessian. Falling back to the reported-scale covariance would
+  ## reintroduce the mismatch silently, so only do it where the two scales are
+  ## known to agree.
+  if (!is.null(x$par_index) || !is.null(x$par_scale)) {
+    stop("bread(): this fit has no invertible Hessian, and its estimation and ",
+      "reported parameter scales differ, so no estimation-scale bread can be ",
+      "formed. Use vcov(type = \"bhhh\"), which needs no Hessian.",
+      call. = FALSE
+    )
+  }
+  stats::vcov(x) * n
 }
 
 ## Per-observation scores d loglik_i / d theta (n x p), by central differences of the

@@ -19,6 +19,9 @@
   G <- estfun.sfareg(fit)
   expect_equal(dim(G), c(N, length(fit$coefficients)))
   ## bread() must scale by the score unit count, not nobs() = N * T.
+  ## The equality with vcov() * N holds because psfm()'s simulated-ML
+  ## models report what they estimate; bread() is on the ESTIMATION scale
+  ## and the two coincide only then. See test-vcov-types.R.
   expect_equal(bread.sfareg(fit), stats::vcov(fit) * N)
   V <- stats::vcov(fit, type = "bhhh")
   expect_true(all(is.finite(V)))

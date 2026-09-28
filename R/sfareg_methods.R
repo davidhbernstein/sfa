@@ -65,7 +65,8 @@ coef.sfareg <- function(object, ...) {
   V
 }
 
-vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
+vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "clustered"),
+                        cluster = NULL, ...) {
   type <- match.arg(type)
   p <- length(object$coefficients)
   nm <- names(object$coefficients)
@@ -95,6 +96,91 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh"), ...) {
     }
     return(.sfa_map_vcov(V, attr(G, "par_index"), attr(G, "par_scale"),
       p, nm, "vcov(type = \"bhhh\")"
+    ))
+  }
+
+  ## Sandwich and clustered covariances, computed HERE rather than left to the
+  ## sandwich package. Both are built on the ESTIMATION scale and only then
+  ## mapped to the reported one, which is the step sandwich::sandwich() cannot
+  ## take: it composes bread and meat itself and knows nothing about
+  ## par_index/par_scale. Composing a reported-scale bread with an
+  ## estimation-scale meat is what made those estimates silently wrong for
+  ## every model whose two scales differ -- and impossible for ivsfm("IVLIML"),
+  ## which estimates 11 parameters and reports 6, where the dimensions do not
+  ## even conform.
+  if (type %in% c("sandwich", "clustered")) {
+    what <- sprintf("vcov(type = \"%s\")", type)
+    G <- tryCatch(estfun.sfareg(object), error = function(e) NULL)
+    if (is.null(G)) {
+      stop(what, ": the score matrix is unavailable for this fit. Refit with ",
+        "keep_objective = TRUE.",
+        call. = FALSE
+      )
+    }
+    H <- if (!is.null(object$opt)) object$opt$hessian else NULL
+    if (is.null(H)) {
+      stop(what, ": this covariance needs the Hessian for its bread and this ",
+        "fit carries none (was optHessian = FALSE?). type = \"bhhh\" needs no ",
+        "Hessian and is defined here.",
+        call. = FALSE
+      )
+    }
+    Hi <- tryCatch(solve(H), error = function(e) NULL)
+    if (is.null(Hi)) {
+      stop(what, ": the Hessian is singular, so the bread is undefined. ",
+        "type = \"bhhh\" needs no Hessian and is defined here.",
+        call. = FALSE
+      )
+    }
+    n <- nrow(G)
+    if (identical(type, "sandwich")) {
+      meat <- crossprod(G)
+    } else {
+      ## The unit a cluster indexes is the row of estfun(), which for psfm()
+      ## and the other panel likelihoods is a FIRM, not a firm-year. Saying so
+      ## is worth more than the length check on its own: an N*T column is the
+      ## natural thing to reach for and it is the wrong length by construction.
+      if (is.null(cluster)) {
+        stop(what, ": `cluster` is required. It indexes the rows of the score ",
+          "matrix, which is one row per ", if (!is.null(object$n_units)) {
+            "FIRM"
+          } else {
+            "observation"
+          }, " for this fit -- length ", n, ".",
+          call. = FALSE
+        )
+      }
+      cl <- if (is.data.frame(cluster)) interaction(cluster, drop = TRUE) else cluster
+      cl <- as.factor(cl)
+      if (length(cl) != n) {
+        stop(what, ": `cluster` has length ", length(cl), " but the score ",
+          "matrix has ", n, " rows. Scores are per ",
+          if (!is.null(object$n_units)) "FIRM" else "observation",
+          " for this fit, so the cluster vector must be that long and in the ",
+          "same order.",
+          call. = FALSE
+        )
+      }
+      Gc <- rowsum(G, cl, reorder = FALSE)
+      M <- nrow(Gc)
+      if (M < 2L) {
+        stop(what, ": `cluster` has a single group, so a clustered covariance ",
+          "is not identified.",
+          call. = FALSE
+        )
+      }
+      ## Cluster adjustment M/(M-1) ONLY, which is what sandwich::vcovCL()
+      ## applies by default -- it does not also apply the HC1 observation
+      ## factor (n-1)/(n-k). Adding that factor made the two disagree by
+      ## exactly (n-1)/(n-k), 1.4% on a 300-observation fit, which is how the
+      ## difference was identified. Matching an established implementation is
+      ## worth more here than picking the correction on first principles, and
+      ## it lets the agreement be asserted in a test.
+      meat <- crossprod(Gc) * (M / (M - 1))
+    }
+    V <- Hi %*% meat %*% Hi
+    return(.sfa_map_vcov(V, attr(G, "par_index"), attr(G, "par_scale"),
+      p, nm, what
     ))
   }
 
