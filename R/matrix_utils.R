@@ -1821,6 +1821,20 @@
 
 ## Helper: per-firm simulated log-density for psfm()'s GTRE/TRE likelihood,
 ## evaluated for EVERY firm at once.
+## Average two log-densities on the DENSITY scale: log((A + B) / 2), not
+## 0.5 * (log A + log B). The two are equal only when A == B, and the second is
+## the geometric mean, which AM-GM puts strictly below the first. Used to
+## combine the +r and -r halves of GTRE's antithetic simulation, where they are
+## two draws of the same density and belong under one average. Done by
+## log-sum-exp so neither half has to be exponentiated on its own.
+.log_mean_exp2 <- function(a, b) {
+  m <- pmax(a, b)
+  ## Both halves -Inf: the mean is -Inf too, and exp(-Inf - -Inf) is NaN.
+  out <- m + log((exp(a - m) + exp(b - m)) / 2)
+  out[!is.finite(m)] <- m[!is.finite(m)]
+  out
+}
+
 .gtre_sim_logdens <- function(E, lambda, sigma, gid, ngroups) {
   z1 <- E / sigma
   z2 <- -E * lambda / sigma

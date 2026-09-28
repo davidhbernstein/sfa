@@ -528,7 +528,12 @@ psfm <- function(formula,
             z0 * dnorm(z1_neg) * pmax(pnorm(z2_neg), eps_neg[[ii]] * 0 + .Machine$double.xmin)
           )), .Machine$double.xmin))
 
-          prod_vec_n <- 0.5 * (prod_vec_n0 + prod_vec_n1)
+          ## Antithetic halves average on the DENSITY scale. This read
+          ## 0.5 * (prod_vec_n0 + prod_vec_n1), the geometric mean, which
+          ## AM-GM puts strictly below the arithmetic one whenever the two
+          ## halves differ -- a finite-R downward bias, not an asymptotic
+          ## error. Raised by Chris Parmeter, 2026-09-28.
+          prod_vec_n <- .log_mean_exp2(prod_vec_n0, prod_vec_n1)
         }
 
         return(-prod_vec_n)
@@ -565,9 +570,11 @@ psfm <- function(formula,
 
       if (model_name == "GTRE") {
         ## Second half of the +/- r mixture: r is symmetric, so the simulated
-        ## density averages the draw and its reflection.
+        ## density averages the draw and its reflection -- on the DENSITY
+        ## scale. This line read 0.5 * (ll + ...), which averages the LOGS and
+        ## so returns the geometric mean, contradicting the sentence above it.
         c_neg <- x[3] * .H1 + x[4] * .H2 * inefdec_n
-        ll <- 0.5 * (ll + .gtre_sim_logdens((base + c_neg) * inefdec_n, lam, sig, .gid, N))
+        ll <- .log_mean_exp2(ll, .gtre_sim_logdens((base + c_neg) * inefdec_n, lam, sig, .gid, N))
       }
       if (isTRUE(per_obs)) return(unname(ll))
       ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
