@@ -59,6 +59,19 @@
 
 ## Bug fixes
 
+* **A collapsed inefficiency scale is no longer the most attractive point in
+  the `sfm()` likelihood.** Driving `sigma_u` to machine epsilon makes every
+  per-observation density evaluate to exactly 1, so every log contribution is
+  exactly 0 and the objective -- the negative summed log-likelihood -- is `-0`.
+  Against a legitimate optimum of ~295 that reads as a spectacular improvement,
+  and `bobyqa` is strongly drawn to it. The existing protection could not help:
+  it replaces `!is.finite` contributions with a large finite penalty, and a
+  zero is finite, so the degenerate point was accepted as an objective value
+  like any other. An all-zero contribution vector is now penalised the same
+  way. Until this, the normal-gamma multistart guard added in 1.2.1 was the
+  only thing standing between `sfm("NG")` and a nonsense fit, rather than the
+  backstop it was intended to be.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,

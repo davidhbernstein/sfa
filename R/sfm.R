@@ -1013,6 +1013,18 @@ sfm <- function(formula,
       ## that was already finite everywhere it changes nothing.
       like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
 
+      ## A49. A zero is finite, so the guard above lets a collapsed scale
+      ## through. Driving sig_u to machine epsilon makes every contribution
+      ## exactly 0, and the objective -- the NEGATIVE summed log-likelihood --
+      ## is then -0, which beats a legitimate optimum of ~295 and attracts
+      ## bobyqa hard. Every density evaluating to exactly 1 is a collapse, not
+      ## a fit, so penalise it the way non-finite values are penalised. Before
+      ## this, A40's multistart was the only thing standing between NG and a
+      ## nonsense fit rather than the backstop it was meant to be.
+      if (length(like) > 0L && all(like == 0)) {
+        like <- rep(-sqrt(.Machine$double.xmax / length(like)), length(like))
+      }
+
       ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
       ## objective for the robust one, at these SAME current parameter values.
       if (model_name == "NHN" && robust != "mle" && !isTRUE(per_obs)) {

@@ -125,3 +125,33 @@ test_that(".ng_start_candidates sweeps the shape along the E[u] ridge", {
   eu <- vapply(cs, function(z) z[3]*z[2], numeric(1))
   expect_lt(stats::sd(eu[-1])/mean(eu[-1]), 1e-8)
 })
+
+test_that("a collapsed u-scale is penalised rather than read as an optimum (A49)", {
+  skip_on_cran()
+  ## Driving sig_u to machine epsilon makes every per-observation density
+  ## evaluate to exactly 1, so every log contribution is exactly 0. The
+  ## objective is the NEGATIVE summed log-likelihood, so that point scored
+  ## exactly -0 -- which BEATS a legitimate optimum of ~295 and attracts
+  ## bobyqa. The non-finite guard could not catch it, because 0 is finite.
+  d <- data_gen_cs(N = 300, rand = 11, sig_u = 1, sig_v = 0.3, cons = 0.5,
+                   beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.5)
+  f <- sfm(y_pcs ~ x1 + x2, model_name = "NG", data = d,
+           keep_objective = TRUE)
+
+  ## Pin the layout the collapse depends on, so a future re-ordering of the
+  ## parameter vector cannot make this test silently probe the wrong slot.
+  expect_identical(rownames(f$out)[1:3], c("sigv", "sigu", "mu"))
+
+  q <- f$opt$par
+  q[2] <- 2.220446e-16
+
+  ## The whole point: it must no longer look better than the real optimum.
+  expect_gt(f$objective(q), f$opt$value)
+
+  ## And it is penalised, not merely shifted: contributions are the same large
+  ## negative value the non-finite branch uses, not zeros.
+  pc <- f$objective(q, per_obs = TRUE)
+  expect_false(all(pc == 0))
+  expect_true(all(pc < 0))
+  expect_length(pc, 300L)
+})
