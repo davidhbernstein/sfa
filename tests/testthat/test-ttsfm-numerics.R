@@ -107,9 +107,15 @@ test_that("ttsfm reports the three scales on their natural scale, named", {
   expect_true(all(s > 0))
   ## on the natural scale these sit near the truth; on the log scale they
   ## would be negative, which is the regression this pins
-  expect_equal(unname(s[["sigma_v"]]), 0.3, tolerance = 0.25)
+  ## What this pins is the SCALE, not precision: on the log scale these would
+  ## be negative, and `all(s > 0)` above is the assertion that catches that.
+  ## The magnitude bounds are ~3 sd, measured over 10 seeds at N = 800:
+  ## sigma_v mean 0.284 sd 0.089, sigma_u mean 0.984 sd 0.048, sigma_w mean
+  ## 0.489 sd 0.065. sigma_v is genuinely imprecise here -- its sd is 30% of
+  ## the truth -- so a tight bound on it asserts nothing except a lucky seed.
+  expect_equal(unname(s[["sigma_v"]]), 0.3, tolerance = 0.90)
   expect_equal(unname(s[["sigma_u"]]), 1.0, tolerance = 0.25)
-  expect_equal(unname(s[["sigma_w"]]), 0.5, tolerance = 0.25)
+  expect_equal(unname(s[["sigma_w"]]), 0.5, tolerance = 0.40)
   ## standard errors carry the delta-method factor, so they are positive and
   ## finite on the same scale
   expect_true(all(is.finite(f$out[c("sigma_v", "sigma_u", "sigma_w"), "st_err"])))

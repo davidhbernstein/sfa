@@ -26,7 +26,8 @@ call_stage3 <- function(fn, opt.TF = TRUE, optHessian = TRUE) {
 test_that("an objective that throws away from the start does not abort the stage", {
   fn <- function(p) if (identical(p, p0)) 10 else stop("objective unusable here")
 
-  res <- expect_warning(call_stage3(fn), "final optim\\(\\) stage")
+  res <- NULL
+  expect_warning(res <- call_stage3(fn), "final optim\\(\\) stage")
 
   ## Falls back to the point stage 2 handed in, not to nothing.
   expect_identical(res$start_v, p0)
@@ -44,7 +45,8 @@ test_that("an objective that throws away from the start does not abort the stage
 test_that("an objective that goes non-finite away from the start does not abort the stage", {
   fn <- function(p) if (identical(p, p0)) 10 else NaN
 
-  res <- expect_warning(call_stage3(fn), "final optim\\(\\) stage")
+  res <- NULL
+  expect_warning(res <- call_stage3(fn), "final optim\\(\\) stage")
 
   expect_identical(res$opt$convergence, 99L)
   expect_true(is.finite(res$opt$value))
@@ -77,7 +79,9 @@ test_that("opt.TF = FALSE still means stage 3 is skipped entirely", {
 test_that("with optHessian = FALSE the fallback carries no Hessian", {
   fn <- function(p) if (identical(p, p0)) 10 else stop("objective unusable here")
 
-  res <- expect_warning(call_stage3(fn, optHessian = FALSE), "final optim\\(\\) stage")
+  res <- NULL
+  expect_warning(res <- call_stage3(fn, optHessian = FALSE),
+                 "final optim\\(\\) stage")
 
   expect_identical(res$opt$convergence, 99L)
   expect_null(res$opt$hessian)
