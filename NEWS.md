@@ -59,6 +59,27 @@
 
 ## Bug fixes
 
+* **`sfm("NG")` evaluated its log-likelihood as exactly 0 near a collapsed
+  scale.** The density contains `z^2/4 + log D(z)`, the
+  parabolic cylinder function's log plus a quadratic, and the log-D routine
+  returns `-z^2/4` plus a term of order `log z`. Added as two numbers they
+  cancel, and for NG `z` is about `sigma_v / sigma_u`, so the cancellation
+  bites exactly where `sigma_u` approaches its lower bound. On 200
+  observations the summed NG log-likelihood was off by 0.03 at
+  `sigma_u = 1e-7`, by +117 at `1e-9` -- spuriously better than the truth --
+  and exactly 0 from `1e-10` down. Zero is finite, so the non-finite guard let
+  it through, and it sat far above any real optimum; only the multistart
+  guard kept it from being returned as a fit. The sum is now formed as one
+  quantity, by the large-argument expansion where it would cancel, and the
+  likelihood tends to its correct limit, the normal density of `v` alone.
+  `"NNAK"` contains the same combination and now forms it the same way, but
+  was measured not to be exposed: its argument grows only as `sigma_v -> 0`,
+  where the likelihood is already, correctly, very negative.
+
+  The same combination made `efficiency()`'s NG and NNAK scores `NaN` once
+  `z` passed about 53, as `exp(z^2/4)` overflowed in numerator and
+  denominator alike. That ratio is now formed in logs.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
