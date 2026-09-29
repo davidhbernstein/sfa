@@ -76,3 +76,21 @@ test_that("NG's E[exp(-u) | eps] survives a large z instead of returning NaN", {
   den <- stats::integrate(function(u) exp(lk(u) - m), 0, Inf, rel.tol = 1e-12)$value
   expect_equal(got, num / den, tolerance = 1e-8)
 })
+
+test_that("an ordinary NG fit no longer returns the collapsed point (seed 12)", {
+  skip_on_cran()
+  ## On main this plain call returned an objective of exactly 0 at
+  ## sigma_u = mu = 1e-7 (the lower bounds) and sigma_v = 120, with no warning:
+  ## every contribution had cancelled to 0, which the minimizer read as the
+  ## best fit available.
+  d <- data_gen_cs(N = 300, rand = 12, sig_u = 0.5, sig_v = 0.3, cons = 0.5,
+    beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.5)
+  f <- suppressWarnings(sfm(y_pcs ~ x1 + x2, model_name = "NG", data = d))
+  expect_gt(f$opt$par[2], 1e-3)
+  expect_gt(f$opt$par[3], 1e-3)
+  ## NG nests the normal regression (sigma_u -> 0), whose maximum is known in
+  ## closed form from lm(); the fit must not lose to it.
+  r <- stats::residuals(stats::lm(y_pcs ~ x1 + x2, data = d))
+  ols_nll <- -sum(stats::dnorm(r, 0, sqrt(mean(r^2)), log = TRUE))
+  expect_lte(f$opt$value, ols_nll + 1e-6)
+})

@@ -68,8 +68,11 @@
   observations the summed NG log-likelihood was off by 0.03 at
   `sigma_u = 1e-7`, by +117 at `1e-9` -- spuriously better than the truth --
   and exactly 0 from `1e-10` down. Zero is finite, so the non-finite guard let
-  it through, and it sat far above any real optimum; only the multistart
-  guard kept it from being returned as a fit. The sum is now formed as one
+  it through, and it sat far above any real optimum. The multistart guard
+  did not always catch it: a plain `sfm(y ~ x1 + x2, model_name = "NG")` on
+  `data_gen_cs(N = 300, rand = 12, sig_u = 0.5, ...)` returned an objective
+  of exactly 0 at `sigma_u = mu = 1e-7`, with no warning, and now returns an
+  interior fit whose log-likelihood beats the nested normal regression's. The sum is now formed as one
   quantity, by the large-argument expansion where it would cancel, and the
   likelihood tends to its correct limit, the normal density of `v` alone.
   `"NNAK"` contains the same combination and now forms it the same way, but
