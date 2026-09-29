@@ -47,11 +47,36 @@
   ## this PL80 family. So the comparison is against the estimation-scale
   ## inverse Hessian, and the reported-scale identity is asserted separately
   ## below only where the two scales are known to agree.
-  expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
-    unname(solve(fit$opt$hessian) * N), tolerance = 1e-8, info = label)
-  if (is.null(fit$par_index) && is.null(fit$par_scale)) {
+  ##
+  ## Invert the way bread() itself does. GTRE_FML's Hessian is genuinely
+  ## singular -- it is the fit whose seven standard errors all print as NaN --
+  ## and whether solve() throws on it is a LAPACK tolerance call that differs by
+  ## platform: reciprocal condition 3.2e-17 threw on ubuntu-devel and macOS and
+  ## did not on ubuntu-release, oldrel or Windows. A bare solve() here asserted
+  ## an identity that bread() does not claim, and failed on three platforms out
+  ## of five for a property the code handles correctly.
+  ##
+  ## The singular branch is asserted rather than skipped: where no Hessian is
+  ## usable and the two scales agree, bread() is documented to fall back to
+  ## vcov(fit) * N, so that is what gets pinned. Where the scales differ it is
+  ## documented to error instead, rather than reintroduce the mixed-scale
+  ## product silently.
+  same_scale <- is.null(fit$par_index) && is.null(fit$par_scale)
+  Hi <- tryCatch(solve(fit$opt$hessian), error = function(e) NULL)
+  if (!is.null(Hi)) {
     expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
-      unname(stats::vcov(fit) * N), tolerance = 1e-8, info = label)
+      unname(Hi * N), tolerance = 1e-8, info = label)
+    if (same_scale) {
+      expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
+        unname(stats::vcov(fit) * N), tolerance = 1e-8, info = label)
+    }
+  } else if (same_scale) {
+    ## vcov() warns here too, for the same reason and by design.
+    expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
+      unname(suppressWarnings(stats::vcov(fit)) * N), tolerance = 1e-8,
+      info = paste(label, "(singular Hessian, documented fallback)"))
+  } else {
+    expect_error(bread.sfareg(fit), "no invertible Hessian", info = label)
   }
   invisible(foc)
 }
