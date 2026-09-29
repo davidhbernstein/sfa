@@ -597,6 +597,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
     ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
     ## Jacobian .tt_report() already built for the Hessian standard errors is
@@ -911,6 +912,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
     ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
     ## Jacobian .tt_report() already built for the Hessian standard errors is
@@ -1112,6 +1114,8 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.nls.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     return(results)
   } else {
     stop(paste0(
