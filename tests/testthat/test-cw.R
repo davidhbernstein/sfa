@@ -19,9 +19,13 @@ test_that(".cw_theory() matches a direct simulation", {
   expect_equal(tt$mu1, sqrt(2 / pi), tolerance = 1e-8)      # E|N(0,1)|
   expect_equal(tt$moments[1], mean(ec^2), tolerance = 0.01)
   expect_equal(tt$moments[2], mean(ec^3), tolerance = 0.02)
+  ## Theory against simulation, so the gap is Monte Carlo error -- absolute,
+  ## not relative. Esin is near zero at these taus (~0.02), where a relative
+  ## tolerance measures nothing useful. At R = 6e5 the MC standard error is
+  ## ~9e-4 and every gap here sits under 1 se, so 4e-3 is ~4 se of headroom.
   for (j in seq_along(taus)) {
-    expect_equal(tt$Ecos[j], mean(cos(taus[j] * ec)), tolerance = 0.005)
-    expect_equal(tt$Esin[j], mean(sin(taus[j] * ec)), tolerance = 0.005)
+    expect_lt(abs(tt$Ecos[j] - mean(cos(taus[j] * ec))), 4e-3)
+    expect_lt(abs(tt$Esin[j] - mean(sin(taus[j] * ec))), 4e-3)
   }
 })
 
