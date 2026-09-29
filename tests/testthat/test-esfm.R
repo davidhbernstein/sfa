@@ -70,9 +70,13 @@ test_that("esfm() recovers gamma on a correctly skewed sample", {
   skip_on_cran()
   f <- esfm(y ~ lx1 + lx2, data = .hms_gen(500, 0.5, 0.25, 3))
   expect_s3_class(f, "esfm")
-  expect_equal(unname(f$gamma), 0.5, tolerance = 0.12)
-  expect_equal(unname(f$sigma_v), 0.25, tolerance = 0.08)
-  expect_equal(unname(f$out["lx1", "par"]), 0.6, tolerance = 0.12)
+  ## Single-sample recovery, so the bounds must be set by sampling spread.
+  ## Measured over 12 seeds at N = 500: gamma mean 0.495 sd 0.042, sigma_v
+  ## mean 0.259 sd 0.024, lx1 mean 0.641 sd 0.025. Each bound below is ~3 sd.
+  ## The old sigma_v bound of 0.08 was 0.83 sd -- it could not have held.
+  expect_equal(unname(f$gamma), 0.5, tolerance = 0.25)
+  expect_equal(unname(f$sigma_v), 0.25, tolerance = 0.30)
+  expect_equal(unname(f$out["lx1", "par"]), 0.6, tolerance = 0.15)
   ## and it agrees with the classical fit, which it nests at gamma > 0
   cf <- sfm(y ~ lx1 + lx2, model_name = "NHN", data = .hms_gen(500, 0.5, 0.25, 3))
   lam <- cf$out["lambda", "par"]; sg <- cf$out["sigma", "par"]
