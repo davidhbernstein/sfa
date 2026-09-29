@@ -43,6 +43,28 @@
 
 ## Bug fixes
 
+* **`psfm(model_name = "GTRE")` combined its antithetic simulation draws on the
+  log scale.** The persistent component is simulated as `+r` and `-r`, two
+  draws of the same density, which average as `log((A + B) / 2)`. Both call
+  sites -- the loop path and the vectorised one -- computed
+  `0.5 * (log A + log B)`, which is `log(sqrt(A * B))`: the geometric mean,
+  which AM-GM puts strictly below the arithmetic one whenever the halves
+  differ. The vectorised site's own comment said the density was being
+  averaged.
+
+  This is a finite-draw bias rather than an asymptotic error -- each half is
+  separately a consistent simulator, so the two rules agree as the draw count
+  grows. But the default count is `ceiling(sqrt(nrow(data))) + 100`, about 118
+  draws for a 60x5 panel, and measured there on identical draws the summed
+  log-likelihood was 0.23 too low, with the `sigma_r` profile optimum shifted
+  down 4.8%. The bias falls to 0.012 at 3200 draws and 0.0013 at 20000.
+  Averaging is now done on the density scale through log-sum-exp, so neither
+  half is exponentiated on its own.
+
+  `GTRE` is the only model affected: `TRE` uses the `+r` half alone and
+  `GTRE_Z` has no antithetic pairing. GTRE estimates move slightly as a
+  result. Raised by Chris Parmeter.
+
 * **The optimizer's credibility gate accepted points outside the feasible
   region.** `.sfa_point_credible()` decides whether an earlier optimizer stage
   reached a point worth re-polishing from. It correctly refused a point resting
