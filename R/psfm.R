@@ -628,7 +628,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -1067,7 +1067,7 @@ psfm <- function(formula,
 
     ## Preserve current fallback logic
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -1771,7 +1771,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -1987,7 +1987,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
     if (optHessian == FALSE & PSopt == TRUE) {
       opt <- opt00
@@ -2152,7 +2152,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -2323,7 +2323,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
     if (optHessian == FALSE & PSopt == TRUE) {
       opt <- opt00
@@ -2536,7 +2536,7 @@ psfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -2864,7 +2864,7 @@ psfm <- function(formula,
     opt <- Opt.Optim$opt
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
     if (optHessian == FALSE & PSopt == TRUE) {
       opt <- opt00

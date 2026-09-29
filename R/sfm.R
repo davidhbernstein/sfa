@@ -1179,7 +1179,11 @@ sfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      ## Exactly one of nlminb and bobyqa runs (use.nlminb and use.bobyqa are
+      ## complements), so for the .nlminb_safe models bob1 is NULL and the
+      ## stage that ran is nlminb. Its result used to be discarded and `opt`
+      ## left NULL, a hard error below (gap A52a).
+      opt <- .as_optim(if (!is.null(bob1)) bob1 else Opt.Nlminb$nlm1)
       st_err <- rep(NA, length(opt$par))
     }
 

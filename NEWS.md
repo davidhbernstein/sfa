@@ -59,6 +59,27 @@
 
 ## Bug fixes
 
+* **`optHessian = FALSE` with the default `PSopt = FALSE` failed outright for
+  `sfm()`'s default model and for every `lcsfm()` model, and lost the
+  log-likelihood everywhere else.** Without the final `optim()` stage a fit
+  stored the earlier stage's result as `$opt` unchanged, and two of those
+  stages do not use `optim()`'s field names: `nlminb()` reports `objective`,
+  `bobyqa()` reports `fval` and `ierr`. Every consumer reads `$value`.
+  `sfm()`'s `"NHN"`, `"NE"`, `"NTN"` and `"NU"` run nlminb *instead of* bobyqa,
+  and nlminb's result was discarded, so `$opt` was `NULL` and the fit stopped
+  with "number of items to replace is not a multiple of replacement length".
+  The other eleven `sfm()` models returned a fit whose `logLik()`, AIC and BIC
+  were `NA`, with a warning that blamed moment-based estimation. `lcsfm()`'s
+  `"LCM"` and `"LCM_Z"` stopped with "invalid argument to unary operator",
+  and `"LCM_CN"` never kept any stage's result at all. `zsfm()`, `ttsfm()`,
+  `selsfm()`, `copsfm()`, `ivsfm()` and `psfm()` had the silent-`NA` half.
+
+  An earlier stage's result is now put into `optim()`'s shape before it
+  becomes `$opt`, and `sfm()` keeps nlminb's result when that is the stage
+  that ran. `logLik()` on such a fit is the log-likelihood at the reported
+  estimate. `optHessian = TRUE` (the default) and `PSopt = TRUE` are
+  unchanged.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
