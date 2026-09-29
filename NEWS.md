@@ -2,6 +2,22 @@
 
 ## New features
 
+* **`vcov()` now offers four covariances, not two.** `type` gains
+  `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and
+  `vcov()` gains a `cluster` argument. Every maximum-likelihood fit in the
+  package that retains its likelihood through `keep_objective = TRUE` can
+  therefore report Hessian, outer-product, heteroskedasticity-robust and
+  cluster-robust standard errors through one interface, without the caller
+  having to attach `sandwich` and know its idiom.
+
+  These are computed in the package rather than delegated, because the
+  covariance has to be formed on the scale the scores live on and only then
+  mapped to the scale `coef()` reports. `sandwich::sandwich()` cannot take
+  that step -- it composes bread and meat itself and knows nothing about the
+  mapping. `vcov(type = "clustered")` clusters over the rows of the score
+  matrix, which for the panel likelihoods is one row per FIRM rather than per
+  firm-year, and says so when handed a vector of the wrong length.
+
 * **OPG (BHHH) standard errors are now available from every entry point whose
   likelihood is separable per observation.** `keep_objective = TRUE` gains
   `zsfm()`, `lcsfm()`, `ttsfm()` (`"TTNE"`, `"TTHN"`), `copsfm()`, `ivsfm()`
@@ -42,6 +58,29 @@
   identified.
 
 ## Bug fixes
+
+* **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
+  standard errors for every model whose estimation and reported parameter
+  scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
+  while `estfun()` returns scores on the ESTIMATION scale; `sandwich` composed
+  the two without knowing they disagreed. Where the two scales have the same
+  dimension this produced finite, plausible, wrong numbers: on
+  `ttsfm("TTNE")` the three sigma standard errors came out 29% low, 18% low
+  and 26% HIGH -- each wrong in a different direction -- while the betas,
+  whose Jacobian is 1, were correct. Where the dimensions differ it could not
+  conform at all, which is how `ivsfm("IVLIML")` (11 estimated, 6 reported)
+  surfaced it, failing with `non-conformable arguments`.
+
+  Affected `ttsfm()`, `copsfm()`, `ivsfm()` and `psfm()`'s `PL80` family.
+  `sfm()`, `zsfm()`, `lcsfm()` and `psfm()`'s `TRE`/`GTRE` family report what
+  they estimate and were never affected.
+
+  `bread()` is now on the estimation scale, matching `estfun()`, so
+  `sandwich::sandwich()` and `sandwich::vcovCL()` return an internally
+  consistent estimation-scale covariance -- and are defined for `IVLIML` at
+  all. For a covariance on the scale `coef()` reports, use the new
+  `vcov(type = "sandwich")` and `vcov(type = "clustered")`, which apply the
+  mapping. Where the two scales agree the results are unchanged.
 
 * **`psfm(model_name = "GTRE")` combined its antithetic simulation draws on the
   log scale.** The persistent component is simulated as `+r` and `-r`, two

@@ -22,17 +22,24 @@ list by hand.
 }
 \usage{
 \method{coef}{sfareg}(object, \dots)
-\method{vcov}{sfareg}(object, type = c("hessian", "bhhh"), \dots)
+\method{vcov}{sfareg}(object, type = c("hessian", "bhhh", "sandwich", "clustered"),
+  cluster = NULL, \dots)
 \method{logLik}{sfareg}(object, \dots)
 \method{nobs}{sfareg}(object, \dots)
 }
 \arguments{
-\item{type}{For \code{vcov}: \code{"hessian"} (the default) for the inverse Hessian, or \code{"bhhh"} for the inverse outer product of the per-observation scores. See \sQuote{Details}.}
+\item{type}{For \code{vcov}: \code{"hessian"} (the default) for the inverse Hessian, \code{"bhhh"} for the inverse outer product of the per-observation scores, \code{"sandwich"} for the heteroskedasticity-robust sandwich, or \code{"clustered"} for its cluster-robust form. The last three need \code{keep_objective = TRUE}; the last two additionally need a Hessian, which \code{"bhhh"} does not. See \sQuote{Details}.}
+
+\item{cluster}{For \code{vcov(type = "clustered")}: a vector or factor grouping the ROWS OF THE SCORE MATRIX. That is one row per observation for a cross-sectional fit and one row per FIRM for a panel one, so a firm-year vector is the wrong length by construction and is refused with a message saying so. A data frame is accepted for multiway clustering and is reduced with \code{interaction()}.}
 
   \item{object}{An object of class \code{"sfareg"}.}
   \item{\dots}{Currently unused; included for S3 method consistency.}
 }
 \details{
+\bold{Four covariances, and why two of them are computed here.} \code{vcov(type = "sandwich")} returns the heteroskedasticity-robust sandwich and \code{vcov(type = "clustered")} its cluster-robust form. Both are formed on the ESTIMATION scale -- the scale the scores and the Hessian live on -- and only then mapped to the scale \code{coef} reports. That mapping is why they are not left to \code{sandwich::sandwich()}: that function composes bread and meat itself and has no way to know the two scales differ. For \code{ttsfm}, \code{copsfm}, \code{ivsfm} and \code{psfm}'s \code{PL80} family they do differ, and for \code{ivsfm("IVLIML")} they differ in dimension as well, since it maximises over 11 parameters and reports 6.
+
+\code{sandwich::sandwich()} and \code{sandwich::vcovCL()} remain available and now return an estimation-scale covariance, which is internally consistent but not on the scale \code{coef} reports. Where a model reports what it estimates -- \code{sfm}, \code{zsfm}, \code{lcsfm}, \code{psfm}'s \code{TRE}/\code{GTRE} family -- the two routes agree exactly, and the cluster adjustment matches \code{vcovCL}'s default of \eqn{M/(M-1)}.
+
 \bold{BHHH standard errors.} \code{vcov(fit, type = "bhhh")} returns the inverse of the outer product of the per-observation scores instead of the inverse Hessian. Its value is that it needs no Hessian at all: it is defined whenever the scores are, which is exactly the case where the default path fails. When the Hessian is singular \code{vcov} otherwise falls back to a \emph{diagonal} approximation built from the reported standard errors, discarding every covariance; BHHH keeps them. It requires \code{keep_objective = TRUE} for the same reason \code{estfun} does, and is returned on the same scale \code{coef} reports (see below). It is not the default, because it is only as good as the information-matrix equality and so disagrees with the Hessian under misspecification -- which is useful when the two are compared on purpose and misleading when they are not. At a parameter bound the scores in the constrained directions are not defined: the likelihood returns a stability penalty rather than a value, so \code{estfun} falls back to a one-sided difference on the admissible side, uses zero where neither side is admissible, and warns. BHHH errors built from such a fit understate the uncertainty in those directions.
 
 \bold{Robust and clustered standard errors.} \code{vcov} returns the inverse Hessian, which is valid only if the likelihood is correctly specified and the observations are independent -- neither being safe to assume in applied frontier work. Registering \code{bread} and \code{estfun} makes the \pkg{sandwich} package operate on these fits, so \code{sandwich::sandwich()} gives Huber--White errors and \code{sandwich::vcovCL()} gives clustered ones, and either can be handed to \code{lmtest::coeftest()}:
