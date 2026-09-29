@@ -8,6 +8,13 @@ on:
 
 name: R-CMD-check
 
+# A superseded run holds the Windows runner for nearly four hours. Cancel it
+# when the same ref is pushed again; never cancel main, whose runs are the
+# record of what was green when it merged.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
@@ -34,6 +41,10 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       _R_CHECK_FORCE_SUGGESTS_: false
+      # R CMD check caps parallelism at 2 cores unless told otherwise, which
+      # would waste half of a 4-core runner now that the suite runs parallel.
+      _R_CHECK_LIMIT_CORES_: false
+      TESTTHAT_CPUS: 4
 
     steps:
       - uses: actions/checkout@v4
