@@ -19,7 +19,11 @@ test_that("estfun agrees with the ANALYTIC gradient", {
   ## holds contributions to the POSITIVE one.
   g_analytic <- sfa:::.grad_nhn(o$fit$opt$par, Y, X, inefdec_n = 1)
   g_numeric <- -colSums(sfa:::estfun.sfareg(o$fit))
-  expect_equal(unname(g_analytic), unname(g_numeric), tolerance = 1e-5)
+  ## Both gradients are evaluated AT THE OPTIMUM, so every element is ~0
+  ## (7e-6 to 4e-4 here) and a relative tolerance measures rounding, not
+  ## agreement. The honest criterion is absolute: measured max gap 3.1e-7
+  ## between the hand-derived gradient and central differences.
+  expect_lt(max(abs(unname(g_analytic) - unname(g_numeric))), 1e-6)
 })
 
 test_that("the scores vanish at the optimum, which is what makes them scores", {
