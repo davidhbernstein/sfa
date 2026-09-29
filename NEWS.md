@@ -59,6 +59,19 @@
 
 ## Bug fixes
 
+* **`ttsfm("TTHN")` replaced `optim()`'s result on a tie, and warned that the
+  final stage had failed.** The branch keeps whichever optimizer stage
+  attained the lowest objective, and chose with a bare `which.min()`. On one
+  seed bobyqa and `optim()` had converged to the same point -- parameters
+  agreeing to 1e-10, identical Hessian eigenvalues -- and a difference of
+  2.8e-14 at an objective of 189, one unit in the last place, discarded
+  `optim()`'s result. The warning printed both objectives to four decimals,
+  where they were equal. `optim()` is now displaced only by a stage that
+  improves on it by more than `optim()`'s own convergence tolerance
+  (`reltol = sqrt(.Machine$double.eps)`, relative), and the warning prints
+  the objectives to ten significant figures. Reported estimates change only
+  where the old choice was a tie, and then by the width of the tie.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,

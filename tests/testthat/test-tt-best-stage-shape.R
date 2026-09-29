@@ -134,3 +134,43 @@ test_that("the substituted hessian is on the same scale optim() would have used"
   expect_equal(se_sub[2], unname(summary(stats::lm(y ~ x))$coefficients[2, 2]),
                tolerance = 5e-3)
 })
+
+## Gap A51. Stage selection used a bare which.min(), so a tie decided which
+## stage was reported: on one TTHN seed bobyqa and optim() sat at the same
+## point to 1e-10, and a 2.8e-14 difference at an objective of 189 -- one unit
+## in the last place -- discarded optim()'s result and warned that it had
+## failed. optim() is now displaced only by more than its own reltol.
+
+## An objective whose value at a point is set exactly, so the candidates'
+## re-evaluated values are known to the bit.
+fv <- function(vals) function(p) vals[[p[1]]]
+
+test_that("a tie at the last place keeps optim()", {
+  v <- 189.137343807
+  cands <- list(bobyqa = .bob_like(c(1, 0), 0), optim = .optim_like(c(2, 0), 0))
+  bs <- .tt_best_stage(fv(c(v - 2.842171e-14, v)), cands, "TTHN")
+  expect_identical(bs$which, "optim")
+  expect_identical(bs$opt, cands$optim)
+})
+
+test_that("a difference inside optim()'s reltol keeps optim()", {
+  v <- 189.137343807
+  tol <- sqrt(.Machine$double.eps) * v
+  cands <- list(bobyqa = .bob_like(c(1, 0), 0), psoptim = .pso_like(c(2, 0), 0),
+                optim = .optim_like(c(3, 0), 0))
+  bs <- .tt_best_stage(fv(c(v - 0.5 * tol, v - 0.9 * tol, v)), cands, "TTHN")
+  expect_identical(bs$which, "optim")
+})
+
+test_that("a real improvement still displaces optim()", {
+  v <- 189.137343807
+  tol <- sqrt(.Machine$double.eps) * v
+  cands <- list(bobyqa = .bob_like(c(1, 0), 0), optim = .optim_like(c(2, 0), 0))
+  bs <- .tt_best_stage(fv(c(v - 3 * tol, v)), cands, "TTHN")
+  expect_identical(bs$which, "bobyqa")
+  ## And near zero the margin is absolute, not relative to a tiny value.
+  bs0 <- .tt_best_stage(fv(c(-1e-9, 1e-9)), cands, "TTHN")
+  expect_identical(bs0$which, "optim")
+  bs1 <- .tt_best_stage(fv(c(-1e-6, 1e-9)), cands, "TTHN")
+  expect_identical(bs1$which, "bobyqa")
+})
