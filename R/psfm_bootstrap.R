@@ -86,6 +86,27 @@ psfm_bootstrap <- function(psfm_object,
     }
   }
 
+  ## Replication b of a run is seeded with b + seed_offset * seed_stride. The
+  ## seed used to be b + seed_offset, so a run at offset 1 repeated replications
+  ## 2..BOOT of the run at offset 0, and two runs pooled as independent shared
+  ## all but one draw (gap A46). The stride keeps offsets disjoint for any
+  ## BOOT up to it; offset 0 is unchanged, so earlier results reproduce.
+  seed_stride <- 100000L
+  if (!is.numeric(seed_offset) || length(seed_offset) != 1L ||
+    !is.finite(seed_offset) || seed_offset != round(seed_offset)) {
+    stop("psfm_bootstrap(): `seed_offset` must be a single whole number.", call. = FALSE)
+  }
+  if (BOOT > seed_stride) {
+    stop("psfm_bootstrap(): BOOT = ", BOOT, " exceeds ", seed_stride,
+      ", the spacing that keeps runs with different `seed_offset` from ",
+      "sharing seeds.", call. = FALSE)
+  }
+  if (abs(seed_offset) * seed_stride + BOOT > .Machine$integer.max) {
+    stop("psfm_bootstrap(): `seed_offset` must lie between ",
+      -floor((.Machine$integer.max - BOOT) / seed_stride), " and ",
+      floor((.Machine$integer.max - BOOT) / seed_stride), ".", call. = FALSE)
+  }
+
   if (!requireNamespace("Formula", quietly = TRUE)) {
     stop("Package 'Formula' is required to parse the multi-part model formula.", call. = FALSE)
   }
@@ -458,7 +479,7 @@ psfm_bootstrap <- function(psfm_object,
 
   ## ---- 4. The per-replication worker function (generic across families) ----
   boot_one <- function(b) {
-    set.seed(b + seed_offset)
+    set.seed(b + seed_offset * seed_stride)
 
     data_b <- data
     data_b[[y_name]] <- simulate_dgp(b)
@@ -546,7 +567,7 @@ psfm_bootstrap <- function(psfm_object,
       "data", "form", "model_name", "out", "simulate_dgp",
       "H_available", "U_field", "scale_row", "degenerate_scale_floor", "PSopt_use",
       "timez", "uniq_ids", "ids", "n_id", "n_obs", "n_h",
-      "y_name", "individual", "maxit.psoptim", "seed_offset",
+      "y_name", "individual", "maxit.psoptim", "seed_offset", "seed_stride",
       "maxit.bobyqa", "maxit.optim", "inefdec", "rand.gtre", "rand.psoptim"
     ),
     envir = environment()
