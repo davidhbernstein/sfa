@@ -91,6 +91,7 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
     V <- tryCatch(solve(crossprod(G)), error = function(e) NULL)
     if (is.null(V)) {
       stop("vcov(type = \"bhhh\"): the outer product of gradients is singular.",
+        .sfa_dead_parameters(object, G),
         call. = FALSE
       )
     }
@@ -125,10 +126,11 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
         call. = FALSE
       )
     }
-    Hi <- tryCatch(solve(H), error = function(e) NULL)
+    Hi <- .sfa_solve_equilibrated(H)
     if (is.null(Hi)) {
       stop(what, ": the Hessian is singular, so the bread is undefined. ",
         "type = \"bhhh\" needs no Hessian and is defined here.",
+        .sfa_dead_parameters(object, G),
         call. = FALSE
       )
     }
@@ -185,7 +187,7 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
   }
 
   if (!is.null(object$opt) && !is.null(object$opt$hessian)) {
-    V <- tryCatch(solve(object$opt$hessian), error = function(e) NULL)
+    V <- .sfa_solve_equilibrated(object$opt$hessian)
     if (!is.null(V)) {
       V <- tryCatch(
         .sfa_map_vcov(V, object$par_index, object$par_scale, p, nm, "vcov()"),
