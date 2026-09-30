@@ -3,7 +3,15 @@
 \alias{print.npsfareg}
 \alias{summary.npsfareg}
 \title{Nonparametric Stochastic Frontier Models}
-\description{Fits a stochastic frontier whose frontier function is estimated by kernel regression rather than assumed linear. Two estimators are available: the two-step estimator of Fan, Li and Weersink (1996), and the local method-of-moments estimator of Simar, Van Keilegom and Zelenyuk (2017), which additionally lets both variance components vary with the covariates.}
+\description{Fits a stochastic frontier \eqn{y = m(x) + v - u} whose frontier \eqn{m(x)} is estimated by kernel methods rather than assumed linear. Five methods are available:
+\itemize{
+  \item \code{"FLW"} (the default): kernel regression, then constant scale parameters from the residuals. Fast and steady.
+  \item \code{"SVKZ"}: local moments, so \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates. No optimizer.
+  \item \code{"PSZ"}: local maximum likelihood, with varying \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)}. Slow.
+  \item \code{"MY"}: iterative local likelihood, with constant scale parameters. Slow, and the most accurate in the comparison under Details.
+  \item \code{"SZ"}: a DEA step that makes an existing smooth frontier monotone, and under \code{rts = "vrs"} or \code{"crs"} also concave.
+}
+Only \code{"FLW"} offers inefficiency distributions other than the half-normal. The result is an \code{"npsfareg"} object, with no coefficient vector or standard errors.}
 \usage{npsfm(formula, data, method = c("FLW", "SVKZ", "PSZ", "KPST", "MY", "SZ"),
       dist = c("hn", "exp", "gamma", "unif"),
       regtype = c("lc", "ll"), bw.sel = c("cv.ls", "cv.aic"),
@@ -12,7 +20,7 @@
       rts = c("vrs", "crs", "drs", "irs"),
       prior.fit = NULL, log.form = TRUE, verbose = FALSE)}
 \arguments{
-\item{formula}{A single-part symbolic description of the frontier, \code{y ~ x1 + x2}. Unlike the package's parametric entry points \code{npsfm()} takes no \code{| z} segment: heteroskedasticity is handled nonparametrically through the covariates themselves under \code{method = "SVKZ"}, and a pipe is an error rather than something silently ignored.}
+\item{formula}{A single-part symbolic description of the frontier, \code{y ~ x1 + x2}. Unlike the package's parametric entry points \code{npsfm()} takes no \code{| z} segment: heteroskedasticity is handled nonparametrically through the covariates themselves under \code{method = "SVKZ"} and \code{"PSZ"}, and a pipe is an error rather than something silently ignored.}
 \item{data}{A data frame containing the variables named in \code{formula}.}
 \item{method}{Which estimator to use.
 \describe{
@@ -21,7 +29,7 @@
   \item{\code{"PSZ"} (or \code{"KPST"})}{Park, Simar and Zelenyuk. Local \emph{maximum likelihood}: at every evaluation point the frontier and both log variance components are given local-linear expansions and the kernel-weighted normal-half-normal likelihood is maximized in those \eqn{3(k+1)} parameters. One optimization per observation, so it is much slower than the two above. \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates.}
   \item{\code{"MY"}}{Martins-Filho and Yao. Iterative local likelihood: alternates a local-linear fit of the frontier at every evaluation point, holding \eqn{(\lambda,\sigma)} fixed, with a global update of \eqn{(\lambda,\sigma)} from the resulting composed residuals, until the scale parameters stop moving. Cost is (observations \eqn{\times} iterations) optimizations. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is local.}
   \item{\code{"SZ"}}{Simar and Zelenyuk (2011). Not an estimator in its own right: it takes an already-estimated smooth frontier and passes its fitted values through an output-oriented DEA, imposing the monotonicity and (under \code{rts = "vrs"}/\code{"crs"}) convexity that a kernel fit does not guarantee. Supply the prior fit through \code{prior.fit}, or leave it \code{NULL} to fit \code{"SVKZ"} first. The DEA step is solved by the \pkg{DEA} package, which must be installed; it is implemented for production frontiers only.}
-} Matching ignores case, so \code{"nhn"}, \code{"NHN"} and \code{"Nhn"} are the same choice.}
+} Matching ignores case, so \code{"flw"} and \code{"FLW"} are the same choice.}
 \item{dist}{Distribution of the one-sided inefficiency term, for \code{method = "FLW"} only: \code{"hn"} (half-normal, the default), \code{"exp"} (exponential), \code{"gamma"}, or \code{"unif"} (uniform on \eqn{[0,b]}). Every other method is derived for the half-normal case and errors for anything else.}
 \item{regtype}{Kernel regression type passed to \code{np::npregbw}: \code{"lc"} (local constant, the default) or \code{"ll"} (local linear). Applies to \code{"FLW"}; \code{"SVKZ"} is local linear throughout by construction.}
 \item{bw.sel}{Bandwidth selection method: \code{"cv.ls"} (least-squares cross-validation, the default) or \code{"cv.aic"}. Ignored when \code{bw} is supplied.}
@@ -37,36 +45,44 @@
 \item{verbose}{Logical. Report progress through the per-observation loops of \code{"PSZ"} and the outer iterations of \code{"MY"}. Defaults to \code{FALSE}.}
 }
 \details{
-Both estimators relax the parametric frontier of \code{\link{sfm}} while keeping the composed-error structure \eqn{y = m(x) + v - u}. Because a kernel regression of \eqn{y} on \eqn{x} estimates \eqn{E[y|x] = m(x) - E[u]} rather than \eqn{m(x)}, both proceed by fitting that conditional mean and then shifting it back up by an estimate of \eqn{E[u]}.
+All five methods keep the composed-error structure \eqn{y = m(x) + v - u} of \code{\link{sfm}} and relax only the linear frontier.
 
-\bold{Where they differ.} \code{"FLW"} treats \eqn{\sigma_u} and \eqn{\sigma_v} as constants, so its correction is a single number and the fitted gradients are those of the conditional mean. \code{"SVKZ"} estimates \eqn{\sigma_u(x)} from the local third moment, so the correction varies across observations and the frontier gradient picks up an extra term through the chain rule.
+\subsection{Mean shift versus local likelihood}{
+A least-squares kernel regression of \eqn{y} on \eqn{x} estimates \eqn{E[y|x] = m(x) - E[u]}, not \eqn{m(x)}. \code{"FLW"} and \code{"SVKZ"} start from that regression and shift it up by an estimate of \eqn{E[u]}. For \code{"FLW"} the shift is one number, because \eqn{\sigma_u} is constant, and the frontier gradients are those of the conditional mean. For \code{"SVKZ"}, \eqn{\sigma_u(x)} comes from the local third moment, so the shift varies across observations and the gradient picks up a chain-rule term.
 
-\bold{Least squares versus local likelihood.} \code{"FLW"} and \code{"SVKZ"} both begin from a least-squares kernel regression, which estimates \eqn{E[y|x] = m(x) - E[u]} and therefore needs the mean shift described above. \code{"PSZ"} and \code{"MY"} instead maximize the \emph{composed-error} likelihood locally, in which the local intercept is \eqn{m(x)} directly and no shift is applied. They pay for that with one numerical optimization per observation -- for \code{"MY"}, per observation \emph{per iteration} -- so expect them to be one to two orders of magnitude slower than \code{"FLW"}. Both are seeded from an \code{"FLW"} fit.
+\code{"PSZ"} and \code{"MY"} instead maximize the composed-error likelihood locally. The local intercept is then \eqn{m(x)} itself, and no shift is applied. The cost is one numerical optimization per observation (for \code{"MY"}, per observation per iteration), so expect them to be one to two orders of magnitude slower than \code{"FLW"}. Both start from an \code{"FLW"} fit.
+}
 
-\bold{Which to use.} On a simulated nonlinear frontier with \eqn{\sigma_u = 0.6}, \eqn{\sigma_v = 0.25} (3 replications), mean absolute frontier error at \eqn{n = 300} was 0.070 for \code{"MY"}, 0.079 for \code{"FLW"}, and 0.116 for both \code{"SVKZ"} and \code{"PSZ"}. \code{"FLW"} is the steadiest for its cost; \code{"MY"} is the most accurate if the run time is acceptable; \code{"SVKZ"} and \code{"PSZ"} earn their keep when \eqn{\sigma_u} genuinely varies with \eqn{x}, which this design does not test.
+\subsection{Which to use}{
+On a simulated nonlinear frontier with \eqn{\sigma_u = 0.6}, \eqn{\sigma_v = 0.25} (3 replications, \eqn{n = 300}), mean absolute frontier error was 0.070 for \code{"MY"}, 0.079 for \code{"FLW"}, and 0.116 for both \code{"SVKZ"} and \code{"PSZ"}. \code{"FLW"} is the steadiest for its cost, and \code{"MY"} the most accurate if the run time is acceptable. \code{"SVKZ"} and \code{"PSZ"} are for the case where \eqn{\sigma_u} really varies with \eqn{x}, which this design does not test.
+}
 
-\bold{Wrong skew.} The identification of \eqn{\sigma_u} rests on the residuals being negatively skewed. \code{"FLW"} inverts a single sample moment and either succeeds or warns. \code{"SVKZ"} inverts a \emph{local} third moment, which is far noisier, and at any point where the estimated skew has the wrong sign the implied \eqn{\sigma_u(x)^3} is negative; following the paper those points are floored at \eqn{\sigma_u(x) = 0} and their contribution to the frontier gradient is set to zero. \code{wrong.skew} records which observations these were. A large share of them means the local third moment is too noisy to be informative and the \code{"SVKZ"} fit should not be trusted -- \code{"FLW"} is much steadier at moderate sample sizes.
+\subsection{Wrong skew}{
+\eqn{\sigma_u} is identified by the residuals being negatively skewed. \code{"FLW"} inverts a single sample moment and either succeeds or warns. \code{"SVKZ"} inverts a \emph{local} third moment, which is much noisier. Wherever its sign is wrong the implied \eqn{\sigma_u(x)^3} is negative, and, following the paper, \eqn{\sigma_u(x)} is floored at 0 there and that point's contribution to the frontier gradient is set to zero. \code{wrong.skew} flags these observations. If many are flagged, the local third moment is too noisy to inform the fit, and \code{"FLW"} is the safer choice at moderate sample sizes.
+}
 
-\bold{The \code{np} dependency.} Both estimators need kernel regression and bandwidth selection from the \pkg{np} package, which is listed under \code{Suggests} rather than \code{Imports} because nothing else in \pkg{sfa} requires it. \code{npsfm()} checks for it and stops with an install instruction if it is missing. Bandwidth selection by cross-validation is the dominant cost and scales quadratically in the sample size; supply \code{bw} to skip it.
+\subsection{Dependencies and run time}{
+Kernel regression and bandwidth selection come from the \pkg{np} package, and \code{"SZ"}'s DEA step from the \pkg{DEA} package. Both are in \code{Suggests}, and \code{npsfm()} stops with an install instruction if the one it needs is missing. Cross-validated bandwidth selection dominates the run time and scales quadratically in the sample size; supply \code{bw} to skip it.
+}
 }
 \value{
-An object of class \code{"npsfareg"}. This is deliberately \emph{not} an \code{"sfareg"} object: there is no parameter vector with standard errors, so \code{coef()}, \code{vcov()} and \code{logLik()} would have nothing meaningful to return. \code{fitted()}, \code{residuals()}, \code{nobs()}, \code{print()} and \code{summary()} are provided. Components:
+An object of class \code{"npsfareg"}. This is deliberately \emph{not} an \code{"sfareg"} object: there is no parameter vector with standard errors, so \code{coef()}, \code{vcov()} and \code{logLik()} would have nothing meaningful to return. \code{fitted()}, \code{residuals()}, \code{nobs()}, \code{print()} and \code{summary()} are provided. A component that a method does not produce is absent from the list, not \code{NULL}. Components:
 
-\item{frontier}{The estimated frontier \eqn{\hat{m}(x)}, i.e. the kernel fit shifted up by the estimated \eqn{E[u]}.}
-\item{frontier.grad}{Matrix of estimated frontier gradients, one row per observation and one column per covariate.}
-\item{conditional.mean}{The uncorrected kernel fit of \eqn{E[y|x]}, before the mean shift.}
+\item{frontier}{The estimated frontier \eqn{\hat{m}(x)}. For \code{"FLW"} and \code{"SVKZ"} this is the kernel fit shifted up by the estimated \eqn{E[u]}; for \code{"PSZ"} and \code{"MY"} it is the local intercept; for \code{"SZ"} it is the DEA-monotonized prior fit.}
+\item{frontier.grad}{Matrix of estimated frontier gradients, one row per observation and one column per covariate. Under \code{"SZ"} these are the \code{"SVKZ"} gradients, and absent when \code{prior.fit} is supplied.}
+\item{conditional.mean}{The implied \eqn{E[y|x]}: \code{frontier} minus \code{mean.correction} (plus, for a cost frontier). Under \code{"SZ"} it is that of the prior fit, before monotonization, and the prior fit itself when \code{prior.fit} is supplied.}
 \item{residuals}{Composed residuals measured against the corrected frontier, \eqn{y - \hat{m}(x)}. These are negative up to noise, unlike the centered residuals of the underlying kernel regression.}
-\item{mean.correction}{The estimated \eqn{E[u]}: a scalar for \code{"FLW"}, a vector for \code{"SVKZ"}.}
-\item{sigma.u, sigma.v}{Estimated scale parameters. Scalars under \code{"FLW"}; vectors of \eqn{\sigma_u(x_i)}, \eqn{\sigma_v(x_i)} under \code{"SVKZ"}.}
-\item{lambda, sigma}{Returned by \code{"FLW"} with \code{dist = "hn"} only: \eqn{\lambda = \sigma_u/\sigma_v} and \eqn{\sigma = \sqrt{\sigma_u^2+\sigma_v^2}}.}
+\item{mean.correction}{The estimated \eqn{E[u]}. A scalar under \code{"FLW"} and \code{"MY"}; a vector, one value per observation, under \code{"SVKZ"} and \code{"PSZ"}. \code{"PSZ"} and \code{"MY"} report it but do not apply it to the frontier (see Details).}
+\item{sigma.u, sigma.v}{Estimated scale parameters. Scalars under \code{"FLW"} and \code{"MY"}; vectors of \eqn{\sigma_u(x_i)}, \eqn{\sigma_v(x_i)} under \code{"SVKZ"} and \code{"PSZ"}. \code{"SZ"} reports those of its \code{"SVKZ"} prior fit, or \code{NA} when \code{prior.fit} is supplied, in which case \code{u_hat} and \code{exp_u_hat} are not computed.}
+\item{lambda, sigma}{Returned by \code{"FLW"} with \code{dist = "hn"}, and by \code{"MY"}: \eqn{\lambda = \sigma_u/\sigma_v} and \eqn{\sigma = \sqrt{\sigma_u^2+\sigma_v^2}}.}
 \item{theta}{Returned by \code{"FLW"} with \code{dist = "exp"} or \code{"gamma"}: the rate parameter of the one-sided term.}
 \item{b}{Returned by \code{"FLW"} with \code{dist = "unif"}: the estimated upper bound of the uniform.}
 \item{sigma.u.grad, wrong.skew}{Returned by \code{"SVKZ"}: the gradient of \eqn{\sigma_u(x)}, and a logical vector flagging observations whose local third moment had the wrong sign. \code{"PSZ"} also returns \code{sigma.u.grad} and \code{sigma.v.grad}, the local-linear slopes of the two log variance functions.}
 \item{convergence}{Returned by \code{"PSZ"}: the \code{minqa::bobyqa} status code from each observation's local optimization, \code{0} for success. A large share of non-zero codes means \code{maxit} is too low and the local fits should not be trusted.}
 \item{iterations, converged, tol.reached}{Returned by \code{"MY"}: how many outer iterations ran, whether the tolerance was met, and the final squared change in \eqn{(\lambda,\sigma)}.}
 \item{prior.fit, dea.efficiency, rts}{Returned by \code{"SZ"}: the smooth frontier that was monotonized, the DEA efficiency scores, and the returns-to-scale assumption used.}
-\item{u_hat, exp_u_hat}{Jondrow et al. (1982) inefficiency predictions \eqn{E[u|\varepsilon]} and Battese-Coelli (1988) efficiency predictions \eqn{E[\exp(-u)|\varepsilon]}. Returned when \code{eff = TRUE} and \code{dist} is \code{"hn"} or \code{"exp"}.}
-\item{bws}{The bandwidth object(s) used: one for \code{"FLW"}, a list of three (\code{r1}, \code{r2}, \code{r3}) for \code{"SVKZ"}.}
+\item{u_hat, exp_u_hat}{Jondrow et al. (1982) inefficiency predictions \eqn{E[u|\varepsilon]} and Battese-Coelli (1988) efficiency predictions \eqn{E[\exp(-u)|\varepsilon]}. Returned when \code{eff = TRUE} and \code{dist} is \code{"hn"} or \code{"exp"}, and only when every \eqn{\sigma_v} is positive and finite. Under \code{"SVKZ"} (and \code{"SZ"} built on it) \eqn{\sigma_v(x)} is floored at zero wherever the local variance estimate is negative, and one such point is enough for both to be omitted for every observation.}
+\item{bws}{The bandwidth object(s) used: one for \code{"FLW"}, and for \code{"PSZ"} and \code{"MY"} that of the \code{"FLW"} fit they start from; a list of three (\code{r1}, \code{r2}, \code{r3}) for \code{"SVKZ"} and for \code{"SZ"} without \code{prior.fit}.}
 \item{method, dist, formula, call, cost, regtype, bw.sel, nobs, total_time, data}{Settings and bookkeeping.}
 }
 \references{
@@ -79,7 +95,7 @@ Jondrow, J., Lovell, C.A.K., Materov, I.S. and Schmidt, P. (1982) 'On the estima
 Battese, G.E. and Coelli, T.J. (1988) 'Prediction of firm-level technical efficiencies with a generalized frontier production function and panel data', \emph{Journal of Econometrics}, 38(3), pp. 387-399.
 }
 \author{Christopher F. Parmeter and David H. Bernstein}
-\note{Requires the \pkg{np} package, which is in \code{Suggests}. Bandwidth cross-validation dominates the run time and scales quadratically in the sample size.}
+\note{Requires the \pkg{np} package (and \pkg{DEA} for \code{"SZ"}), both in \code{Suggests}.}
 \seealso{\code{\link{sfm}} for parametric cross-sectional frontiers, \code{\link{psfm}} for panel models, and \code{\link{data_gen_cs}} for simulating data with known true parameters.}
 \examples{
 \donttest{
