@@ -590,8 +590,7 @@ sfm <- function(formula,
           ## z^2/4 + log D(z) as one quantity, as there (gap A49).
           zg <- eps_c / CF$sigma_v + CF$sigma_v / CF$sigma_u
           mg <- unname(CF$extra[["mu"]])
-          pmin(pmax(exp(.log_pcf_scaled(-mg, zg + CF$sigma_v) -
-            .log_pcf_scaled(-mg, zg)), 0), 1)
+          pmin(pmax(exp(.log_pcf_scaled_ratio(-mg, zg, CF$sigma_v)), 0), 1)
         },
         ## Carree's u is DISCRETE, so its posterior is a finite sum rather than
         ## an integral: P(u = j | eps) proportional to C(n,j) p^j (1-p)^(n-j)
@@ -1011,16 +1010,33 @@ sfm <- function(formula,
         }
         ## `z^2/4 + log D(z)` is taken as ONE quantity, .log_pcf_scaled(): as
         ## two it cancels to exactly 0 near a collapsed scale (gap A49).
+        ## Where z < 0, .log_pcf_scaled() is about z^2/2 and the -eps^2 term
+        ## about -z^2/2, so near sigma_v's floor their sum is rounding noise
+        ## (NG gained 18 spurious units at sigma_v = 1e-7, issue #30). There
+        ## the two are combined exactly -- NG: z^2/2 - eps^2/(2 sig_v^2) =
+        ## eps/sig_u + sig_v^2/(2 sig_u^2); NNAK: = -mu eps^2/sigma^2 -- and the
+        ## remainder log D(z) - z^2/4 comes from .log_pcf_w().
+        mu_o <- rep_len(mu, length(eps))
         if (model_name == "NG") {
-          like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u)
-            - 1 / 2 * (eps / sig_v)^2
-            + .log_pcf_scaled(-mu, eps / sig_v + sig_v / sig_u))
+          z <- eps / sig_v + sig_v / sig_u
+          tl <- rep(NA_real_, length(eps))
+          ng <- which(z < 0)
+          ps <- which(!(z < 0))
+          tl[ng] <- eps[ng] / sig_u + sig_v^2 / (2 * sig_u^2) + .log_pcf_w(-mu_o[ng], z[ng])
+          tl[ps] <- -1 / 2 * (eps[ps] / sig_v)^2 + .log_pcf_scaled(-mu_o[ps], z[ps])
+          like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u) + tl)
         }
         if (model_name == "NNAK") {
           sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
+          z <- (eps * sig_u / sig_v) / sigma
+          sigma_o <- rep_len(sigma, length(eps))
+          tl <- rep(NA_real_, length(eps))
+          ng <- which(z < 0)
+          ps <- which(!(z < 0))
+          tl[ng] <- -mu_o[ng] * eps[ng]^2 / sigma_o[ng]^2 + .log_pcf_w(-2 * mu_o[ng], z[ng])
+          tl[ps] <- -1 / 2 * (eps[ps] / sig_v)^2 + .log_pcf_scaled(-2 * mu_o[ps], z[ps])
           like <- (lgamma(2 * mu) - lgamma(mu) + 1 / 2 * log(2) - 1 / 2 * log(pi) + mu * log(mu)
-            + (2 * mu - 1) * log(sig_v) - 2 * mu * log(sigma) - 1 / 2 * (eps / sig_v)^2
-            + .log_pcf_scaled(-2 * mu, (eps * sig_u / sig_v) / sigma))
+            + (2 * mu - 1) * log(sig_v) - 2 * mu * log(sigma) + tl)
         }
       }
 
@@ -1118,11 +1134,21 @@ sfm <- function(formula,
       }
     }
 
-    ## Normal-gamma multi-start.
+    ## Normal-gamma and normal-Nakagami multi-start. NNAK joined in issue #30:
+    ## its likelihood has a mode at small shape that its single moment start
+    ## (the half-normal point, m = 0.5) does not reach.
     ng_starts <- NULL
-    if (model_name == "NG" && isFALSE(is.numeric(start_val))) {
-      .cand <- .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+    if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
+      .cand <- if (model_name == "NG") {
+        .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      } else {
+        .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      }
+      ## NNAK's variance-share candidates are ranked apart from the rest.
+      .n_main <- attr(.cand, "n_main")
+      .n_main <- if (is.null(.n_main)) length(.cand) else .n_main
       .cand <- c(list(start_v), .cand)
+      .is_extra <- seq_along(.cand) > 1L + .n_main
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
       .obj <- vapply(.cand, function(z) {
         tryCatch(
@@ -1136,7 +1162,11 @@ sfm <- function(formula,
       if (any(is.finite(.obj))) {
         ## Polish the most promising few before choosing: a candidate can start in
         ## the right basin yet score worse than one that starts nearer a corner.
-        .ord <- order(.obj)[seq_len(min(3L, sum(is.finite(.obj))))]
+        .top <- function(idx, k) {
+          idx <- idx[is.finite(.obj[idx])]
+          idx[order(.obj[idx])][seq_len(min(k, length(idx)))]
+        }
+        .ord <- c(.top(which(!.is_extra), 3L), .top(which(.is_extra), 2L))
         .fits <- Filter(Negate(is.null), lapply(.ord, function(i) {
           tryCatch(
             suppressWarnings(
@@ -1161,7 +1191,7 @@ sfm <- function(formula,
       }
     }
 
-    ## The start the stages below are handed -- for NG, the polished multistart
+    ## The start the stages below are handed -- for NG and NNAK, the polished multistart
     ## point -- kept so the fit can be checked against it (gap A25).
     .start_ref <- start_v
 
@@ -1576,13 +1606,12 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       if (model_name == "NG") {
         z <- eps_hat / sig_v + sig_v / sig_u
-        exp_u_hat <- exp(.log_pcf_scaled(-mu, z + sig_v) - .log_pcf_scaled(-mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled_ratio(-mu, z, sig_v))
       }
       if (model_name == "NNAK") {
         sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
         z <- (eps_hat * sig_u / sig_v) / sigma
-        exp_u_hat <- exp(.log_pcf_scaled(-2 * mu, z + sig_v * sig_u / sigma) -
-          .log_pcf_scaled(-2 * mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled_ratio(-2 * mu, z, sig_v * sig_u / sigma))
       }
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)

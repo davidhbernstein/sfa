@@ -1606,6 +1606,75 @@
 }
 
 
+## Starting values for the normal-Nakagami model (issue #30). NNAK's u has
+## u^2 ~ Gamma(m, sigma_u^2 / m), so E[u] = sigma_u sqrt(1/m) Gamma(m + 1/2) / Gamma(m)
+## and Var(u) = sigma_u^2 - E[u]^2. Its default start is the half-normal moment
+## point (m = 0.5); with the likelihood exact (.log_pcf_w()), NNAK often has a
+## second, higher mode at small shape that the stages do not reach from there.
+## As for NG, E[u] is held at a moment anchor and the shape swept along that
+## ridge -- here down to small shapes, where a Nakagami u is a spike near zero
+## with a long tail. Where a small shape's variance would exceed the residual
+## variance, sigma_u is shrunk to leave sigma_v a tenth of it.
+.nnak_start_candidates <- function(epsilon_hat, beta_0_st, beta_hat,
+                                   mu_grid = c(0.01, 0.03, 0.1, 0.25, 0.5, 1, 2),
+                                   small_mu = c(0.001, 0.003, 0.01, 0.03),
+                                   omega_share = c(0.1, 0.2, 0.4)) {
+  e <- as.numeric(epsilon_hat)
+  e <- e - mean(e)
+  n <- length(e)
+  if (!n || any(!is.finite(e))) {
+    return(list())
+  }
+  k2 <- mean(e^2)
+  k3 <- mean(e^3)
+  sd_e <- sqrt(max(k2, .Machine$double.eps))
+
+  ## Anchor for E[u], as in .ng_start_candidates().
+  kk <- sqrt(2 / pi) * (1 - 4 / pi) ## < 0
+  eu_hn <- if (is.finite(k3) && k3 < 0) sqrt(2 / pi) * (k3 / kk)^(1 / 3) else NA_real_
+  eu <- if (is.finite(eu_hn) && eu_hn > 0) eu_hn else 0.5 * sd_e
+  eu <- min(max(eu, 1e-3), 10 * sd_e)
+
+  cands <- list()
+  for (m in mu_grid) {
+    ## E[u] / sigma_u for this shape, in logs: Gamma(m) is ~1/m near zero.
+    r <- exp(lgamma(m + 0.5) - lgamma(m) - 0.5 * log(m))
+    su <- eu / r
+    vu <- su^2 - eu^2
+    if (vu > 0.9 * k2) {
+      su <- sqrt(0.9 * k2 / (1 - r^2))
+      vu <- 0.9 * k2
+    }
+    sv <- sqrt(max(k2 - vu, (0.05 * sd_e)^2))
+    if (!is.finite(sv) || !is.finite(su) || sv <= 0 || su <= 0) next
+    b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * r
+    cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
+  }
+  ## The E[u] anchor above makes sigma_u tiny at small shape, which misses a
+  ## mode where u is mostly near zero with a long tail: E[u^2] = sigma_u^2 a
+  ## sizeable share of the residual variance and the shape near 0.001. On two
+  ## issue #30 samples that mode is 10-14 log-likelihood units above NHN. So
+  ## for small shapes also anchor sigma_u^2 on a share of the variance.
+  cands <- Filter(function(z) all(is.finite(z)), cands)
+  n_main <- length(cands)
+  for (m in small_mu) {
+    r <- exp(lgamma(m + 0.5) - lgamma(m) - 0.5 * log(m))
+    for (w in omega_share) {
+      su <- sqrt(w * k2)
+      sv <- sqrt(max(k2 - su^2 * (1 - r^2), (0.05 * sd_e)^2))
+      if (!is.finite(sv) || !is.finite(su) || sv <= 0 || su <= 0) next
+      b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * r
+      cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
+    }
+  }
+  ## The caller ranks the two families separately (attribute "n_main"), so
+  ## the variance-share candidates add to what is polished rather than
+  ## displacing the E[u]-anchored ones.
+  keep <- vapply(cands, function(z) all(is.finite(z)), logical(1))
+  structure(cands[keep], n_main = sum(keep[seq_len(n_main)]))
+}
+
+
 ## Helper: the GTRE two-step (moment) decomposition
 .gtre_two_step <- function(epsilon_hat, alpha_hat, beta_0_st) {
   ## pi - 4 < 0, so k < 0 and k*m3 >= 0 given the min(0, .) truncation below;
@@ -1937,11 +2006,10 @@
   zz <- z[ok]
   pp <- p[ok]
   val <- rep(NA_real_, length(ok))
-  ## Below z = -sqrt(2 * EXP_CLIP_UPPER) the gsl code this replaced evaluated its
-  ## series at a CLIPPED argument, and overflowed to Inf at larger shapes. NG's
-  ## optimum can sit against that edge, so it is reproduced, not corrected (A25).
-  clip <- which(zz < -sqrt(2 * .SFA_CONSTANTS$EXP_CLIP_UPPER))
-  if (length(clip)) val[clip] <- .pcf_clipped(pp[clip], zz[clip])
+  ## Below z = -sqrt(2 * EXP_CLIP_UPPER) this used to reproduce the gsl code it
+  ## replaced, which evaluated its series at a CLIPPED argument: at nu = -1,
+  ## z = -42.9 that gave log D = 240.9 against the true 461.0 (issue #30). The
+  ## peak form below is exact there, so nothing is special-cased any more.
   ## Series where its cancellation ratio is small, binned by |z| so that a few
   ## large arguments do not set the series length for every observation.
   cand <- which(zz >= -10 & zz <= 12)
@@ -2002,36 +2070,53 @@
   out
 }
 
-## What the gsl version returned below the clip: its series
-## 2^(-p/2) sqrt(pi) e^(-z^2/4) [M(p/2, 1/2, q) / Gamma((1+p)/2) - sqrt(2) z M((1+p)/2, 3/2, q) / Gamma(p/2)]
-## at q = EXP_CLIP_UPPER instead of z^2/2, and Inf wherever a factor overflowed.
-.pcf_clipped <- function(p, z) {
-  q <- .SFA_CONSTANTS$EXP_CLIP_UPPER
-  ld <- log(.Machine$double.xmax)
-  lM1 <- .log_kummer_large(p / 2, 0.5, q)
-  lM2 <- .log_kummer_large((1 + p) / 2, 1.5, q)
-  lz <- log(sqrt(2) * abs(z))
-  t1 <- lM1 - lgamma((1 + p) / 2)
-  t2 <- lz + lM2 - lgamma(p / 2)
-  m <- pmax(t1, t2)
-  lbr <- m + log(exp(t1 - m) + exp(t2 - m))
-  out <- -(p / 2) * log(2) + 0.5 * log(pi) - z^2 / 4 + lbr
-  out[lM1 > ld | lM2 > ld | lz + lM2 > ld | lbr > ld] <- Inf
+## log D_nu(z) - z^2/4, for nu < 0: what NG and NNAK need where z < 0 (issue
+## #30). There .log_pcf_scaled() is about z^2/2, and the densities add it to
+## -eps^2/(2 sigma_v^2), which is about -z^2/2: with sigma_v near its floor both
+## are ~1e14 and the sum was rounding noise (NG came out 18 log-likelihood
+## units too HIGH at sigma_v = 1e-7). The z^2/2 part is instead combined with
+## the eps^2 term in closed form by the caller, and this returns the rest,
+##   -lgamma(p) + log int_0^Inf t^(p-1) exp(-(t + z)^2 / 2) dt,
+## which for z far below zero is a peak-centred trapezoid with nothing to cancel.
+## Elsewhere z^2/4 is small enough to subtract from .log_pcf() directly.
+.log_pcf_w <- function(nu, z) {
+  z <- as.numeric(z)
+  nu <- rep_len(as.numeric(nu), length(z))
+  p <- -nu
+  out <- rep(NA_real_, length(z))
+  far <- is.finite(z) & is.finite(p) & p > 0 & z < -30
+  near <- which(!far)
+  if (length(near)) out[near] <- .log_pcf(nu[near], z[near]) - z[near]^2 / 4
+  f <- which(far)
+  if (length(f)) {
+    pf <- p[f]
+    zf <- z[f]
+    t0 <- (-zf + sqrt(zf^2 + 4 * pf)) / 2
+    kfun <- function(S) pf * S - (exp(S) + zf)^2 / 2
+    out[f] <- -lgamma(pf) + .pcf_trap(kfun, log(t0), 1 / sqrt(t0^2 + pf))
+  }
   out
 }
 
-## log M(a, b, x) for large x > 0 from the asymptotic series
-## M ~ Gamma(b)/Gamma(a) e^x x^(a-b) sum_s (b-a)_s (1-a)_s / (s! x^s); the other
-## term is O(e^-x) smaller.
-.log_kummer_large <- function(a, b, x) {
-  term <- rep(1, length(a))
-  s_sum <- term
-  for (s in 0:400) {
-    term <- term * (b - a + s) * (1 - a + s) / ((s + 1) * x)
-    s_sum <- s_sum + term
-    if (all(abs(term) < 1e-17 * abs(s_sum))) break
+## log of [e^((z+a)^2/4) D_nu(z+a)] / [e^(z^2/4) D_nu(z)], the ratio NG's and
+## NNAK's efficiency predictions take. Where z < 0 it is formed as
+## W(z + a) - W(z) + a z + a^2/2 through .log_pcf_w(), for the reason given
+## there; elsewhere as the difference of .log_pcf_scaled() values, as before.
+.log_pcf_scaled_ratio <- function(nu, z, a) {
+  z <- as.numeric(z)
+  a <- rep_len(as.numeric(a), length(z))
+  nu <- rep_len(as.numeric(nu), length(z))
+  out <- rep(NA_real_, length(z))
+  neg <- which(z < 0)
+  pos <- which(!(z < 0))
+  if (length(neg)) {
+    out[neg] <- .log_pcf_w(nu[neg], z[neg] + a[neg]) - .log_pcf_w(nu[neg], z[neg]) +
+      a[neg] * z[neg] + a[neg]^2 / 2
   }
-  lgamma(b) - lgamma(a) + x + (a - b) * log(x) + log(s_sum)
+  if (length(pos)) {
+    out[pos] <- .log_pcf_scaled(nu[pos], z[pos] + a[pos]) - .log_pcf_scaled(nu[pos], z[pos])
+  }
+  out
 }
 
 ## The integral as a series in z: sum_k (-z)^k / k! 2^((p+k)/2 - 1) Gamma((p+k)/2),
