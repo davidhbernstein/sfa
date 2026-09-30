@@ -41,7 +41,11 @@ ivsfm(formula, endogenous, instruments, data,
 \item{start_val}{Name the starting-value vector in the returned object.}
 \item{PSopt}{Run the particle-swarm stage between BOBYQA and \code{optim}.}
 \item{optHessian}{Compute the Hessian, and with it the standard errors.}
-\item{Method}{Method passed to \code{optim} for the final stage.}
+\item{Method}{Method passed to \code{optim} for the final stage. Must be
+\code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
+and upper bounds this package uses to keep scale parameters positive, and any
+other value is refused with an error rather than quietly optimized without
+them.}
 \item{verbose}{Report optimizer progress.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1, for \code{"IVLIML"} and \code{"IVCF"}. It has no effect for \code{"C2SLS"}, which is two-stage least squares with a corrected intercept rather than maximum likelihood and so has no score; that case warns. For \code{"IVCF"} the reduced-form parameters are held at their OLS values, so the resulting standard errors -- like the Hessian ones -- condition on the first stage rather than correcting for it. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}

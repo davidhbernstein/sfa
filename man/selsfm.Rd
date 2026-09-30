@@ -60,7 +60,11 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
 \item{start_val}{Name the starting-value vector in the returned object.}
 \item{PSopt}{Run the particle-swarm stage between BOBYQA and \code{optim}.}
 \item{optHessian}{Compute the Hessian, and with it the standard errors.}
-\item{Method}{Method passed to \code{optim} for the final stage.}
+\item{Method}{Method passed to \code{optim} for the final stage. Must be
+\code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
+and upper bounds this package uses to keep scale parameters positive, and any
+other value is refused with an error rather than quietly optimized without
+them.}
 \item{verbose}{Report optimizer progress.}
 \item{keep_objective}{Logical. Retain the second-stage likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The contributions are over the \emph{selected} observations, which is the sum the second stage maximises. \bold{This is a two-step estimator:} \eqn{\hat\alpha} comes from the first-stage probit and enters the second stage as if known, so the OPG ignores first-stage estimation error exactly as the stored Hessian already does. It is the same conditional-on-\eqn{\hat\alpha} variance computed a different way, not a correction for it. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}

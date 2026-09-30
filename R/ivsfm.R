@@ -20,6 +20,7 @@ ivsfm <- function(formula,
                   verbose = FALSE,
                   keep_objective = FALSE,
                   rand.psoptim = NULL) {
+  .check_optim_method(Method)
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   ## C2SLS is 2SLS with a corrected intercept, not maximum likelihood, so it

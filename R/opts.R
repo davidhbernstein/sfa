@@ -118,6 +118,9 @@ opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.boby
 ## is evidence about the START, not about the search. See
 ## test-ttsfm-numerics.R, which pins this.
 opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose = verbose) {
+  ## This function always hands optim() bounds, so the method must be one that
+  ## honours them (gap A57).
+  .check_optim_method(method)
   start_feval <- fn(start_v)
   opt <- NULL
   if (isTRUE(opt.TF == TRUE)) {

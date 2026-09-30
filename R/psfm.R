@@ -144,6 +144,7 @@ psfm <- function(formula,
   }
 
   .check_model_formula_pipes(formula, model_name)
+  .check_optim_method(Method)
 
   ## Accept an ordinary data.frame (or tibble/data.table) as well as a
   ## plm::pdata.frame.

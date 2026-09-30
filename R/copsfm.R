@@ -298,6 +298,7 @@ copsfm <- function(formula,
                    verbose = FALSE,
                    keep_objective = FALSE,
                    rand.psoptim = NULL) {
+  .check_optim_method(Method)
   call <- match.call()
   copula <- match.arg(copula)
   udist <- match.arg(udist)

@@ -1132,6 +1132,32 @@
 }
 
 
+## optim() applies lower/upper for "L-BFGS-B" only. Every opt.optim() call in
+## this package passes bounds that hold the scale parameters positive, so any
+## other method makes optim() warn and then search UNBOUNDED (gap A57). That is
+## invisible on an interior optimum and lets a standard deviation reach or cross
+## zero on a boundary fit. Relax this once G8's log reparameterization removes
+## the need for bounds. See notes/code_history/matrix_utils.md.
+.SFA_OPTIM_BOUNDED_METHODS <- "L-BFGS-B"
+
+.check_optim_method <- function(Method) {
+  if (!is.character(Method) || length(Method) != 1L || is.na(Method)) {
+    stop("`Method` must be a single character string, and \"L-BFGS-B\" is the ",
+      "only value this package can use; see ?sfm.",
+      call. = FALSE
+    )
+  }
+  if (!Method %in% .SFA_OPTIM_BOUNDED_METHODS) {
+    stop("Method = \"", Method, "\" cannot be used. optim() applies the lower ",
+      "and upper bounds this package relies on only for \"L-BFGS-B\"; with any ",
+      "other method it warns and then optimizes WITHOUT them, which can drive a ",
+      "scale parameter to or below zero. Use Method = \"L-BFGS-B\".",
+      call. = FALSE
+    )
+  }
+  invisible(Method)
+}
+
 .check_model_formula_pipes <- function(formula, model_name) {
   ## 1. Map model names to their maximum ALLOWED RHS parts (pipes + 1) 1 pipe
   ## = 2 parts, 2 pipes = 3 parts, 0 pipes = 1 part

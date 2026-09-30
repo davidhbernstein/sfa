@@ -41,6 +41,7 @@ lcsfm <- function(formula,
   )
 
   .check_model_formula_pipes(formula, model_name)
+  .check_optim_method(Method)
 
   DR1 <- data_proc(formula, data, model_name, individual = NULL, inefdec)
 
