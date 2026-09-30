@@ -145,6 +145,26 @@
   the frontier's OLS residuals on the fit, and a same-shaped decoy is refused.
   `ttsfm("TTNLS")` also now stores `nobs`.
 
+* **`ttsfm("TTHN")` replaced `optim()`'s result on a tie, and warned that the
+  final stage had failed.** The branch keeps whichever optimizer stage
+  attained the lowest objective, and chose with a bare `which.min()`. On one
+  seed bobyqa and `optim()` had converged to the same point -- parameters
+  agreeing to 1e-10, identical Hessian eigenvalues -- and a difference of
+  2.8e-14 at an objective of 189, one unit in the last place, discarded
+  `optim()`'s result. The warning printed both objectives to four decimals,
+  where they were equal. `optim()` is now displaced only by a stage that
+  improves on it by more than `optim()`'s own convergence tolerance
+  (`reltol = sqrt(.Machine$double.eps)`, relative), and the warning prints
+  the objectives to ten significant figures. Reported estimates change only
+  where the old choice was a tie, and then by the width of the tie. Standard
+  errors can change more on such fits, because keeping `optim()` also keeps
+  `optim()`'s Hessian, where the tie used to hand over a `numDeriv` one. On
+  one seed the SE count went from 6 to 4. That fit had collapsed `sigma_v`
+  to 0.001 (the corner described in `?ttsfm`), where the objective is flat
+  to about 5e-4 and no finite-difference Hessian resolves the curvature, so
+  neither count was meaningful there. What changes in general is that the
+  SEs no longer depend on which stage won a tie.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,

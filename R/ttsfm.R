@@ -97,6 +97,19 @@
   }, numeric(1))
   if (all(is.na(vals))) return(NULL)
   k <- which.min(vals)
+  ## optim() is the stage the chain ends on and the one with an exact Hessian,
+  ## so another stage displaces it only by a margin optim() itself would have
+  ## called an improvement: its own default relative tolerance, reltol =
+  ## sqrt(.Machine$double.eps). A bare which.min() was deciding on ties -- on
+  ## one TTHN seed a 2.8e-14 difference at an objective of 189, one unit in the
+  ## last place, between two stages at the same point to 1e-10 -- which made
+  ## the reported numbers platform-dependent and the warning a false alarm
+  ## (gap A51).
+  ko <- match("optim", names(cands))
+  if (!is.na(ko) && !is.na(vals[[ko]]) && k != ko &&
+    vals[[k]] >= vals[[ko]] - sqrt(.Machine$double.eps) * max(1, abs(vals[[ko]]))) {
+    k <- ko
+  }
   if (isTRUE(verbose)) {
     message(sprintf("ttsfm() %s: stage objectives %s -- keeping %s.", model_name,
       paste(sprintf("%s = %.4f", names(cands), vals), collapse = ", "), names(cands)[k]))
@@ -776,10 +789,10 @@ ttsfm <- function(formula,
                             model_name, verbose = verbose, optHessian = optHessian)
       if (!is.null(.bs) && !identical(.bs$which, "optim")) {
         warning(sprintf(
-          "ttsfm() %s: the final optimizer stage did NOT attain the best objective -- %s reached %.4f against optim()'s %s, so the %s result is returned instead. The TTHN log-likelihood has a nearly flat direction in sigma_v (see ?ttsfm), and a later stage can travel along it without improving.",
+          "ttsfm() %s: the final optimizer stage did NOT attain the best objective -- %s reached %.10g against optim()'s %s, so the %s result is returned instead. The TTHN log-likelihood has a nearly flat direction in sigma_v (see ?ttsfm), and a later stage can travel along it without improving.",
           model_name, .bs$which, .bs$values[[.bs$which]],
           if ("optim" %in% names(.bs$values) && is.finite(.bs$values[["optim"]]))
-            sprintf("%.4f", .bs$values[["optim"]]) else "a non-finite value",
+            sprintf("%.10g", .bs$values[["optim"]]) else "a non-finite value",
           .bs$which), call. = FALSE)
         opt <- .bs$opt
       }
