@@ -130,8 +130,9 @@
   Over 216 fits (12 samples by 18 response columns), the number of NG fits
   ending more than one log-likelihood unit below the NE it nests falls from
   7 to 0 (worst shortfall 217.4 to 0.02), and the number of NNAK fits ending
-  that far below NHN falls from 18 to NNAK_GT1 (worst 15905.5 to NNAK_MAX).
-  NNAK_REGRESS
+  that far below NHN falls from 18 to 0 (worst 15905.5 to 0). Two fits end lower
+  than on main, by 13.9 and 10.3: on those samples main stopped at shape
+  0.001 and 0.006, below the grid, and the fit now ends exactly at NHN.
 
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**
