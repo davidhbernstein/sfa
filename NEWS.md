@@ -15,6 +15,15 @@
   that one. Every derivative is checked against `numDeriv` in the tests rather
   than against a second hand derivation.
 
+* **`marginal_effects()` also reports the scaling property.** Under
+  `sfm(scaling = ~ z)` one factor `h = exp(z'delta_s)` multiplies both the scale
+  and the pre-truncation mean, so `a = mu/sigma_u` is constant in `z`,
+  `E[u] = h E[u*]`, and the effect is exactly `delta_s_k * E[u]` whatever the
+  family -- with `delta_s_k` itself the semi-elasticity, so `dE_u.dz / E_u` is
+  constant by construction. The quantity was already fitted and simply not
+  reported: the fit stored no scaling block, because `n_blocks` does not name
+  one. `sfm()` now stores `s_spec` alongside `z_spec`, `v_spec` and `mu_spec`.
+
 
 * **`vcov()` now offers four covariances, not two.** `type` gains
   `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and

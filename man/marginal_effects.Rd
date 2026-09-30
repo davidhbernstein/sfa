@@ -66,6 +66,21 @@ design but not the other contributes only through that one. Note that
 \eqn{\delta^{\mu}} is therefore \emph{not} a semi-elasticity, unlike the
 scale coefficients.
 
+\strong{The scaling property is exact and needs no family branch.} Under
+\code{sfm(scaling = ~ z)} --- implemented for \code{model_name = "NTN"} only,
+since for a half-normal \eqn{h|N(0,\sigma^2)|} \emph{is}
+\eqn{|N(0,(h\sigma)^2)|} and \code{uhet} already fits it --- one factor
+\eqn{h(z) = \exp(z'\delta_s)} multiplies both the scale and the
+pre-truncation mean. So \eqn{a = \mu/\sigma_u} is constant in \eqn{z},
+\eqn{E[u] = h\,E[u^*]}, and
+
+\deqn{\partial E[u]/\partial z_k = \delta_{s,k} E[u], \qquad
+      \partial \mathrm{Var}[u]/\partial z_k = 2\delta_{s,k} \mathrm{Var}[u]}
+
+whatever the inefficiency family is. Here \eqn{\delta_{s,k}} \emph{is} the
+semi-elasticity \eqn{\partial \log E[u]/\partial z_k}, so
+\code{dE\_u.dz / E\_u} is constant across observations by construction.
+
 \strong{The factor of two matters.} \code{sfm()}'s \code{"NHN_Z"} and
 \code{"NE_Z"} place the linear predictor on the standard deviation,
 \eqn{\sigma_u = \exp(z'\delta)}, while \code{psfm()}'s \code{"TRE_Z"} and

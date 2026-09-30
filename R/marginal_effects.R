@@ -87,12 +87,28 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
     )
   }
 
-  Z <- zs$Z
-  delta <- zs$delta
+  Z <- zs[["Z"]]
+  delta <- zs[["delta"]]
   eta <- as.numeric(Z %*% delta)
 
   ## sigma_u on the scale each family actually uses.
   sigma_u <- if (identical(zs$link, "sd")) exp(eta) else sqrt(exp(eta))
+
+  ## Under the scaling property (sfm(scaling = ~ z), truncated normal only) the
+  ## covariates drive ONE factor h = exp(z'delta_s) that multiplies both the
+  ## scale and the pre-truncation mean; Zu and Zmu are intercept-only there, so
+  ## the sigma_u just computed is the scalar sigma_u0 and misses h entirely.
+  ## Take h on board, and differentiate with respect to the SCALING design.
+  ss <- object[["s_spec"]]
+  scaling <- identical(component, "u") && !is.null(ss) &&
+    !is.null(ss[["Z"]]) && ncol(ss[["Z"]]) > 0L
+  h <- 1
+  if (scaling) {
+    h <- exp(as.numeric(ss[["Z"]] %*% ss[["delta"]]))
+    sigma_u <- sigma_u * h
+    Z <- ss[["Z"]]
+    delta <- ss[["delta"]]
+  }
 
   ## Moments of u given sigma_u.
   if (identical(zs$family, "halfnormal")) {
@@ -105,7 +121,7 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
     ## mu enters E[u] separately from the scale, so E[u] is NOT proportional to
     ## sigma_u and the outer(e_u, half * d) form below does not apply (gap M4).
     ## The pre-truncation mean comes off the fit rather than being rebuilt.
-    mu_i <- .sfa_me_mu(object, length(sigma_u))
+    mu_i <- .sfa_me_mu(object, length(sigma_u)) * h
     a <- mu_i / sigma_u
     lam <- .sfa_lambda_ratio(a)
     g <- 1 - lam * (lam + a)
@@ -129,7 +145,14 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
   nm <- colnames(Z)[keep]
   d <- delta[keep]
 
-  if (identical(zs$family, "truncnormal")) {
+  if (scaling) {
+    ## a = mu/sigma_u is CONSTANT in z here, because h cancels out of it, so
+    ## E[u] = h E[u*] and Var[u] = h^2 Var[u*] whatever the family is. The
+    ## effect is therefore exact and needs no family branch at all, and
+    ## delta_s_k is itself the semi-elasticity d log E[u] / d z_k.
+    me_e <- outer(e_u, d)
+    me_v <- outer(var_u, 2 * d)
+  } else if (identical(zs$family, "truncnormal")) {
     ## Chain rule through BOTH designs. d sigma_u/d z_k = half * delta_u_k *
     ## sigma_u as for the other families; d mu/d z_k = delta_mu_k, because mu
     ## carries an IDENTITY link (het.R builds it as Zmu %*% delta), NOT the
