@@ -9,7 +9,7 @@ Tests whether a \code{\link{lcsfm}} fit's latent classes are needed at all, agai
                   B = 199, c = 1, level = 0.05,
                   seed = NULL, quiet = FALSE, envir = parent.frame())}
 \arguments{
-\item{object}{An \code{"sfareg"} fit from \code{\link{lcsfm}} with \code{model_name = "LCM"} and \code{n_class >= 2}.}
+\item{object}{An \code{"sfareg"} fit from \code{\link{lcsfm}} with \code{model_name = "LCM"} or \code{"LCM_CN"} and \code{n_class >= 2}. \code{"LCM_Z"} is refused, since its class probabilities vary by firm.}
 \item{null}{How to obtain the null distribution. \code{"bootstrap"} (the default) is a parametric bootstrap under the fitted one-class model. \code{"chisq01"} uses the published \eqn{\chi^2_{0:1}} limit and \bold{warns}: see \sQuote{Details} for why it does not apply to \code{"LCM"} as implemented.}
 \item{B}{Bootstrap replications. Each is two refits, so this dominates the running time. The smallest attainable p-value is \eqn{1/(B+1)}.}
 \item{c}{Tuning constant in the penalty \eqn{c\log(J^J\prod_j p_j)}. Chen \emph{et al.} (2001) report their simulations were insensitive to it; Stead, Wheat and Greene use 1 and 5.}
