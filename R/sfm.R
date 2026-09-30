@@ -1526,10 +1526,13 @@ sfm <- function(formula,
       r1 <- 1 / sig_u
       r2 <- (1 + lam) / sig_u
       ## Same cancellation as the likelihood above (issue #28); r1 != r2, so
-      ## the blowup does NOT cancel between lt1 and lt2 in d.
-      q_hat <- eps_hat^2 / (2 * sig_v^2)
-      lt1 <- log(2) - q_hat + .log_phi_tilt(-eps_hat / sig_v - r1 * sig_v)
-      lt2 <- -q_hat + .log_phi_tilt(-eps_hat / sig_v - r2 * sig_v)
+      ## the blowup does NOT cancel between lt1 and lt2 in d. The shared
+      ## -eps_hat^2/(2 sig_v^2) is dropped rather than carried: only d = lt2 -
+      ## lt1 is used below, and adding a large common term to both only to
+      ## subtract it again costs real digits -- measured, at eps_hat/sig_v =
+      ## 1e6 it loses 5 significant figures of d.
+      lt1 <- log(2) + .log_phi_tilt(-eps_hat / sig_v - r1 * sig_v)
+      lt2 <- .log_phi_tilt(-eps_hat / sig_v - r2 * sig_v)
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
       w1 <- -1 / expm1(d)
       w2 <- w1 - 1
