@@ -51,6 +51,18 @@ test_that("NNAK at shape 1/2 is NHN, outliers included", {
   expect_gte(as.numeric(logLik(k)), as.numeric(logLik(h)) - 1e-6)
 })
 
+test_that("NNAK's multistart reaches the small-shape mode the moment start misses", {
+  skip_on_cran()
+  ## With the likelihood exact, NNAK from its single half-normal moment start
+  ## stopped at -627.62 here, 10.4 below the NHN it nests; the small-shape
+  ## candidates reach -602.51.
+  d <- as.data.frame(data_gen_cs(N = 200, rand = 1002410, cons = 0.5, beta1 = 0.5,
+    beta2 = 0.5, sig_u = 1, sig_v = 1, mu = 0.5, a = 5))
+  k <- suppressWarnings(sfm(y_pcs_ez ~ x1 + x2, data = d, model_name = "NNAK"))
+  h <- suppressWarnings(sfm(y_pcs_ez ~ x1 + x2, data = d, model_name = "NHN"))
+  expect_gte(as.numeric(logLik(k)), as.numeric(logLik(h)) - 1e-6)
+})
+
 test_that("NG and NNAK equal the convolution integral as sigma_v -> 0", {
   skip_on_cran()
   set.seed(30)

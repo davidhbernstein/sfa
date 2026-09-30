@@ -1580,6 +1580,52 @@
 }
 
 
+## Starting values for the normal-Nakagami model (issue #30). NNAK's u has
+## u^2 ~ Gamma(m, sigma_u^2 / m), so E[u] = sigma_u sqrt(1/m) Gamma(m + 1/2) / Gamma(m)
+## and Var(u) = sigma_u^2 - E[u]^2. Its default start is the half-normal moment
+## point (m = 0.5); with the likelihood exact (.log_pcf_w()), NNAK often has a
+## second, higher mode at small shape that the stages do not reach from there.
+## As for NG, E[u] is held at a moment anchor and the shape swept along that
+## ridge -- here down to small shapes, where a Nakagami u is a spike near zero
+## with a long tail. Where a small shape's variance would exceed the residual
+## variance, sigma_u is shrunk to leave sigma_v a tenth of it.
+.nnak_start_candidates <- function(epsilon_hat, beta_0_st, beta_hat,
+                                   mu_grid = c(0.01, 0.03, 0.1, 0.25, 0.5, 1, 2)) {
+  e <- as.numeric(epsilon_hat)
+  e <- e - mean(e)
+  n <- length(e)
+  if (!n || any(!is.finite(e))) {
+    return(list())
+  }
+  k2 <- mean(e^2)
+  k3 <- mean(e^3)
+  sd_e <- sqrt(max(k2, .Machine$double.eps))
+
+  ## Anchor for E[u], as in .ng_start_candidates().
+  kk <- sqrt(2 / pi) * (1 - 4 / pi) ## < 0
+  eu_hn <- if (is.finite(k3) && k3 < 0) sqrt(2 / pi) * (k3 / kk)^(1 / 3) else NA_real_
+  eu <- if (is.finite(eu_hn) && eu_hn > 0) eu_hn else 0.5 * sd_e
+  eu <- min(max(eu, 1e-3), 10 * sd_e)
+
+  cands <- list()
+  for (m in mu_grid) {
+    ## E[u] / sigma_u for this shape, in logs: Gamma(m) is ~1/m near zero.
+    r <- exp(lgamma(m + 0.5) - lgamma(m) - 0.5 * log(m))
+    su <- eu / r
+    vu <- su^2 - eu^2
+    if (vu > 0.9 * k2) {
+      su <- sqrt(0.9 * k2 / (1 - r^2))
+      vu <- 0.9 * k2
+    }
+    sv <- sqrt(max(k2 - vu, (0.05 * sd_e)^2))
+    if (!is.finite(sv) || !is.finite(su) || sv <= 0 || su <= 0) next
+    b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * r
+    cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
+  }
+  Filter(function(z) all(is.finite(z)), cands)
+}
+
+
 ## Helper: the GTRE two-step (moment) decomposition
 .gtre_two_step <- function(epsilon_hat, alpha_hat, beta_0_st) {
   ## pi - 4 < 0, so k < 0 and k*m3 >= 0 given the min(0, .) truncation below;

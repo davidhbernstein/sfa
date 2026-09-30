@@ -1111,10 +1111,16 @@ sfm <- function(formula,
       }
     }
 
-    ## Normal-gamma multi-start.
+    ## Normal-gamma and normal-Nakagami multi-start. NNAK joined in issue #30:
+    ## its likelihood has a mode at small shape that its single moment start
+    ## (the half-normal point, m = 0.5) does not reach.
     ng_starts <- NULL
-    if (model_name == "NG" && isFALSE(is.numeric(start_val))) {
-      .cand <- .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+    if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
+      .cand <- if (model_name == "NG") {
+        .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      } else {
+        .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      }
       .cand <- c(list(start_v), .cand)
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
       .obj <- vapply(.cand, function(z) {
@@ -1154,7 +1160,7 @@ sfm <- function(formula,
       }
     }
 
-    ## The start the stages below are handed -- for NG, the polished multistart
+    ## The start the stages below are handed -- for NG and NNAK, the polished multistart
     ## point -- kept so the fit can be checked against it (gap A25).
     .start_ref <- start_v
 
