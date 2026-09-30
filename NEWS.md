@@ -99,6 +99,32 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "TSL")` could return a non-physical fit.** Both of the
+  truncated skew-Laplace likelihood's exponentially tilted Gaussians were
+  formed as two numbers whose large parts cancel analytically: with
+  `t = sigma_v/sigma_u` the tilt raises `t^2/2 + w t` and `log Phi` takes
+  exactly that back, so `A - aa^2/2 = -eps^2/(2 sigma_v^2)`. As `sigma_u`
+  collapsed, `t` grew without bound and the two pieces cancelled
+  catastrophically -- while both stayed FINITE, so the non-finite guard never
+  saw it. At `sigma_v = 1.126e20`, `sigma_u = 1e-7` the old form returned a
+  log-likelihood of `+2.55e40`, roughly `1e40` better than any legitimate
+  optimum and therefore an attractor. Both tilts, and the matching pair in the
+  TSL efficiency block, now go through `.log_phi_tilt()`, as `NE` and `NGE`
+  already did.
+
+  Over 432 TSL fits spanning 24 samples and 18 response columns -- mostly
+  deliberately misspecified, which is where `sigma_u` collapses -- **8 returned
+  a non-physical log-likelihood, and 8 more returned a perfectly plausible one
+  that was wrong by 1 to 11 log-likelihood units.** Both groups are now correct.
+  The second group is the one worth knowing about: those fits reported values
+  like `-353.45` where the right answer was `-364.47`, with nothing about the
+  number itself to suggest a problem.
+
+  Every one of the 16 sat at `sigma_u = 1e-7` exactly -- its floor -- while
+  scoring ABOVE the OLS that TSL nests at `sigma_u = 0`. That conjunction is a
+  usable diagnostic: it flags 17 of the 432 fits before the fix and 0 after.
+  Reported as issue #28.
+
 * **`sfm(model_name = "tHN")` lost every standard error on about a third of
   fits.** The tHN branch returned `-.Machine$double.xmax / n` per observation
   for a parameter outside its domain. Summed over the observations that **is**
@@ -125,7 +151,6 @@
   `1e12` differences just as badly. Those four branches are unchanged here --
   whether their own guards are reachable the way tHN's is has not been measured,
   and assuming it would repeat the reasoning that left tHN untouched.
-
 
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**
