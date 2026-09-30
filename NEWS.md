@@ -125,14 +125,19 @@
   Third, with the likelihood exact, NNAK's surface often has a higher mode at
   small shape that its single half-normal moment start does not reach. NNAK
   now goes through the same candidate-and-polish multistart as NG, with the
-  shape swept down to 0.01.
+  shape swept down to 0.01. A second family of candidates covers a mode
+  near shape 0.001 in which `u` is mostly near zero with a long tail: for
+  shapes 0.001 to 0.03 it sets `sigma_u^2` to 10, 20 or 40 percent of the
+  residual variance rather than anchoring `E[u]` on the residual skewness,
+  which puts `sigma_u` near 0.03 there. The two families are ranked apart,
+  so the second adds to what is polished rather than displacing the first.
 
   Over 216 fits (12 samples by 18 response columns), the number of NG fits
   ending more than one log-likelihood unit below the NE it nests falls from
   7 to 0 (worst shortfall 217.4 to 0.02), and the number of NNAK fits ending
-  that far below NHN falls from 18 to 0 (worst 15905.5 to 0). Two fits end lower
-  than on main, by 13.9 and 10.3: on those samples main stopped at shape
-  0.001 and 0.006, below the grid, and the fit now ends exactly at NHN.
+  that far below NHN falls from 18 to 0 (worst 15905.5 to 0). No NNAK fit
+  ends lower than on main by more than 0.014, and 93 end higher. NNAK fits
+  take about 65 percent longer.
 
 * **`sfm(model_name = "TSL")` could return a non-physical fit.** Both of the
   truncated skew-Laplace likelihood's exponentially tilted Gaussians were
