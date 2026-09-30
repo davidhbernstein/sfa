@@ -70,9 +70,13 @@ psfm_bootstrap(psfm_object,
   }
   \item{maxit.psoptim}{Integer. Passed through to \code{psfm()} as
     \code{maxit.psoptim} on each bootstrap re-estimation. Default \code{1000}.}
-  \item{seed_offset}{Integer added to the bootstrap index \code{b} when calling
-    \code{set.seed()}, allowing reproducible-but-distinct seeds across multiple
-    bootstrap runs. Default \code{0}.}
+  \item{seed_offset}{Whole number selecting a block of seeds: replication
+    \code{b} is seeded with \code{set.seed(b + seed_offset * 100000)}, so runs
+    with different \code{seed_offset} never share a seed (for \code{BOOT} up to
+    100000) and can be pooled as independent. Default \code{0}, which seeds
+    replication \code{b} with \code{b}, as before. Through 1.2.0 the seed was
+    \code{b + seed_offset}, so consecutive offsets repeated all but one
+    replication of each other.}
   \item{write_back}{Logical. If \code{TRUE} (default), the returned list
     includes \code{model}, a copy of \code{psfm_object} with the bootstrap
     standard errors and t-values written into \code{$out[,2]} and

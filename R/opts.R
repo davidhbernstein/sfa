@@ -34,6 +34,46 @@
   TRUE
 }
 
+## Put a stage-1/2 optimizer result into optim()'s shape before it becomes a
+## fit's `$opt` (gap A52). Every consumer of `$opt` -- logLik(), print(),
+## summary(), sfa_diagnostics(), lcsfm()'s penalty arithmetic -- reads
+## optim()'s field names, and two of the four stages do not use them:
+##
+##   optim    par value counts convergence message hessian   reference
+##   psoptim  par value counts convergence message           conforms
+##   nlminb   par objective convergence iterations evaluations message
+##   bobyqa   par fval feval ierr msg
+##
+## Stored raw, a bobyqa object made logLik() NA and a lcsfm() fit a hard error
+## (`-opt$value` on NULL). Conforming objects pass through unchanged, so the
+## optHessian = TRUE path -- the default -- is untouched. There is no hessian
+## here: these are the optHessian = FALSE paths, which report none.
+.as_optim <- function(z) {
+  if (is.null(z) || !is.null(z$value)) {
+    return(z)
+  }
+  if (!is.null(z$objective)) {
+    ev <- z$evaluations
+    return(list(
+      par = z$par,
+      value = z$objective,
+      counts = c(`function` = unname(ev[1]), gradient = unname(ev[2])),
+      convergence = as.integer(z$convergence),
+      message = z$message
+    ))
+  }
+  if (!is.null(z$fval)) {
+    return(list(
+      par = z$par,
+      value = z$fval,
+      counts = c(`function` = as.integer(z$feval), gradient = NA_integer_),
+      convergence = as.integer(z$ierr),
+      message = z$msg
+    ))
+  }
+  z
+}
+
 ## opt.nlminb() -- primary optimization stage.
 opt.nlminb <- function(fn, start_v, lower.nlminb, upper.nlminb = Inf,
                        gr = NULL, maxit.nlminb = 500, nlminb.TF = TRUE,
