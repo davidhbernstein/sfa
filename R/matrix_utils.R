@@ -1911,11 +1911,10 @@
   zz <- z[ok]
   pp <- p[ok]
   val <- rep(NA_real_, length(ok))
-  ## Below z = -sqrt(2 * EXP_CLIP_UPPER) the gsl code this replaced evaluated its
-  ## series at a CLIPPED argument, and overflowed to Inf at larger shapes. NG's
-  ## optimum can sit against that edge, so it is reproduced, not corrected (A25).
-  clip <- which(zz < -sqrt(2 * .SFA_CONSTANTS$EXP_CLIP_UPPER))
-  if (length(clip)) val[clip] <- .pcf_clipped(pp[clip], zz[clip])
+  ## Below z = -sqrt(2 * EXP_CLIP_UPPER) this used to reproduce the gsl code it
+  ## replaced, which evaluated its series at a CLIPPED argument: at nu = -1,
+  ## z = -42.9 that gave log D = 240.9 against the true 461.0 (issue #30). The
+  ## peak form below is exact there, so nothing is special-cased any more.
   ## Series where its cancellation ratio is small, binned by |z| so that a few
   ## large arguments do not set the series length for every observation.
   cand <- which(zz >= -10 & zz <= 12)
@@ -1976,36 +1975,53 @@
   out
 }
 
-## What the gsl version returned below the clip: its series
-## 2^(-p/2) sqrt(pi) e^(-z^2/4) [M(p/2, 1/2, q) / Gamma((1+p)/2) - sqrt(2) z M((1+p)/2, 3/2, q) / Gamma(p/2)]
-## at q = EXP_CLIP_UPPER instead of z^2/2, and Inf wherever a factor overflowed.
-.pcf_clipped <- function(p, z) {
-  q <- .SFA_CONSTANTS$EXP_CLIP_UPPER
-  ld <- log(.Machine$double.xmax)
-  lM1 <- .log_kummer_large(p / 2, 0.5, q)
-  lM2 <- .log_kummer_large((1 + p) / 2, 1.5, q)
-  lz <- log(sqrt(2) * abs(z))
-  t1 <- lM1 - lgamma((1 + p) / 2)
-  t2 <- lz + lM2 - lgamma(p / 2)
-  m <- pmax(t1, t2)
-  lbr <- m + log(exp(t1 - m) + exp(t2 - m))
-  out <- -(p / 2) * log(2) + 0.5 * log(pi) - z^2 / 4 + lbr
-  out[lM1 > ld | lM2 > ld | lz + lM2 > ld | lbr > ld] <- Inf
+## log D_nu(z) - z^2/4, for nu < 0: what NG and NNAK need where z < 0 (issue
+## #30). There .log_pcf_scaled() is about z^2/2, and the densities add it to
+## -eps^2/(2 sigma_v^2), which is about -z^2/2: with sigma_v near its floor both
+## are ~1e14 and the sum was rounding noise (NG came out 18 log-likelihood
+## units too HIGH at sigma_v = 1e-7). The z^2/2 part is instead combined with
+## the eps^2 term in closed form by the caller, and this returns the rest,
+##   -lgamma(p) + log int_0^Inf t^(p-1) exp(-(t + z)^2 / 2) dt,
+## which for z far below zero is a peak-centred trapezoid with nothing to cancel.
+## Elsewhere z^2/4 is small enough to subtract from .log_pcf() directly.
+.log_pcf_w <- function(nu, z) {
+  z <- as.numeric(z)
+  nu <- rep_len(as.numeric(nu), length(z))
+  p <- -nu
+  out <- rep(NA_real_, length(z))
+  far <- is.finite(z) & is.finite(p) & p > 0 & z < -30
+  near <- which(!far)
+  if (length(near)) out[near] <- .log_pcf(nu[near], z[near]) - z[near]^2 / 4
+  f <- which(far)
+  if (length(f)) {
+    pf <- p[f]
+    zf <- z[f]
+    t0 <- (-zf + sqrt(zf^2 + 4 * pf)) / 2
+    kfun <- function(S) pf * S - (exp(S) + zf)^2 / 2
+    out[f] <- -lgamma(pf) + .pcf_trap(kfun, log(t0), 1 / sqrt(t0^2 + pf))
+  }
   out
 }
 
-## log M(a, b, x) for large x > 0 from the asymptotic series
-## M ~ Gamma(b)/Gamma(a) e^x x^(a-b) sum_s (b-a)_s (1-a)_s / (s! x^s); the other
-## term is O(e^-x) smaller.
-.log_kummer_large <- function(a, b, x) {
-  term <- rep(1, length(a))
-  s_sum <- term
-  for (s in 0:400) {
-    term <- term * (b - a + s) * (1 - a + s) / ((s + 1) * x)
-    s_sum <- s_sum + term
-    if (all(abs(term) < 1e-17 * abs(s_sum))) break
+## log of [e^((z+a)^2/4) D_nu(z+a)] / [e^(z^2/4) D_nu(z)], the ratio NG's and
+## NNAK's efficiency predictions take. Where z < 0 it is formed as
+## W(z + a) - W(z) + a z + a^2/2 through .log_pcf_w(), for the reason given
+## there; elsewhere as the difference of .log_pcf_scaled() values, as before.
+.log_pcf_scaled_ratio <- function(nu, z, a) {
+  z <- as.numeric(z)
+  a <- rep_len(as.numeric(a), length(z))
+  nu <- rep_len(as.numeric(nu), length(z))
+  out <- rep(NA_real_, length(z))
+  neg <- which(z < 0)
+  pos <- which(!(z < 0))
+  if (length(neg)) {
+    out[neg] <- .log_pcf_w(nu[neg], z[neg] + a[neg]) - .log_pcf_w(nu[neg], z[neg]) +
+      a[neg] * z[neg] + a[neg]^2 / 2
   }
-  lgamma(b) - lgamma(a) + x + (a - b) * log(x) + log(s_sum)
+  if (length(pos)) {
+    out[pos] <- .log_pcf_scaled(nu[pos], z[pos] + a[pos]) - .log_pcf_scaled(nu[pos], z[pos])
+  }
+  out
 }
 
 ## The integral as a series in z: sum_k (-z)^k / k! 2^((p+k)/2 - 1) Gamma((p+k)/2),

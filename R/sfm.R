@@ -580,8 +580,7 @@ sfm <- function(formula,
           ## z^2/4 + log D(z) as one quantity, as there (gap A49).
           zg <- eps_c / CF$sigma_v + CF$sigma_v / CF$sigma_u
           mg <- unname(CF$extra[["mu"]])
-          pmin(pmax(exp(.log_pcf_scaled(-mg, zg + CF$sigma_v) -
-            .log_pcf_scaled(-mg, zg)), 0), 1)
+          pmin(pmax(exp(.log_pcf_scaled_ratio(-mg, zg, CF$sigma_v)), 0), 1)
         },
         ## Carree's u is DISCRETE, so its posterior is a finite sum rather than
         ## an integral: P(u = j | eps) proportional to C(n,j) p^j (1-p)^(n-j)
@@ -988,16 +987,33 @@ sfm <- function(formula,
         }
         ## `z^2/4 + log D(z)` is taken as ONE quantity, .log_pcf_scaled(): as
         ## two it cancels to exactly 0 near a collapsed scale (gap A49).
+        ## Where z < 0, .log_pcf_scaled() is about z^2/2 and the -eps^2 term
+        ## about -z^2/2, so near sigma_v's floor their sum is rounding noise
+        ## (NG gained 18 spurious units at sigma_v = 1e-7, issue #30). There
+        ## the two are combined exactly -- NG: z^2/2 - eps^2/(2 sig_v^2) =
+        ## eps/sig_u + sig_v^2/(2 sig_u^2); NNAK: = -mu eps^2/sigma^2 -- and the
+        ## remainder log D(z) - z^2/4 comes from .log_pcf_w().
+        mu_o <- rep_len(mu, length(eps))
         if (model_name == "NG") {
-          like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u)
-            - 1 / 2 * (eps / sig_v)^2
-            + .log_pcf_scaled(-mu, eps / sig_v + sig_v / sig_u))
+          z <- eps / sig_v + sig_v / sig_u
+          tl <- rep(NA_real_, length(eps))
+          ng <- which(z < 0)
+          ps <- which(!(z < 0))
+          tl[ng] <- eps[ng] / sig_u + sig_v^2 / (2 * sig_u^2) + .log_pcf_w(-mu_o[ng], z[ng])
+          tl[ps] <- -1 / 2 * (eps[ps] / sig_v)^2 + .log_pcf_scaled(-mu_o[ps], z[ps])
+          like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u) + tl)
         }
         if (model_name == "NNAK") {
           sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
+          z <- (eps * sig_u / sig_v) / sigma
+          sigma_o <- rep_len(sigma, length(eps))
+          tl <- rep(NA_real_, length(eps))
+          ng <- which(z < 0)
+          ps <- which(!(z < 0))
+          tl[ng] <- -mu_o[ng] * eps[ng]^2 / sigma_o[ng]^2 + .log_pcf_w(-2 * mu_o[ng], z[ng])
+          tl[ps] <- -1 / 2 * (eps[ps] / sig_v)^2 + .log_pcf_scaled(-2 * mu_o[ps], z[ps])
           like <- (lgamma(2 * mu) - lgamma(mu) + 1 / 2 * log(2) - 1 / 2 * log(pi) + mu * log(mu)
-            + (2 * mu - 1) * log(sig_v) - 2 * mu * log(sigma) - 1 / 2 * (eps / sig_v)^2
-            + .log_pcf_scaled(-2 * mu, (eps * sig_u / sig_v) / sigma))
+            + (2 * mu - 1) * log(sig_v) - 2 * mu * log(sigma) + tl)
         }
       }
 
@@ -1549,13 +1565,12 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       if (model_name == "NG") {
         z <- eps_hat / sig_v + sig_v / sig_u
-        exp_u_hat <- exp(.log_pcf_scaled(-mu, z + sig_v) - .log_pcf_scaled(-mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled_ratio(-mu, z, sig_v))
       }
       if (model_name == "NNAK") {
         sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
         z <- (eps_hat * sig_u / sig_v) / sigma
-        exp_u_hat <- exp(.log_pcf_scaled(-2 * mu, z + sig_v * sig_u / sigma) -
-          .log_pcf_scaled(-2 * mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled_ratio(-2 * mu, z, sig_v * sig_u / sigma))
       }
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)

@@ -44,21 +44,16 @@ test_that("it is finite above the clip, and never NaN anywhere", {
   expect_true(all(is.finite(w) | w == Inf))
 })
 
-test_that("below the clip it reproduces the gsl code it replaced, overflow included", {
-  skip_if_not_installed("gsl")
-  ## NG's optimum can sit against this edge, so the old (clipped, understated)
-  ## value is reproduced rather than corrected; see notes/code_history.
-  old <- function(p, z) {
-    q <- pmin(z^2 / 2, 700)
-    br <- suppressWarnings(gsl::hyperg_1F1(p / 2, 0.5, q) / gamma((1 + p) / 2) -
-      sqrt(2) * z * gsl::hyperg_1F1((1 + p) / 2, 1.5, q) / gamma(p / 2))
-    -(p / 2) * log(2) + 0.5 * log(pi) - z^2 / 4 + log(br)
-  }
+test_that("below the old cutoff it is exact, not the gsl code's clipped value", {
+  ## Until issue #30 this reproduced the gsl code's series evaluated at a
+  ## clipped argument below z = -sqrt(2 * 700), which understated log D by
+  ## hundreds (at nu = -1, z = -42.9: 240.9 against 461.0). nu = -1 has the
+  ## closed form D(z) = sqrt(2 pi) exp(z^2/4) Phi(-z); see test-pcf-tail.R.
+  z <- c(-38, -45, -60, -100, -300)
+  expect_equal(.log_pcf(-1, z), z^2 / 4 + 0.5 * log(2 * pi) + pnorm(-z, log.p = TRUE),
+    tolerance = 1e-12)
   G <- expand.grid(p = c(0.02, 0.5, 1.3, 2.05, 4.11, 10.5), z = c(-38, -45, -60, -100, -300))
-  o <- old(G$p, G$z)
-  n <- .log_pcf(-G$p, G$z)
-  expect_identical(is.finite(n), is.finite(o))
-  expect_equal(n[is.finite(o)], o[is.finite(o)], tolerance = 1e-10)
+  expect_true(all(is.finite(.log_pcf(-G$p, G$z))))
 })
 
 test_that("a large shape returns a finite, decreasing value", {
@@ -114,10 +109,12 @@ test_that("an NG fit is never worse than the start its optimizer was handed", {
 
 test_that("NG's fitted values are unchanged", {
   skip_on_cran()
-  ## A REGRESSION PIN. Removing the old accidental barrier moved NG from
-  ## (sigv 0.185, x1 0.560) to (sigv 0.000, x1 0.775) against a true x1 of 0.5
-  ## -- at a HIGHER likelihood, so no likelihood check would catch it. The old
-  ## values below the clip are reproduced for that reason; these must not move.
+  ## A REGRESSION PIN. Correcting .log_pcf() below its old cutoff alone moved
+  ## NG from (sigv 0.185, x1 0.560) to (sigv 0.000, x1 0.775) against a true x1
+  ## of 0.5, at a "higher" likelihood -- -432.4, which integrating the
+  ## convolution puts at -450.3: z^2/2 and -eps^2/(2 sig_v^2) cancelled to
+  ## noise near sigma_v's floor. Both are fixed (issue #30); the correct
+  ## likelihood's optimum is these values, and they must not move.
   d <- data_gen_cs(N = 400, rand = 1, sig_u = 1, sig_v = 0.3, cons = 0.5,
     beta1 = 0.5, beta2 = 0.5, a = 1, mu = 0.5
   )
