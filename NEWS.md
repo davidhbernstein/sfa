@@ -2,6 +2,20 @@
 
 ## New features
 
+* **`marginal_effects()` now covers the truncated normal.** It previously
+  handled the families whose `E[u]` is proportional to the scale -- the
+  half-normal and the exponential -- where the effect collapses to
+  `half * delta_k * E[u]`. `model_name = "NTN"` fitted with `uhet`/`muhet` is
+  not one of those: the pre-truncation mean enters `E[u]` beside the scale, so
+  the effect is the chain rule through both designs. With `a = mu/sigma_u` and
+  `lambda(a) = phi(a)/Phi(a)`, `dE[u]/dmu = 1 - lambda(lambda + a)` and
+  `dE[u]/dsigma_u = lambda + a lambda(lambda + a)`; `mu` carries an identity
+  link, so `delta_mu` is not a semi-elasticity the way the scale coefficients
+  are. A covariate in one design but not the other contributes only through
+  that one. Every derivative is checked against `numDeriv` in the tests rather
+  than against a second hand derivation.
+
+
 * **`vcov()` now offers four covariances, not two.** `type` gains
   `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and
   `vcov()` gains a `cluster` argument. Every maximum-likelihood fit in the

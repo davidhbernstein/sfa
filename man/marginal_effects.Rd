@@ -12,7 +12,8 @@ marginal_effects(object, average = FALSE, component = c("u", "h"))
 }
 \arguments{
   \item{object}{an object of class \code{"sfareg"} from \code{\link{sfm}}
-    (\code{"NHN_Z"}, \code{"NE_Z"}) or \code{\link{psfm}}
+    (\code{"NHN_Z"}, \code{"NE_Z"}, or \code{"NTN"} fitted with
+    \code{uhet}/\code{muhet}) or \code{\link{psfm}}
     (\code{"TRE_Z"}, \code{"GTRE_Z"}), fitted with a variance-determinant
     formula such as \code{y ~ x1 + x2 | z}.}
   \item{component}{which inefficiency component to differentiate. \code{"u"}
@@ -42,6 +43,28 @@ moment itself. For the half-normal and the exponential alike:
       \qquad \partial \mathrm{Var}[u]/\partial z_k = 2\delta_k \mathrm{Var}[u]}
 \deqn{\textrm{variance link:} \quad \partial E[u]/\partial z_k = (\delta_k/2) E[u],
       \qquad \partial \mathrm{Var}[u]/\partial z_k = \delta_k \mathrm{Var}[u]}
+
+\strong{The truncated normal does not reduce this way.} For
+\code{model_name = "NTN"} the pre-truncation mean \eqn{\mu} enters
+\eqn{E[u]} alongside the scale, so \eqn{E[u]} is not proportional to
+\eqn{\sigma_u} and the one-line forms above do not apply. With
+\eqn{a = \mu/\sigma_u} and \eqn{\lambda(a) = \phi(a)/\Phi(a)},
+
+\deqn{E[u] = \mu + \sigma_u \lambda(a), \qquad
+      \mathrm{Var}[u] = \sigma_u^2 \left(1 - \lambda(a)(\lambda(a) + a)\right)}
+
+and, since \eqn{\lambda'(a) = -\lambda(a)(\lambda(a) + a)},
+
+\deqn{\partial E[u]/\partial \mu = 1 - \lambda(\lambda + a), \qquad
+      \partial E[u]/\partial \sigma_u = \lambda + a\lambda(\lambda + a).}
+
+The reported effect is the chain rule through \emph{both} designs, since
+\eqn{\mu} and \eqn{\sigma_u} may depend on different covariates:
+\eqn{\partial \mu/\partial z_k = \delta^{\mu}_k} (an identity link) and
+\eqn{\partial \sigma_u/\partial z_k} as above. A covariate appearing in one
+design but not the other contributes only through that one. Note that
+\eqn{\delta^{\mu}} is therefore \emph{not} a semi-elasticity, unlike the
+scale coefficients.
 
 \strong{The factor of two matters.} \code{sfm()}'s \code{"NHN_Z"} and
 \code{"NE_Z"} place the linear predictor on the standard deviation,

@@ -1,5 +1,53 @@
 ## Marginal effects of the variance determinants on inefficiency
 
+## phi(a)/Phi(a), the inverse Mills ratio, computed in logs so the far left
+## tail does not become 0/0. Used by the truncated-normal marginal effect.
+.sfa_lambda_ratio <- function(a) {
+  exp(stats::dnorm(a, log = TRUE) - stats::pnorm(a, log.p = TRUE))
+}
+
+## The pre-truncation mean, per observation, rebuilt from the block the fit
+## stores rather than read off a `$mu` component. There is no such component:
+## `object$mu` PARTIAL-MATCHES `mu_spec` and silently hands back the spec list,
+## which is the same trap the A48 note records for `object$data`. Everything
+## below therefore uses [[ ]] exact indexing.
+##
+## het.R builds mu as `Zmu %*% delta` -- an IDENTITY link, NOT the `link` field
+## that mu_spec carries beside it (that field describes the SCALE's link and
+## must not be applied here). A homoskedastic truncated normal keeps its single
+## mu in `out` instead.
+.sfa_me_mu <- function(object, n) {
+  ms <- object[["mu_spec"]]
+  m <- NULL
+  if (!is.null(ms) && !is.null(ms[["Z"]]) && !is.null(ms[["delta"]]) &&
+    ncol(ms[["Z"]]) == length(ms[["delta"]])) {
+    m <- as.numeric(ms[["Z"]] %*% ms[["delta"]])
+  }
+  if (is.null(m)) {
+    o <- object[["out"]]
+    if (!is.null(o) && "mu" %in% rownames(o)) m <- o["mu", "par"]
+  }
+  if (is.null(m) || !length(m) || !all(is.finite(m))) {
+    stop("marginal_effects(): this truncated-normal fit carries no usable ",
+      "pre-truncation mean, so dE[u]/dz cannot be formed. A fit made with ",
+      "muhet = ~ z stores one; see ?marginal_effects.",
+      call. = FALSE
+    )
+  }
+  rep_len(m, n)
+}
+
+## delta values for `nm`, in that order, 0 where the design has no such column.
+.sfa_me_delta_by_name <- function(spec, nm) {
+  out <- stats::setNames(rep(0, length(nm)), nm)
+  if (is.null(spec) || is.null(spec[["delta"]])) {
+    return(out)
+  }
+  hit <- intersect(nm, names(spec[["delta"]]))
+  out[hit] <- as.numeric(spec[["delta"]][hit])
+  out
+}
+
 
 ## Constant columns of the z design are dropped: the derivative with respect
 ## to an intercept is not a marginal effect.
@@ -53,6 +101,16 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
   } else if (identical(zs$family, "exponential")) {
     e_u <- sigma_u
     var_u <- sigma_u^2
+  } else if (identical(zs$family, "truncnormal")) {
+    ## mu enters E[u] separately from the scale, so E[u] is NOT proportional to
+    ## sigma_u and the outer(e_u, half * d) form below does not apply (gap M4).
+    ## The pre-truncation mean comes off the fit rather than being rebuilt.
+    mu_i <- .sfa_me_mu(object, length(sigma_u))
+    a <- mu_i / sigma_u
+    lam <- .sfa_lambda_ratio(a)
+    g <- 1 - lam * (lam + a)
+    e_u <- mu_i + sigma_u * lam
+    var_u <- sigma_u^2 * g
   } else {
     stop("unsupported inefficiency family: ", zs$family, call. = FALSE)
   }
@@ -71,8 +129,34 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
   nm <- colnames(Z)[keep]
   d <- delta[keep]
 
-  me_e <- outer(e_u, half * d)
-  me_v <- outer(var_u, 2 * half * d)
+  if (identical(zs$family, "truncnormal")) {
+    ## Chain rule through BOTH designs. d sigma_u/d z_k = half * delta_u_k *
+    ## sigma_u as for the other families; d mu/d z_k = delta_mu_k, because mu
+    ## carries an IDENTITY link (het.R builds it as Zmu %*% delta), NOT the
+    ## z_link that mu_spec records beside it. A covariate may sit in one design,
+    ## the other, or both, so the two delta vectors are matched BY NAME and a
+    ## covariate absent from a design contributes zero through it.
+    dmu <- .sfa_me_delta_by_name(object[["mu_spec"]], nm)
+    ## lambda'(a) = -lambda (lambda + a), so
+    ##   dE/dmu    = 1 - lambda (lambda + a) = g
+    ##   dE/dsigma = lambda + a lambda (lambda + a)
+    ## and for Var = sigma^2 g(a), with g'(a) = lambda (lambda + a)(2 lambda + a) - lambda.
+    dE_dmu <- g
+    dE_dsig <- lam + a * lam * (lam + a)
+    gp <- lam * (lam + a) * (2 * lam + a) - lam
+    me_e <- matrix(0, length(sigma_u), length(nm), dimnames = list(NULL, nm))
+    me_v <- me_e
+    for (k in seq_along(nm)) {
+      ds <- half * d[[k]] * sigma_u
+      dm <- dmu[[k]]
+      da <- dm / sigma_u - a * half * d[[k]]
+      me_e[, k] <- dE_dmu * dm + dE_dsig * ds
+      me_v[, k] <- 2 * sigma_u * ds * g + sigma_u^2 * gp * da
+    }
+  } else {
+    me_e <- outer(e_u, half * d)
+    me_v <- outer(var_u, 2 * half * d)
+  }
   ## Name the columns after the component actually differentiated, so a u table
   ## and an h table cannot be confused once separated from their call.
   colnames(me_e) <- paste0("dE_", component, ".d", nm)
