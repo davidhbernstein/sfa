@@ -33,6 +33,70 @@ test_that("no likelihood branch returns .Machine$double.xmax as its penalty", {
   expect_equal(length(bad), 0)
 })
 
+## WIDENED 2026-09-30 (gap A56a). The test above matches only the literal
+## `return(.Machine$double.xmax)`, and sfm()'s tHN branch wrote the penalty as
+##
+##     rep(-.Machine$double.xmax / length(eps), length(eps))
+##
+## which is not a `return(...)` and so walked straight through the one test
+## written to prevent it. Summed over n that IS double.xmax, so it is strictly
+## worse than the construct the test did catch: the first finite difference
+## gives Inf, not merely a huge number. It cost 25 of 84 tHN fits every
+## standard error.
+##
+## The distinction below is mechanical, not stylistic:
+##   bare      xmax / n  summed = xmax (1.8e308)      -> differences to Inf
+##   sqrt(xmax / n)      summed = sqrt(xmax * n) ~ 2e155 -> huge but FINITE
+## The second form is the general `!is.finite(like)` guard, which still lives in
+## sfm.R, zsfm.R, lcsfm.R and ttsfm.R and is tracked as the still-open gap A56.
+## It is deliberately NOT failed here; this test draws the line at the form that
+## is non-finite on the first difference.
+test_that("no likelihood uses .Machine$double.xmax as a penalty VALUE", {
+  want <- c("sfm.R", "ttsfm.R", "zsfm.R", "lcsfm.R", "psfm.R", "selsfm.R",
+    "ivsfm.R", "copsfm.R")
+  roots <- c("../../R", "../../../R", "R")
+  root <- roots[dir.exists(roots)]
+  skip_if(!length(root), "R/ source not reachable (installed package)")
+  files <- file.path(root[1], want)
+  files <- files[file.exists(files)]
+  skip_if(!length(files), "no likelihood sources found")
+
+  bad <- character(0)
+  for (f in files) {
+    ln <- readLines(f, warn = FALSE)
+    for (i in seq_along(ln)) {
+      s <- sub("^[[:space:]]+", "", ln[i])
+      if (startsWith(s, "#")) next                       # comment line
+      if (!grepl("\\.Machine\\$double\\.xmax", s)) next
+      ## Allowed: wrapped in sqrt(), i.e. the A56 general guard.
+      if (grepl("sqrt\\([^()]*\\.Machine\\$double\\.xmax", s)) next
+      ## Allowed: the constants table's own MAX_VALUE alias.
+      if (grepl("MAX_VALUE", s)) next
+      bad <- c(bad, sprintf("%s:%d: %s", basename(f), i, s))
+    }
+  }
+  expect_equal(bad, character(0),
+    info = paste0(
+      "A bare .Machine$double.xmax used as a penalty value sums to xmax over ",
+      "the observations and makes optim()'s finite difference non-finite. Use ",
+      ".SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS. Offending lines:\n",
+      paste(bad, collapse = "\n")))
+})
+
+test_that("the tHN domain penalty is the swept per-observation constant", {
+  ## Pins the VALUE as well as the form: A56a measured standard-error recovery
+  ## against the summed penalty (1e12 recovers nothing, 1e6 and below recover
+  ## all five test fits), and per observation rather than as a fixed total so
+  ## the margin over a legitimate optimum does not erode as n grows.
+  expect_true(is.finite(.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS))
+  expect_gt(.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS, 1e3)
+  expect_lt(.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS, 1e6)
+  ## Summed at a realistic n it must stay well inside the band where the
+  ## Hessian is still computable (measured: 1e8 total already costs one fit
+  ## of five its standard errors).
+  expect_lt(.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS * 200, 1e8)
+})
+
 test_that("models with domain guards fit without aborting", {
   skip_on_cran()
   ## These configurations produced "non-finite finite-difference value" before
