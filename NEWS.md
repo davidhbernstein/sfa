@@ -76,6 +76,19 @@
   identically zero, a coefficient pinned on its bound, a flat direction of the
   diagonal-normalised Hessian, or non-positive curvature.
 
+* **`psfm_bootstrap()`'s `seed_offset` did not give distinct runs.** Replication
+  `b` was seeded with `b + seed_offset`, so a run at `seed_offset = 1` repeated
+  replications 2 to `BOOT` of the run at `seed_offset = 0` exactly, although
+  the help page promised "reproducible-but-distinct seeds across multiple
+  bootstrap runs". Two runs pooled as independent shared all but one draw, and
+  a standard error from the pool understated the spread. The seed is now
+  `b + seed_offset * 100000`, so different offsets never share a seed for
+  `BOOT` up to 100000. `seed_offset = 0`, the default, seeds exactly as
+  before, so existing results reproduce; results from a non-zero offset
+  change. Measured alongside: the draws are identical whatever `numCores` is
+  and whatever the caller's RNG kind, and the caller's random stream is left
+  as it was -- both now pinned by tests.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
