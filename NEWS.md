@@ -73,12 +73,17 @@
   already did.
 
   Over 432 TSL fits spanning 24 samples and 18 response columns -- mostly
-  deliberately misspecified, which is where `sigma_u` collapses -- the number
-  of non-physical log-likelihoods falls from **8 to 0**, and the number of fits
-  scoring below the OLS that TSL nests at `sigma_u = 0` falls from **40 to 3**.
-  That second figure is the one to note: only 8 fits were visibly absurd, and
-  on about 30 more the corrupted likelihood was quietly misplacing the optimum
-  while still returning a plausible-looking number. Reported as issue #28.
+  deliberately misspecified, which is where `sigma_u` collapses -- **8 returned
+  a non-physical log-likelihood, and 8 more returned a perfectly plausible one
+  that was wrong by 1 to 11 log-likelihood units.** Both groups are now correct.
+  The second group is the one worth knowing about: those fits reported values
+  like `-353.45` where the right answer was `-364.47`, with nothing about the
+  number itself to suggest a problem.
+
+  Every one of the 16 sat at `sigma_u = 1e-7` exactly -- its floor -- while
+  scoring ABOVE the OLS that TSL nests at `sigma_u = 0`. That conjunction is a
+  usable diagnostic: it flags 17 of the 432 fits before the fix and 0 after.
+  Reported as issue #28.
 
 
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
