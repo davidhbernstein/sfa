@@ -1095,10 +1095,16 @@ sfm <- function(formula,
       }
     }
 
-    ## Normal-gamma multi-start.
+    ## Normal-gamma and normal-Nakagami multi-start. NNAK's joined in issue
+    ## #30: from its single moment start it could stop 24 log-likelihood units
+    ## below the half-normal it nests, at a shape the stages drifted up to.
     ng_starts <- NULL
-    if (model_name == "NG" && isFALSE(is.numeric(start_val))) {
-      .cand <- .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+    if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
+      .cand <- if (model_name == "NG") {
+        .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      } else {
+        .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      }
       .cand <- c(list(start_v), .cand)
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
       .obj <- vapply(.cand, function(z) {
@@ -1138,7 +1144,7 @@ sfm <- function(formula,
       }
     }
 
-    ## The start the stages below are handed -- for NG, the polished multistart
+    ## The start the stages below are handed -- for NG and NNAK, the polished multistart
     ## point -- kept so the fit can be checked against it (gap A25).
     .start_ref <- start_v
 
@@ -1594,9 +1600,9 @@ sfm <- function(formula,
       )
     }
 
-    ## NG additionally reports its starting-value search, which is what decides
-    ## whether the fit lands at the optimum or in the sigma_u = 0 corner.
-    if (model_name == "NG") {
+    ## NG and NNAK additionally report their starting-value search, which is
+    ## what decides whether the fit lands at the optimum or in a corner.
+    if (model_name %in% c("NG", "NNAK")) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula, exp_u_hat, ng_starts,
         out["par", ], out["st_err", ], out["t-val", ], call
