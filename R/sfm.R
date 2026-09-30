@@ -808,9 +808,10 @@ sfm <- function(formula,
         ## A large FINITE penalty, not .Machine$double.xmax: optim() differences
         ## the objective for its gradient and differencing 1.8e308 overflows to
         ## a non-finite value, aborting the fit with "non-finite
-        ## finite-difference value" instead of steering away. The NLN/NW
-        ## branches already use 1e12 for this reason; NGE still uses xmax and
-        ## should be changed to match.
+        ## finite-difference value" instead of steering away. NGE, NGB2, NLN,
+        ## NW and tHN all use 1e12 for this reason too. (This comment used to
+        ## end "NGE still uses xmax and should be changed to match"; NGE was
+        ## changed, tHN was the one still using xmax, fixed 2026-09-30.)
         if (!is.finite(x[1]) || !is.finite(x[2]) || x[1] <= 0 || x[2] <= 0) {
           return(1e12)
         }
@@ -949,7 +950,16 @@ sfm <- function(formula,
         nu <- x[3]
         like <- if (!is.finite(sig_v) || !is.finite(sig_u) || !is.finite(nu) ||
           sig_v <= 0 || sig_u <= 0 || nu <= 2) {
-          rep(-.Machine$double.xmax / length(eps), length(eps))
+          ## NOT .Machine$double.xmax / n: summed over n that IS double.xmax,
+          ## and optim() differences the objective, so the gradient overflows to
+          ## a genuinely non-finite value. Measured at n = 300: 5.99e305 per
+          ## observation, 1.7977e308 summed, (f - 295.5)/1e-3 = Inf. This guard
+          ## is reached in practice -- optim()'s ndeps = 1e-3 step takes sig_u
+          ## from its 1e-7 bound to -0.0009999 -- and instrumenting it gave a
+          ## 9/9 correlation between reaching it and losing every standard
+          ## error. The sibling branches' literal 1e12 does NOT fix that; see
+          ## .SFA_CONSTANTS$DOMAIN_PENALTY for the sweep behind this value.
+          rep(-.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS, length(eps))
         } else {
           .log_d_thn(eps, sig_v, sig_u, nu)
         }
