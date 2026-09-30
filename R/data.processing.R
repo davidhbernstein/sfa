@@ -15,7 +15,18 @@
   MAX_VALUE      = .Machine$double.xmax,
   ## Safe upper bound for arguments passed to exp() -- exp(700) ~= 1.01e304,
   ## comfortably under .Machine$double.xmax (~1.80e308).
-  EXP_CLIP_UPPER =  700
+  EXP_CLIP_UPPER =  700,
+  ## The value a likelihood returns for a parameter OUTSIDE its domain. It has
+  ## two jobs that pull against each other: be decisively worse than any
+  ## legitimate optimum, and stay small enough that optim()'s finite-difference
+  ## gradient across the boundary is still usable. Swept on five tHN fits that
+  ## all reach their domain guard (see notes/code_history/sfm.md) -- fits whose
+  ## standard errors survive, out of 5:
+  ##   xmax 0/5 | 1e14 0/5 | 1e12 0/5 | 1e10 3/5 | 1e8 4/5 | 1e6 5/5 | 1e4 5/5
+  ## The fitted log-likelihood was IDENTICAL at every one of those penalties, so
+  ## the choice costs no accuracy -- it only decides whether the Hessian is
+  ## computable. 1e6 is the largest swept value that recovers all five.
+  DOMAIN_PENALTY = 1e6
   # HALTON_PRIMES = c(2, 3)
 )
 
