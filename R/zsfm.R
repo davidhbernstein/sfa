@@ -358,6 +358,7 @@ zsfm <- function(formula,
       )
       ## Rows actually used, not rows supplied: bread() scales by this.
       results$nobs <- length(as.numeric(Y))
+      results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
       ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") and
       ## sfa_diagnostics() can difference it after the fact.
       if (isTRUE(keep_objective)) results$objective <- like.fn

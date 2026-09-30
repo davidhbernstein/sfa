@@ -134,6 +134,17 @@
   estimate. `optHessian = TRUE` (the default) and `PSopt = TRUE` are
   unchanged.
 
+* **`fitted()`, `residuals()`, `predict()` and `efficiency(logDepVar = FALSE)`
+  on a `zsfm()` or `ttsfm()` fit could still answer from the wrong data.** The
+  1.2.1 check on recovered data (A47) is decisive where a fit stored its OLS
+  residuals, as `sfm()` does: the recovered frame is refitted and compared.
+  `zsfm()` and `ttsfm()` stored none, so for them the check could only count
+  rows -- and `ttsfm("TTNLS")` stored no row count either. A different data
+  frame of the same shape, bound to the name the call recorded, passed, and
+  every method answered from it without a warning. Both entry points now keep
+  the frontier's OLS residuals on the fit, and a same-shaped decoy is refused.
+  `ttsfm("TTNLS")` also now stores `nobs`.
+
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
   scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
