@@ -111,7 +111,26 @@ test_that("TSL does not return a non-physical fit on the issue #28 sample", {
   ## on the boundary, and the fit cannot exceed it. How close the optimizer
   ## gets along that flat approach is platform-dependent -- 9e-4 short on
   ## CI's Linux and Windows runners -- so only the bound is asserted.
+  ##
+  ## THE PRECONDITION IS WRONG SKEW, AND DROPPING IT WOULD BE WRONG. OLS is the
+  ## supremum only because these residuals are skewed the WRONG way (third
+  ## central moment +0.541 here), so there is no interior maximum. On a
+  ## correctly skewed sample TSL's interior MLE legitimately BEATS OLS, and by
+  ## a lot: on y_pcs_tsl, TSL's own DGP, all 24 fits measured exceed OLS, by up
+  ## to 21.3 units. Across 432 fits spanning 18 response columns, 262 exceed
+  ## OLS by more than 1 unit. So `ll <= ll_ols` is NOT a general property of
+  ## the model and must never be asserted unconditionally -- it holds here
+  ## because of the skew check below, which is what makes this sample a
+  ## boundary case.
+  expect_gt(mean((d$yy - mean(d$yy))^3), 0) ## wrong skew: the precondition
   expect_lte(ll, ll_ols + 1e-6)
+  ## What generalises instead is the CONJUNCTION: sigma_u pinned at its floor
+  ## AND a likelihood above OLS. At the floor the correct likelihood is within
+  ## ~1e-11 of OLS whatever the skew, so that pair is unreachable by any
+  ## correct fit. Of the 262 fits above that legitimately exceed OLS, ZERO sit
+  ## on the floor; of the 432, the conjunction flags 17 before this fix and 0
+  ## after, catching every non-physical fit and every quiet 1-11 unit error.
+  expect_false(f$out["sigu", "par"] <= 1.0000001e-07 && ll > ll_ols + 1e-6)
   ## sig_v ran to 1.1259e20 before the fix.
   expect_lt(f$out["sigv", "par"], 1e3)
   expect_lt(f$out["lambda", "par"], 1e4)
