@@ -87,7 +87,14 @@
   improves on it by more than `optim()`'s own convergence tolerance
   (`reltol = sqrt(.Machine$double.eps)`, relative), and the warning prints
   the objectives to ten significant figures. Reported estimates change only
-  where the old choice was a tie, and then by the width of the tie.
+  where the old choice was a tie, and then by the width of the tie. Standard
+  errors can change more on such fits, because keeping `optim()` also keeps
+  `optim()`'s Hessian, where the tie used to hand over a `numDeriv` one. On
+  one seed the SE count went from 6 to 4. That fit had collapsed `sigma_v`
+  to 0.001 (the corner described in `?ttsfm`), where the objective is flat
+  to about 5e-4 and no finite-difference Hessian resolves the curvature, so
+  neither count was meaningful there. What changes in general is that the
+  SEs no longer depend on which stage won a tie.
 
 * **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
   standard errors for every model whose estimation and reported parameter
