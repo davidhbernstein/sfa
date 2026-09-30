@@ -122,7 +122,14 @@ test_that("TSL does not return a non-physical fit on the issue #28 sample", {
   ## the model and must never be asserted unconditionally -- it holds here
   ## because of the skew check below, which is what makes this sample a
   ## boundary case.
-  expect_gt(mean((d$yy - mean(d$yy))^3), 0) ## wrong skew: the precondition
+  ## Wrong skew is a property of the OLS RESIDUALS, not of the raw response --
+  ## the package's own .warn_wrong_skew_boundary() reports the residual moment,
+  ## and on this sample that is +0.541, the figure it prints. The two are not
+  ## interchangeable: over the 432 (seed, column) pairs used above, the sign of
+  ## m3(y) and the sign of m3(resid) disagree on 28, i.e. 6.5%. Both happen to
+  ## agree on this seed, so testing the raw response would pass here and be
+  ## wrong for anyone who adds a sample.
+  expect_gt(mean(resid(stats::lm(yy ~ x1 + x2, data = d))^3), 0)
   expect_lte(ll, ll_ols + 1e-6)
   ## What generalises instead is the CONJUNCTION: sigma_u pinned at its floor
   ## AND a likelihood above OLS. At the floor the correct likelihood is within
