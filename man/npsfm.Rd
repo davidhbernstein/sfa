@@ -26,8 +26,8 @@ Only \code{"FLW"} offers inefficiency distributions other than the half-normal. 
 \describe{
   \item{\code{"FLW"}}{Fan, Li and Weersink (1996). Estimates \eqn{E[y|x]} by kernel regression, then recovers the scale parameters from the residuals -- by maximizing their concentrated likelihood in \eqn{\lambda} when \code{dist = "hn"}, and by inverting central moments otherwise. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is smooth.}
   \item{\code{"SVKZ"}}{Simar, Van Keilegom and Zelenyuk (2017). Runs three local-linear regressions -- \eqn{y} on \eqn{x}, then the squared and cubed residuals on \eqn{x} -- and inverts the local moments, so \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} both vary with the covariates. No optimizer runs. Normal-half-normal only.}
-  \item{\code{"PSZ"} (or \code{"KPST"})}{Park, Simar and Zelenyuk. Local \emph{maximum likelihood}: at every evaluation point the frontier and both log variance components are given local-linear expansions and the kernel-weighted normal-half-normal likelihood is maximized in those \eqn{3(k+1)} parameters. One optimization per observation, so it is much slower than the two above. \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates.}
-  \item{\code{"MY"}}{Martins-Filho and Yao. Iterative local likelihood: alternates a local-linear fit of the frontier at every evaluation point, holding \eqn{(\lambda,\sigma)} fixed, with a global update of \eqn{(\lambda,\sigma)} from the resulting composed residuals, until the scale parameters stop moving. Cost is (observations \eqn{\times} iterations) optimizations. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is local.}
+  \item{\code{"PSZ"} (or \code{"KPST"})}{The local maximum likelihood estimator of Kumbhakar, Park, Simar and Tsionas (2007), in the form of Park, Simar and Zelenyuk (2015); hence the two names. Local \emph{maximum likelihood}: at every evaluation point the frontier and both log variance components are given local-linear expansions and the kernel-weighted normal-half-normal likelihood is maximized in those \eqn{3(k+1)} parameters. One optimization per observation, so it is much slower than the two above. \eqn{\sigma_u(x)} and \eqn{\sigma_v(x)} vary with the covariates.}
+  \item{\code{"MY"}}{Martins-Filho and Yao (2015). Iterative local likelihood: alternates a local-linear fit of the frontier at every evaluation point, holding \eqn{(\lambda,\sigma)} fixed, with a global update of \eqn{(\lambda,\sigma)} from the resulting composed residuals, until the scale parameters stop moving. Cost is (observations \eqn{\times} iterations) optimizations. \eqn{\sigma_u} and \eqn{\sigma_v} are constants; only the frontier is local.}
   \item{\code{"SZ"}}{Simar and Zelenyuk (2011). Not an estimator in its own right: it takes an already-estimated smooth frontier and passes its fitted values through an output-oriented DEA, imposing the monotonicity and (under \code{rts = "vrs"}/\code{"crs"}) convexity that a kernel fit does not guarantee. Supply the prior fit through \code{prior.fit}, or leave it \code{NULL} to fit \code{"SVKZ"} first. The DEA step is solved by the \pkg{DEA} package, which must be installed; it is implemented for production frontiers only.}
 } Matching ignores case, so \code{"flw"} and \code{"FLW"} are the same choice.}
 \item{dist}{Distribution of the one-sided inefficiency term, for \code{method = "FLW"} only: \code{"hn"} (half-normal, the default), \code{"exp"} (exponential), \code{"gamma"}, or \code{"unif"} (uniform on \eqn{[0,b]}). Every other method is derived for the half-normal case and errors for anything else.}
@@ -89,6 +89,14 @@ An object of class \code{"npsfareg"}. This is deliberately \emph{not} an \code{"
 Fan, Y., Li, Q. and Weersink, A. (1996) 'Semiparametric estimation of stochastic production frontier models', \emph{Journal of Business & Economic Statistics}, 14(4), pp. 460-468.
 
 Simar, L., Van Keilegom, I. and Zelenyuk, V. (2017) 'Nonparametric least squares methods for stochastic frontier models', \emph{Journal of Productivity Analysis}, 47(3), pp. 189-204.
+
+Kumbhakar, S.C., Park, B.U., Simar, L. and Tsionas, E.G. (2007) 'Nonparametric stochastic frontiers: a local maximum likelihood approach', \emph{Journal of Econometrics}, 137(1), pp. 1-27.
+
+Park, B.U., Simar, L. and Zelenyuk, V. (2015) 'Categorical data in local maximum likelihood: theory and applications to productivity analysis', \emph{Journal of Productivity Analysis}, 43(2), pp. 199-214.
+
+Martins-Filho, C. and Yao, F. (2015) 'Semiparametric stochastic frontier estimation via profile likelihood', \emph{Econometric Reviews}, 34(4), pp. 413-451.
+
+Simar, L. and Zelenyuk, V. (2011) 'Stochastic FDH/DEA estimators for frontier analysis', \emph{Journal of Productivity Analysis}, 36(1), pp. 1-20.
 
 Jondrow, J., Lovell, C.A.K., Materov, I.S. and Schmidt, P. (1982) 'On the estimation of technical inefficiency in the stochastic frontier production function model', \emph{Journal of Econometrics}, 19(2-3), pp. 233-238.
 
