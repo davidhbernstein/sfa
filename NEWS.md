@@ -76,6 +76,43 @@
   identically zero, a coefficient pinned on its bound, a flat direction of the
   diagonal-normalised Hessian, or non-positive curvature.
 
+* **`psfm_bootstrap()`'s `seed_offset` did not give distinct runs.** Replication
+  `b` was seeded with `b + seed_offset`, so a run at `seed_offset = 1` repeated
+  replications 2 to `BOOT` of the run at `seed_offset = 0` exactly, although
+  the help page promised "reproducible-but-distinct seeds across multiple
+  bootstrap runs". Two runs pooled as independent shared all but one draw, and
+  a standard error from the pool understated the spread. The seed is now
+  `b + seed_offset * 100000`, so different offsets never share a seed for
+  `BOOT` up to 100000. `seed_offset = 0`, the default, seeds exactly as
+  before, so existing results reproduce; results from a non-zero offset
+  change. Measured alongside: the draws are identical whatever `numCores` is
+  and whatever the caller's RNG kind, and the caller's random stream is left
+  as it was -- both now pinned by tests.
+
+* **`sfm("NG")` evaluated its log-likelihood as exactly 0 near a collapsed
+  scale.** The density contains `z^2/4 + log D(z)`, the
+  parabolic cylinder function's log plus a quadratic, and the log-D routine
+  returns `-z^2/4` plus a term of order `log z`. Added as two numbers they
+  cancel, and for NG `z` is about `sigma_v / sigma_u`, so the cancellation
+  bites exactly where `sigma_u` approaches its lower bound. On 200
+  observations the summed NG log-likelihood was off by 0.03 at
+  `sigma_u = 1e-7`, by +117 at `1e-9` -- spuriously better than the truth --
+  and exactly 0 from `1e-10` down. Zero is finite, so the non-finite guard let
+  it through, and it sat far above any real optimum. The multistart guard
+  did not always catch it: a plain `sfm(y ~ x1 + x2, model_name = "NG")` on
+  `data_gen_cs(N = 300, rand = 12, sig_u = 0.5, ...)` returned an objective
+  of exactly 0 at `sigma_u = mu = 1e-7`, with no warning, and now returns an
+  interior fit whose log-likelihood beats the nested normal regression's. The sum is now formed as one
+  quantity, by the large-argument expansion where it would cancel, and the
+  likelihood tends to its correct limit, the normal density of `v` alone.
+  `"NNAK"` contains the same combination and now forms it the same way, but
+  was measured not to be exposed: its argument grows only as `sigma_v -> 0`,
+  where the likelihood is already, correctly, very negative.
+
+  The same combination made `efficiency()`'s NG and NNAK scores `NaN` once
+  `z` passed about 53, as `exp(z^2/4)` overflowed in numerator and
+  denominator alike. That ratio is now formed in logs.
+
 * **`optHessian = FALSE` with the default `PSopt = FALSE` failed outright for
   `sfm()`'s default model and for every `lcsfm()` model, and lost the
   log-likelihood everywhere else.** Without the final `optim()` stage a fit
