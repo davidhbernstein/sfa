@@ -471,7 +471,7 @@ ttsfm <- function(formula,
 
     ## Preserve current fallback logic
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -499,7 +499,7 @@ ttsfm <- function(formula,
 
     ## now for st errs
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -610,6 +610,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
     ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
     ## Jacobian .tt_report() already built for the Hessian standard errors is
@@ -773,7 +774,7 @@ ttsfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -807,7 +808,7 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -924,6 +925,7 @@ ttsfm <- function(formula,
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
     ## `fn` is a function of the ESTIMATION-scale vector (log sigmas), so the
     ## Jacobian .tt_report() already built for the Hessian standard errors is
@@ -1036,7 +1038,7 @@ ttsfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -1053,7 +1055,7 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -1125,6 +1127,8 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.nls.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    results$nobs <- length(as.numeric(Y))
+    results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     return(results)
   } else {
     stop(paste0(
