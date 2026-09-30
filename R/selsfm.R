@@ -22,6 +22,7 @@ selsfm <- function(selection,
                    verbose = FALSE,
                    keep_objective = FALSE,
                    rand.psoptim = NULL) {
+  .check_optim_method(Method)
   call <- match.call()
   model_name <- match.arg(model_name)
   sim_type <- match.arg(sim_type)

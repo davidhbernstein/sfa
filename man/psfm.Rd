@@ -59,7 +59,11 @@
   \item{PSopt}{use psoptim optimization routine (T or F)}
   \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
   \item{inefdec}{Production or cost function}
-  \item{Method}{The method to be used for optim. See 'Details' within optim.}
+  \item{Method}{Method passed to \code{optim} for the final stage. Must be
+  \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
+  and upper bounds this package uses to keep scale parameters positive, and any
+  other value is refused with an error rather than quietly optimized without
+  them.}
   \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
   \item{rand.psoptim}{Integer. Seed for replication of psoptim.  Default to \code{NULL}.}
   \item{rand.gtre}{Integer. Seed for replication of the gtre model.  Default to \code{NULL}.}

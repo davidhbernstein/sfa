@@ -1,5 +1,22 @@
 # sfa 1.2.1
 
+## Bug fixes
+
+* **`Method` now rejects any value other than `"L-BFGS-B"` instead of silently
+  optimizing without bounds.** `Method` is passed to `optim()` for the final
+  stage together with the lower and upper bounds that hold the scale parameters
+  positive -- but `optim()` applies bounds for `"L-BFGS-B"` only. With
+  `"BFGS"`, `"CG"`, `"Nelder-Mead"` or `"SANN"`, R warned
+  (`"bounds can only be used with method L-BFGS-B"`) and the stage then ran
+  UNBOUNDED, free to take a standard deviation to or past zero. That was
+  invisible on an interior optimum -- all five methods agree to eight figures on
+  a well-behaved fit, because the bounds never bind there -- and it bit only
+  where a bound was active, which is exactly the boundary-collapse region the
+  scaffold's guards exist for. `sfm()`, `zsfm()`, `lcsfm()`, `psfm()`,
+  `ttsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` now validate `Method` before
+  fitting anything, and `opt.optim()` enforces it as well, since that is the
+  function which passes the bounds.
+
 ## New features
 
 * **`vcov()` now offers four covariances, not two.** `type` gains

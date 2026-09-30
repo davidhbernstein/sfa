@@ -244,6 +244,7 @@ sfm <- function(formula,
   )
 
   .check_model_formula_pipes(formula, model_name)
+  .check_optim_method(Method)
 
   ## Robust divergence estimation (MLqE/Psi/MDPD, see R/robust_divergence.R)
   ## is currently only wired up for model_name == "NHN".
