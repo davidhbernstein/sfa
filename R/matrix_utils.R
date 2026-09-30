@@ -1655,6 +1655,8 @@
   ## sizeable share of the residual variance and the shape near 0.001. On two
   ## issue #30 samples that mode is 10-14 log-likelihood units above NHN. So
   ## for small shapes also anchor sigma_u^2 on a share of the variance.
+  cands <- Filter(function(z) all(is.finite(z)), cands)
+  n_main <- length(cands)
   for (m in small_mu) {
     r <- exp(lgamma(m + 0.5) - lgamma(m) - 0.5 * log(m))
     for (w in omega_share) {
@@ -1665,7 +1667,11 @@
       cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
     }
   }
-  Filter(function(z) all(is.finite(z)), cands)
+  ## The caller ranks the two families separately (attribute "n_main"), so
+  ## the variance-share candidates add to what is polished rather than
+  ## displacing the E[u]-anchored ones.
+  keep <- vapply(cands, function(z) all(is.finite(z)), logical(1))
+  structure(cands[keep], n_main = sum(keep[seq_len(n_main)]))
 }
 
 

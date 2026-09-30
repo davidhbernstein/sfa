@@ -1144,7 +1144,11 @@ sfm <- function(formula,
       } else {
         .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat)
       }
+      ## NNAK's variance-share candidates are ranked apart from the rest.
+      .n_main <- attr(.cand, "n_main")
+      .n_main <- if (is.null(.n_main)) length(.cand) else .n_main
       .cand <- c(list(start_v), .cand)
+      .is_extra <- seq_along(.cand) > 1L + .n_main
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
       .obj <- vapply(.cand, function(z) {
         tryCatch(
@@ -1158,7 +1162,11 @@ sfm <- function(formula,
       if (any(is.finite(.obj))) {
         ## Polish the most promising few before choosing: a candidate can start in
         ## the right basin yet score worse than one that starts nearer a corner.
-        .ord <- order(.obj)[seq_len(min(3L, sum(is.finite(.obj))))]
+        .top <- function(idx, k) {
+          idx <- idx[is.finite(.obj[idx])]
+          idx[order(.obj[idx])][seq_len(min(k, length(idx)))]
+        }
+        .ord <- c(.top(which(!.is_extra), 3L), .top(which(.is_extra), 2L))
         .fits <- Filter(Negate(is.null), lapply(.ord, function(i) {
           tryCatch(
             suppressWarnings(
