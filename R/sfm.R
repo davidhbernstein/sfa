@@ -950,7 +950,7 @@ sfm <- function(formula,
           ## 9/9 correlation between reaching it and losing every standard
           ## error. The sibling branches' literal 1e12 does NOT fix that; see
           ## .SFA_CONSTANTS$DOMAIN_PENALTY for the sweep behind this value.
-          rep(-.SFA_CONSTANTS$DOMAIN_PENALTY / length(eps), length(eps))
+          rep(-.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS, length(eps))
         } else {
           .log_d_thn(eps, sig_v, sig_u, nu)
         }
