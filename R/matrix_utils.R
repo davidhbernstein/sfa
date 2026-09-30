@@ -1616,7 +1616,9 @@
 ## with a long tail. Where a small shape's variance would exceed the residual
 ## variance, sigma_u is shrunk to leave sigma_v a tenth of it.
 .nnak_start_candidates <- function(epsilon_hat, beta_0_st, beta_hat,
-                                   mu_grid = c(0.01, 0.03, 0.1, 0.25, 0.5, 1, 2)) {
+                                   mu_grid = c(0.01, 0.03, 0.1, 0.25, 0.5, 1, 2),
+                                   small_mu = c(0.001, 0.003, 0.01, 0.03),
+                                   omega_share = c(0.1, 0.2, 0.4)) {
   e <- as.numeric(epsilon_hat)
   e <- e - mean(e)
   n <- length(e)
@@ -1647,6 +1649,21 @@
     if (!is.finite(sv) || !is.finite(su) || sv <= 0 || su <= 0) next
     b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * r
     cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
+  }
+  ## The E[u] anchor above makes sigma_u tiny at small shape, which misses a
+  ## mode where u is mostly near zero with a long tail: E[u^2] = sigma_u^2 a
+  ## sizeable share of the residual variance and the shape near 0.001. On two
+  ## issue #30 samples that mode is 10-14 log-likelihood units above NHN. So
+  ## for small shapes also anchor sigma_u^2 on a share of the variance.
+  for (m in small_mu) {
+    r <- exp(lgamma(m + 0.5) - lgamma(m) - 0.5 * log(m))
+    for (w in omega_share) {
+      su <- sqrt(w * k2)
+      sv <- sqrt(max(k2 - su^2 * (1 - r^2), (0.05 * sd_e)^2))
+      if (!is.finite(sv) || !is.finite(su) || sv <= 0 || su <= 0) next
+      b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * r
+      cands <- c(cands, list(unname(c(sv, su, m, b0, beta_hat))))
+    }
   }
   Filter(function(z) all(is.finite(z)), cands)
 }

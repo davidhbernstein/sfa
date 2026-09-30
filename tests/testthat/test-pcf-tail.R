@@ -63,6 +63,19 @@ test_that("NNAK's multistart reaches the small-shape mode the moment start misse
   expect_gte(as.numeric(logLik(k)), as.numeric(logLik(h)) - 1e-6)
 })
 
+test_that("NNAK reaches the long-tailed mode at shape ~0.001", {
+  skip_on_cran()
+  ## Here the likelihood peaks near shape 0.001 with sigma_u^2 about a fifth
+  ## of the residual variance. -886.6615 is the value at main's optimum,
+  ## confirmed by the convolution integral; NHN is -900.53. Candidates that
+  ## anchor E[u] on the residual skewness put sigma_u near 0.03 and the fit
+  ## ended at NHN; the variance-share candidates reach -884.81.
+  d <- as.data.frame(data_gen_cs(N = 200, rand = 1002401, cons = 0.5, beta1 = 0.5,
+    beta2 = 0.5, sig_u = 1, sig_v = 1, mu = 0.5, a = 5))
+  k <- suppressWarnings(sfm(y_pcs_w ~ x1 + x2, data = d, model_name = "NNAK"))
+  expect_gte(as.numeric(logLik(k)), -886.6615)
+})
+
 test_that("NG and NNAK equal the convolution integral as sigma_v -> 0", {
   skip_on_cran()
   set.seed(30)
