@@ -59,6 +59,23 @@
 
 ## Bug fixes
 
+* **A covariance that failed on a badly scaled Hessian now succeeds, and one
+  that genuinely cannot be computed now names the parameter responsible.**
+  Two separate defects sat behind the same `"no invertible Hessian"` message.
+  First, `solve()` was called on the raw Hessian, whose diagonal can span
+  twenty orders of magnitude when one scale parameter is pinned near zero and
+  the likelihood is correspondingly sharp in that direction; the matrix is
+  then declared computationally singular even though it is well conditioned
+  once equilibrated. `vcov()` and the `sandwich` methods now solve
+  `D^(-1/2) H D^(-1/2)` and undo the scaling, which is algebraically the same
+  inverse and numerically a far better one -- on the fit that prompted this,
+  `rcond` rose from 3e-17 to 8e-2 and the standard errors appeared. Second,
+  when no inverse exists on any scaling, the error said only that one did not,
+  leaving the user to guess which of eleven parameters had collapsed. It now
+  reports the specific cause per parameter: a score column that is
+  identically zero, a coefficient pinned on its bound, a flat direction of the
+  diagonal-normalised Hessian, or non-positive curvature.
+
 * **`sfm("NG")` evaluated its log-likelihood as exactly 0 near a collapsed
   scale.** The density contains `z^2/4 + log D(z)`, the
   parabolic cylinder function's log plus a quadratic, and the log-D routine
