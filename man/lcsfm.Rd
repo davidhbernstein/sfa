@@ -25,7 +25,11 @@ verbose = FALSE, keep_objective = FALSE, rand.psoptim = NULL)}
 \item{inefdec}{Production or cost function}
 \item{penalty_c}{Tuning constant for Chen \emph{et al.}'s (2001) penalty \eqn{c\log(J^J\prod_j p_j)}, which is added to the log-likelihood so that no class probability can be driven to 0 or 1. The default \code{0} leaves the ordinary likelihood untouched. A positive value is what \code{\link{lcsfm_homogeneity}} needs, and it changes what is maximised: \code{$opt$value} then holds the penalised objective, while \code{$logLik_unpenalised} and \code{$penalty} carry the two pieces separately. Only available for \code{model_name = "LCM"}, since the penalty is defined on a scalar mixing proportion.}
 \item{upper}{Vector of upper values for the optim package.}
-\item{Method}{The method to be used for optim. See 'Details' within optim.}
+\item{Method}{Method passed to \code{optim} for the final stage. Must be
+\code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
+and upper bounds this package uses to keep scale parameters positive, and any
+other value is refused with an error rather than quietly optimized without
+them.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The per-observation contributions are those of the mixture likelihood, \eqn{\log \sum_c \pi_c f_c(y_i)}, not of any one class. For \code{"LCM_CN"} with \code{penalty_c > 0} they are \emph{unpenalised} -- a penalty on the class probabilities is not a per-observation quantity -- so the OPG is that of the unpenalised likelihood; at the default \code{penalty_c = 0} the two coincide. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer. seed for replication of psoptim. Default to \code{NULL}.}

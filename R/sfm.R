@@ -244,6 +244,7 @@ sfm <- function(formula,
   )
 
   .check_model_formula_pipes(formula, model_name)
+  .check_optim_method(Method)
 
   ## Robust divergence estimation (MLqE/Psi/MDPD, see R/robust_divergence.R)
   ## is currently only wired up for model_name == "NHN".
@@ -430,6 +431,15 @@ sfm <- function(formula,
     results$v_spec <- .blk(Zv, nb[["beta"]] + seq_len(nb[["v"]]))
     if (nb[["mu"]] > 0L) {
       results$mu_spec <- .blk(Zmu, nb[["beta"]] + nb[["v"]] + nb[["u"]] + seq_len(nb[["mu"]]))
+    }
+    ## The scaling block sits last in the parameter vector (het.R's `is_`), and
+    ## n_blocks does not name it, which is the only reason marginal_effects()
+    ## could not report the scaling property (gap M4). Derived here rather than
+    ## by widening n_blocks, so het.R's contract is untouched; the names are
+    ## checked against the fit's own "scale.*" rows in test-m4-scaling.R.
+    if (!is.null(Zs) && ncol(Zs) > 0L) {
+      off <- nb[["beta"]] + nb[["v"]] + nb[["u"]] + nb[["mu"]]
+      results$s_spec <- .blk(Zs, off + seq_len(ncol(Zs)))
     }
     if (isTRUE(keep_objective)) results$objective <- HF$objective
     return(results)

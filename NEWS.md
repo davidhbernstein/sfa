@@ -1,6 +1,46 @@
 # sfa 1.2.1
 
+## Bug fixes
+
+* **`Method` now rejects any value other than `"L-BFGS-B"` instead of silently
+  optimizing without bounds.** `Method` is passed to `optim()` for the final
+  stage together with the lower and upper bounds that hold the scale parameters
+  positive -- but `optim()` applies bounds for `"L-BFGS-B"` only. With
+  `"BFGS"`, `"CG"`, `"Nelder-Mead"` or `"SANN"`, R warned
+  (`"bounds can only be used with method L-BFGS-B"`) and the stage then ran
+  UNBOUNDED, free to take a standard deviation to or past zero. That was
+  invisible on an interior optimum -- all five methods agree to eight figures on
+  a well-behaved fit, because the bounds never bind there -- and it bit only
+  where a bound was active, which is exactly the boundary-collapse region the
+  scaffold's guards exist for. `sfm()`, `zsfm()`, `lcsfm()`, `psfm()`,
+  `ttsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` now validate `Method` before
+  fitting anything, and `opt.optim()` enforces it as well, since that is the
+  function which passes the bounds.
+
 ## New features
+
+* **`marginal_effects()` now covers the truncated normal.** It previously
+  handled the families whose `E[u]` is proportional to the scale -- the
+  half-normal and the exponential -- where the effect collapses to
+  `half * delta_k * E[u]`. `model_name = "NTN"` fitted with `uhet`/`muhet` is
+  not one of those: the pre-truncation mean enters `E[u]` beside the scale, so
+  the effect is the chain rule through both designs. With `a = mu/sigma_u` and
+  `lambda(a) = phi(a)/Phi(a)`, `dE[u]/dmu = 1 - lambda(lambda + a)` and
+  `dE[u]/dsigma_u = lambda + a lambda(lambda + a)`; `mu` carries an identity
+  link, so `delta_mu` is not a semi-elasticity the way the scale coefficients
+  are. A covariate in one design but not the other contributes only through
+  that one. Every derivative is checked against `numDeriv` in the tests rather
+  than against a second hand derivation.
+
+* **`marginal_effects()` also reports the scaling property.** Under
+  `sfm(scaling = ~ z)` one factor `h = exp(z'delta_s)` multiplies both the scale
+  and the pre-truncation mean, so `a = mu/sigma_u` is constant in `z`,
+  `E[u] = h E[u*]`, and the effect is exactly `delta_s_k * E[u]` whatever the
+  family -- with `delta_s_k` itself the semi-elasticity, so `dE_u.dz / E_u` is
+  constant by construction. The quantity was already fitted and simply not
+  reported: the fit stored no scaling block, because `n_blocks` does not name
+  one. `sfm()` now stores `s_spec` alongside `z_spec`, `v_spec` and `mu_spec`.
+
 
 * **`vcov()` now offers four covariances, not two.** `type` gains
   `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and
