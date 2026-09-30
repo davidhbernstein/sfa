@@ -59,6 +59,28 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "TSL")` could return a non-physical fit.** Both of the
+  truncated skew-Laplace likelihood's exponentially tilted Gaussians were
+  formed as two numbers whose large parts cancel analytically: with
+  `t = sigma_v/sigma_u` the tilt raises `t^2/2 + w t` and `log Phi` takes
+  exactly that back, so `A - aa^2/2 = -eps^2/(2 sigma_v^2)`. As `sigma_u`
+  collapsed, `t` grew without bound and the two pieces cancelled
+  catastrophically -- while both stayed FINITE, so the non-finite guard never
+  saw it. At `sigma_v = 1.126e20`, `sigma_u = 1e-7` the old form returned a
+  log-likelihood of `+2.55e40`, roughly `1e40` better than any legitimate
+  optimum and therefore an attractor. Both tilts, and the matching pair in the
+  TSL efficiency block, now go through `.log_phi_tilt()`, as `NE` and `NGE`
+  already did.
+
+  Over 432 TSL fits spanning 24 samples and 18 response columns -- mostly
+  deliberately misspecified, which is where `sigma_u` collapses -- the number
+  of non-physical log-likelihoods falls from **8 to 0**, and the number of fits
+  scoring below the OLS that TSL nests at `sigma_u = 0` falls from **40 to 3**.
+  That second figure is the one to note: only 8 fits were visibly absurd, and
+  on about 30 more the corrupted likelihood was quietly misplacing the optimum
+  while still returning a plausible-looking number. Reported as issue #28.
+
+
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**
   Two separate defects sat behind the same `"no invertible Hessian"` message.
