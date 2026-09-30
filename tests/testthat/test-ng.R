@@ -77,9 +77,9 @@ test_that("NG's slope coefficients all actually enter the likelihood", {
   ## read, so it simply kept its starting value. Perturbing ANY coefficient
   ## must move the log-likelihood.
   ##
-  ## Evaluated directly rather than through a re-fit: routing this through
-  ## sfm(..., optHessian = FALSE) leaves no $opt, so logLik() returns NA and
-  ## the comparison would pass for the wrong reason.
+  ## Evaluated directly rather than through a re-fit, so the check depends on
+  ## nothing but the density. (Through 1.2.0, sfm(..., optHessian = FALSE)
+  ## stored bobyqa's raw result as $opt, so logLik() returned NA -- gap A52.)
   d <- data_gen_cs(N = 800, rand = 2, sig_u = 1, sig_v = 0.3, cons = 0.5,
                    beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.1)
   Y <- d$y_pcs_g; X <- cbind(1, d$x1, d$x2)

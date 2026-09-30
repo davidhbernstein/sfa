@@ -362,6 +362,16 @@ nobs.sfareg <- function(object, ...) {
   if (all(keep)) dat else dat[keep, , drop = FALSE]
 }
 
+## OLS residuals of the frontier on the rows a fit used, kept on zsfm() and
+## ttsfm() fits as `anchor_resid` so .sfa_data_check() can rebuild them from
+## recovered data and compare -- the decisive tier, where a row count alone
+## passes any decoy of the same shape (gap A48). n doubles per fit.
+.sfa_anchor_resid <- function(X, Y) {
+  tryCatch(as.numeric(stats::lm.fit(as.matrix(X), as.numeric(Y))$residuals),
+    error = function(e) NULL
+  )
+}
+
 ## Does `dat` identify itself as this fit's data? Three tiers, strongest
 ## first; which apply depends on what the entry point stored. nobs.sfareg() is
 ## deliberately not one of them -- it re-evaluates the call itself, so the
@@ -384,7 +394,13 @@ nobs.sfareg <- function(object, ...) {
   ## Tier 1, decisive where the fit kept its OLS residuals: rebuild and
   ## compare, either sign (sfm() stores them signed by `inefdec`). A tier that
   ## cannot be computed falls through rather than rejecting.
-  orr <- suppressWarnings(tryCatch(as.numeric(object$ols_residuals), error = function(e) NULL))
+  ## zsfm() and ttsfm() keep the same residuals as `anchor_resid`: a private
+  ## name, because skewness_test(), spec_test() and others read
+  ## `ols_residuals` and would change behaviour on those fits (gap A48). Not
+  ## `data_*`: `object$data` above partial-matches any such name.
+  orr <- object$ols_residuals
+  if (is.null(orr)) orr <- object$anchor_resid
+  orr <- suppressWarnings(tryCatch(as.numeric(orr), error = function(e) NULL))
   if (length(orr)) {
     own <- tryCatch(
       {
@@ -429,8 +445,8 @@ nobs.sfareg <- function(object, ...) {
     return(list(ok = nrow(dat) >= n_used, checked = "nobs"))
   }
 
-  ## Structure only. zsfm()/ttsfm() land here and a same-shaped decoy passes;
-  ## the trust ordering is what protects them (gap A48).
+  ## Structure only: a fit that stores none of the above. Every entry point's
+  ## main path now stores at least `nobs`; a same-shaped decoy passes here.
   list(ok = TRUE, checked = "variables")
 }
 
