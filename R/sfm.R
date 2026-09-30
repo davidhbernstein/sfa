@@ -964,12 +964,15 @@ sfm <- function(formula,
         sig_v <- x[1]
         sig_u <- x[2]
         lam <- x[3]
-        A <- sig_v^2 / (2 * sig_u^2) + eps / sig_u
-        B <- (1 + lam)^2 * sig_v^2 / (2 * sig_u^2) + eps * (1 + lam) / sig_u
+        ## Both tilts go through .log_phi_tilt(), as NE/NGE already do: the
+        ## sig_v^2/(2 sig_u^2) + eps/sig_u raised by A cancels EXACTLY against
+        ## the same terms inside log Phi(aa), leaving -eps^2/(2 sig_v^2). Formed
+        ## as two pieces it cancels catastrophically as sig_u -> 0 (issue #28).
+        q <- eps^2 / (2 * sig_v^2)
         aa <- -sig_v / sig_u - eps / sig_v
         bb <- -sig_v * (1 + lam) / sig_u - eps / sig_v
-        l1 <- log(2) + A + pnorm(aa, log.p = TRUE)
-        l2 <- B + pnorm(bb, log.p = TRUE)
+        l1 <- log(2) - q + .log_phi_tilt(aa)
+        l2 <- -q + .log_phi_tilt(bb)
         like <- log1p(lam) - log(2 * lam + 1) - log(sig_u) +
           l1 + log(-expm1(pmin(l2 - l1, -.Machine$double.eps)))
       }
@@ -1522,10 +1525,11 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       r1 <- 1 / sig_u
       r2 <- (1 + lam) / sig_u
-      lt1 <- log(2) + r1 * eps_hat + (r1^2 * sig_v^2) / 2 +
-        pnorm(-eps_hat / sig_v - r1 * sig_v, log.p = TRUE)
-      lt2 <- r2 * eps_hat + (r2^2 * sig_v^2) / 2 +
-        pnorm(-eps_hat / sig_v - r2 * sig_v, log.p = TRUE)
+      ## Same cancellation as the likelihood above (issue #28); r1 != r2, so
+      ## the blowup does NOT cancel between lt1 and lt2 in d.
+      q_hat <- eps_hat^2 / (2 * sig_v^2)
+      lt1 <- log(2) - q_hat + .log_phi_tilt(-eps_hat / sig_v - r1 * sig_v)
+      lt2 <- -q_hat + .log_phi_tilt(-eps_hat / sig_v - r2 * sig_v)
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
       w1 <- -1 / expm1(d)
       w2 <- w1 - 1
