@@ -73,6 +73,25 @@ copsfm(formula, data,
   Method, verbose, rand.psoptim}{As in \code{\link{sfm}}.}
 }
 \details{
+In brief:
+\itemize{
+  \item The frontier slopes behave normally. The dependence parameter does
+    not: it needs several thousand observations, and at \eqn{n = 2000} its
+    sign can come out wrong, taking \eqn{\sigma_u} with it (0.57 against a
+    truth of 1 in the design below).
+  \item Below a crossover between \eqn{n = 400} and \eqn{n = 1000}, plain
+    \code{\link{sfm}} estimates \eqn{\sigma_u} with a lower RMSE than the true
+    copula does.
+  \item Prefer \code{copula = "frank"} or \code{"clayton"}. The other families
+    often return the independence bound on data generated from themselves, and
+    \code{copsfm} warns when you pick one.
+  \item \eqn{\alpha_v} (\code{vdist = "glogistic"}) is consistent but noisy,
+    and below about \eqn{n = 2000} it can return its upper bound.
+  \item Keep \code{n_nodes} at 64 or more. At 32 the estimates are biased.
+}
+Each point is measured in the subsections below.
+
+\subsection{The model}{
 The package's taxonomy already writes the general joint density as
 \deqn{f_{V,U}(v,u) = f_V(v)\,f_U(u)\,c(F_V(v), F_U(u); \rho),}
 with every existing specification setting \eqn{c \equiv 1}. This function
@@ -82,14 +101,27 @@ relaxes that, \emph{and} lets the two marginals vary. Composing over
       c\!\left(F_V(\varepsilon + Su), F_U(u)\right) du,}
 a one-dimensional integral evaluated by Gauss--Legendre quadrature on
 \eqn{u = t/(1-t)} rather than by simulation.
+}
 
-\bold{Why \code{n_nodes} defaults to 128.} Measured against the closed-form
+\subsection{Quadrature nodes}{
+Measured against the closed-form
 normal/half-normal density at independence, the largest absolute error in
 \eqn{\log f} is 1.3e-2 at 32 nodes, 2.5e-5 at 64, and 8.2e-14 at 128. Sixty-four
 looks adequate and is not: 1e-5 per observation is 0.02 in a log-likelihood over
 2000 points, which is the scale at which competing modes are compared.
 
-\bold{Skewed noise, and what it is for.} Bonanno and Domma (2022) argue that
+\bold{Node counts, measured in paired runs.} Forty datasets sent to every node count,
+so the differences are the quadrature and not the draw. Against the 128-node default,
+the mean difference in \eqn{\hat\rho} is +0.0002 at 256 nodes (\eqn{t = 1.37}) and
++0.0046 at 64 (\eqn{t = 1.47}) -- neither distinguishable -- but \bold{-0.0783 at 32}
+(\eqn{t = -2.79}, \eqn{p = 0.008}), with per-dataset differences as large as 0.52. So
+the quadrature has converged by 64, and 32 must not be used as a fast option: it is
+biased, not merely noisier. For scale, \eqn{\hat\rho}'s own sampling standard
+deviation is 0.385 at \eqn{n = 600}, which dwarfs every node-count effect here.
+}
+
+\subsection{Skewed noise, and what it is for}{
+Bonanno and Domma (2022) argue that
 the \dQuote{wrong skewness} anomaly is a specification failure rather than a
 small-sample accident. The third central moment of the composed error is
 \deqn{E[(\varepsilon - E\varepsilon)^3] = J\,E[(u-Eu)^3] + E[(v-Ev)^3]
@@ -111,8 +143,10 @@ Their four specifications are four \code{(copula, vdist)} pairs, all with
  (D,S) \tab \code{copula = "fgm", vdist = "logistic"} \tab dependence, symmetric \eqn{v} \cr
  (D,A) \tab \code{copula = "fgm", vdist = "glogistic"} \tab dependence, skewed \eqn{v}
 }
+}
 
-\bold{Verification.} The paper derives the composed density in closed form for
+\subsection{Verification against the closed form, and two corrected moment formulas}{
+The paper derives the composed density in closed form for
 this case, as a sum of four Gauss hypergeometric terms -- Theorem 1 for a
 production frontier and Theorem 2 for a cost frontier. This function computes
 it by quadrature instead, and the two agree to about \eqn{10^{-14}} in
@@ -145,7 +179,9 @@ E[g(v)(1-2G_v)]\, E[h(u)(1-2F_u)]}, whose two generalized-logistic weights are
 \psi'(2\alpha_v) - D^2]}; those are verified to \eqn{10^{-9}} in
 \code{test-wrongskew-suite.R}. \code{\link{skewness_decomp}} computes the
 three pieces for any fit.
+}
 
+\subsection{How well the noise shape is estimated}{
 \bold{\eqn{\alpha_v} is consistent but noisy, and below about \eqn{n = 2000} it
 can return its upper bound.} Measured over 12 replications at each size, data
 generated at \eqn{\alpha_v = 2.5}, \eqn{\sigma_u = 0.9}, \eqn{\delta_v = 0.4}
@@ -175,7 +211,29 @@ the way -- \eqn{\alpha_v} trades off against the dependence parameter and the
 intercept, not against the two scales. Read a boundary \eqn{\hat\alpha_v} as
 \dQuote{the noise is skewed, direction known, magnitude not}, and compare
 against \code{vdist = "logistic"} rather than reporting the number.
+}
 
+\subsection{Choosing a family}{
+The families differ in
+two things that matter: whether they admit negative dependence, and where they
+concentrate it. Gaussian and Frank spread association evenly and have no tail
+dependence; Clayton concentrates it in the lower tail and Gumbel and Joe in the
+upper; FGM can only express weak association at all.
+
+Against that, weigh what the next subsection establishes: the dependence
+parameter is estimated very imprecisely. On a Gaussian design at
+\eqn{n = 600} its sampling standard deviation is 0.385 against a truth of 0.5.
+Offering fifteen families does not make that better, and it makes one thing
+worse -- with fifteen candidates, some family will attain the highest
+likelihood on independent data by chance. On a sample generated with
+\emph{independent} \eqn{v} and \eqn{u}, the fitted log-likelihoods across
+families span only about 0.8, and the best of them reports \eqn{\theta = 1.83}
+for Gumbel. Treat a family comparison as descriptive, not as evidence of a
+dependence structure, and prefer a family chosen for a reason to one chosen by
+its likelihood.
+}
+
+\subsection{How well the dependence parameter is estimated}{
 \bold{The dependence parameter needs a large sample. This is the thing to know
 before using it.} The frontier slopes behave normally, but \eqn{\rho} does not.
 \bold{Most of these families do not recover their own dependence parameter, and
@@ -204,24 +262,6 @@ warn that they were not, rather than implying either outcome.
 
 \bold{Prefer \code{"frank"} or \code{"clayton"}}, and treat an estimate from any
 other family as exploratory.
-
-\bold{Choosing a family, and a warning about doing so.} The families differ in
-two things that matter: whether they admit negative dependence, and where they
-concentrate it. Gaussian and Frank spread association evenly and have no tail
-dependence; Clayton concentrates it in the lower tail and Gumbel and Joe in the
-upper; FGM can only express weak association at all.
-
-Against that, weigh what the next paragraphs establish: the dependence
-parameter is estimated very imprecisely. On a Gaussian design at
-\eqn{n = 600} its sampling standard deviation is 0.385 against a truth of 0.5.
-Offering fifteen families does not make that better, and it makes one thing
-worse -- with fifteen candidates, some family will attain the highest
-likelihood on independent data by chance. On a sample generated with
-\emph{independent} \eqn{v} and \eqn{u}, the fitted log-likelihoods across
-families span only about 0.8, and the best of them reports \eqn{\theta = 1.83}
-for Gumbel. Treat a family comparison as descriptive, not as evidence of a
-dependence structure, and prefer a family chosen for a reason to one chosen by
-its likelihood.
 
 On a Gaussian-copula design with true \eqn{\rho = 0.6}, \eqn{\sigma_U = 1},
 \eqn{\sigma_V = 0.4}:
@@ -264,20 +304,16 @@ removes, so plain \code{\link{sfm}} wins on RMSE; above it \code{copsfm} wins. T
 independence bias does not shrink with \eqn{n} (about 22\% of \eqn{\sigma_U}, since
 it is misspecification rather than noise), while the copula fit's RMSE falls as it
 should.
+}
 
-\bold{Node counts, measured in paired runs.} Forty datasets sent to every node count,
-so the differences are the quadrature and not the draw. Against the 128-node default,
-the mean difference in \eqn{\hat\rho} is +0.0002 at 256 nodes (\eqn{t = 1.37}) and
-+0.0046 at 64 (\eqn{t = 1.47}) -- neither distinguishable -- but \bold{-0.0783 at 32}
-(\eqn{t = -2.79}, \eqn{p = 0.008}), with per-dataset differences as large as 0.52. So
-the quadrature has converged by 64, and 32 must not be used as a fast option: it is
-biased, not merely noisier. For scale, \eqn{\hat\rho}'s own sampling standard
-deviation is 0.385 at \eqn{n = 600}, which dwarfs every node-count effect here.
-
-\bold{Families.} Only densities that could be verified are offered. Each is
-checked in the tests two ways: it integrates to 1 over the unit square, and it
-returns exactly 1 at the independence parameter. Frank, Clayton and Gumbel are
-deliberately absent rather than transcribed without a source to check against.
+\subsection{Which densities are offered}{
+Only densities that could be verified are offered. Each is checked in
+\code{test-copsfm.R}: it integrates to 1 over the unit square, and it returns
+exactly 1 at the independence parameter. Frank, Clayton, Gumbel and Joe, whose
+densities concentrate in a corner where the integral check is loose, are also
+checked against the second mixed partial of their own CDF, a test a wrong
+formula cannot pass. The rotations are those same densities reflected.
+}
 }
 \value{
 An object of class \code{"sfareg"}, with \code{copula}, \code{copula_par}

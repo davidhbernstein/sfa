@@ -1963,6 +1963,45 @@
   out
 }
 
+## log D_nu(z) + z^2/4, for nu < 0: the combination NG's and NNAK's densities
+## actually use (gap A49). .log_pcf() returns -z^2/4 + (a term of order
+## log z), so adding z^2/4 back cancels catastrophically once z is large -- and
+## in NG z is about sigma_v / sigma_u, so it is large exactly when sigma_u
+## approaches its lower bound. Measured on 200 observations: the summed NG
+## log-likelihood was off by 0.03 at sigma_u = 1e-7, by +117 (spuriously
+## BETTER) at 1e-9, and exactly 0 at 1e-10 and below -- a finite value the
+## non-finite guard cannot catch, and a strong attractor for the optimizer.
+##
+## For large z the asymptotic expansion (Abramowitz and Stegun 19.8.1) gives
+## the combination directly, with nothing to cancel:
+##   D_nu(z) e^(z^2/4) = z^nu sum_s (-1)^s nu(nu-1)...(nu-2s+1) / (s! (2 z^2)^s),
+## whose term ratio for p = -nu is -(p + 2s)(p + 2s + 1) / (2 (s + 1) z^2).
+## Where z^2 exceeds 1e3 (p + 2)^2 the first term dropped is below 1e-18
+## relative within ten terms. Elsewhere z^2/4 is small enough that the plain
+## sum loses nothing that matters, and .log_pcf() is used unchanged.
+.log_pcf_scaled <- function(nu, z) {
+  z <- as.numeric(z)
+  nu <- rep_len(as.numeric(nu), length(z))
+  p <- -nu
+  big <- is.finite(z) & is.finite(p) & p > 0 & z > 1e3 & z^2 > 1e3 * (p + 2)^2
+  out <- rep(NA_real_, length(z))
+  small <- which(!big)
+  if (length(small)) out[small] <- .log_pcf(nu[small], z[small]) + z[small]^2 / 4
+  b <- which(big)
+  if (length(b)) {
+    pb <- p[b]
+    zb2 <- z[b]^2
+    term <- rep(1, length(b))
+    s_sum <- term
+    for (s in 0:9) {
+      term <- -term * (pb + 2 * s) * (pb + 2 * s + 1) / (2 * (s + 1) * zb2)
+      s_sum <- s_sum + term
+    }
+    out[b] <- -pb * log(z[b]) + log(s_sum)
+  }
+  out
+}
+
 ## What the gsl version returned below the clip: its series
 ## 2^(-p/2) sqrt(pi) e^(-z^2/4) [M(p/2, 1/2, q) / Gamma((1+p)/2) - sqrt(2) z M((1+p)/2, 3/2, q) / Gamma(p/2)]
 ## at q = EXP_CLIP_UPPER instead of z^2/2, and Inf wherever a factor overflowed.

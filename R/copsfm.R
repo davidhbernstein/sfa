@@ -494,7 +494,7 @@ copsfm <- function(formula,
   start_v <- Opt.Optim$start_v; opt <- Opt.Optim$opt
   End.Time <- end.time(Start.Time)
 
-  if (optHessian == FALSE & PSopt == FALSE) { opt <- bob1; st_err <- rep(NA, length(opt$par)) }
+  if (optHessian == FALSE & PSopt == FALSE) { opt <- .as_optim(bob1); st_err <- rep(NA, length(opt$par)) }
   if (optHessian == FALSE & PSopt == TRUE)  { opt <- opt00; st_err <- rep(NA, length(opt$par)) }
   if (optHessian == TRUE) {
     st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {

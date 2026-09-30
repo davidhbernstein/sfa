@@ -382,7 +382,7 @@ ivsfm <- function(formula,
   End.Time <- end.time(Start.Time)
 
   if (optHessian == FALSE & PSopt == FALSE) {
-    opt <- bob1
+    opt <- .as_optim(bob1)
     st_err <- rep(NA, length(opt$par))
   }
   if (optHessian == FALSE & PSopt == TRUE) {

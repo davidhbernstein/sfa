@@ -578,13 +578,11 @@ sfm <- function(formula,
           ## moment estimates. CF$sigma_u is the gamma SCALE and extra["mu"]
           ## the shape, matching .cols_fit()'s "NG" inversion.
           ##
-          ## .log_pcf() directly, NOT the `lnDv` alias: that alias is a local
-          ## defined inside the maximum-likelihood path further down, which
-          ## this branch returns long before reaching.
+          ## z^2/4 + log D(z) as one quantity, as there (gap A49).
           zg <- eps_c / CF$sigma_v + CF$sigma_v / CF$sigma_u
           mg <- unname(CF$extra[["mu"]])
-          pmin(pmax(exp(((zg + CF$sigma_v) / 2)^2 - (zg / 2)^2 +
-            .log_pcf(-mg, zg + CF$sigma_v) - .log_pcf(-mg, zg)), 0), 1)
+          pmin(pmax(exp(.log_pcf_scaled(-mg, zg + CF$sigma_v) -
+            .log_pcf_scaled(-mg, zg)), 0), 1)
         },
         ## Carree's u is DISCRETE, so its posterior is a finite sum rather than
         ## an integral: P(u = j | eps) proportional to C(n,j) p^j (1-p)^(n-j)
@@ -978,8 +976,6 @@ sfm <- function(formula,
       }
 
       if (model_name %in% c("NG", "NNAK")) {
-        ## Stable log parabolic cylinder function.
-        lnDv <- function(nu, z) .log_pcf(nu, z)
         sig_v <- x[1]
         sig_u <- x[2]
         ## A vector shape where `shapehet` is given, a scalar otherwise.
@@ -991,16 +987,18 @@ sfm <- function(formula,
         } else {
           x[3]
         }
+        ## `z^2/4 + log D(z)` is taken as ONE quantity, .log_pcf_scaled(): as
+        ## two it cancels to exactly 0 near a collapsed scale (gap A49).
         if (model_name == "NG") {
           like <- ((mu - 1) * log(sig_v) - 1 / 2 * log(2) - 1 / 2 * log(pi) - mu * log(sig_u)
-            - 1 / 2 * (eps / sig_v)^2 + 1 / 4 * (eps / sig_v + sig_v / sig_u)^2
-            + lnDv(-mu, eps / sig_v + sig_v / sig_u))
+            - 1 / 2 * (eps / sig_v)^2
+            + .log_pcf_scaled(-mu, eps / sig_v + sig_v / sig_u))
         }
         if (model_name == "NNAK") {
           sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
           like <- (lgamma(2 * mu) - lgamma(mu) + 1 / 2 * log(2) - 1 / 2 * log(pi) + mu * log(mu)
             + (2 * mu - 1) * log(sig_v) - 2 * mu * log(sigma) - 1 / 2 * (eps / sig_v)^2
-            + 1 / 4 * ((eps * sig_u / sig_v) / sigma)^2 + lnDv(-2 * mu, (eps * sig_u / sig_v) / sigma))
+            + .log_pcf_scaled(-2 * mu, (eps * sig_u / sig_v) / sigma))
         }
       }
 
@@ -1180,7 +1178,11 @@ sfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      ## Exactly one of nlminb and bobyqa runs (use.nlminb and use.bobyqa are
+      ## complements), so for the .nlminb_safe models bob1 is NULL and the
+      ## stage that ran is nlminb. Its result used to be discarded and `opt`
+      ## left NULL, a hard error below (gap A52a).
+      opt <- .as_optim(if (!is.null(bob1)) bob1 else Opt.Nlminb$nlm1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -1537,8 +1539,10 @@ sfm <- function(formula,
 
     if (model_name %in% c("NG", "NNAK")) {
       ## Same stable helper the likelihood uses; the series form here also
-      ## carried a stray trailing comma inside log().
-      lnDv <- function(nu, z) .log_pcf(nu, z)
+      ## carried a stray trailing comma inside log(). The ratio
+      ## exp((z + a)^2 / 4) D(z + a) / (exp(z^2 / 4) D(z)) is formed in logs
+      ## through .log_pcf_scaled(): as written before it overflowed to
+      ## Inf / Inf = NaN once z passed about 53 (gap A49).
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
@@ -1546,12 +1550,13 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       if (model_name == "NG") {
         z <- eps_hat / sig_v + sig_v / sig_u
-        exp_u_hat <- exp(((z + sig_v) / 2)^2) / exp((z / 2)^2) * exp(lnDv(-mu, z + sig_v)) / exp(lnDv(-mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled(-mu, z + sig_v) - .log_pcf_scaled(-mu, z))
       }
       if (model_name == "NNAK") {
         sigma <- sqrt(2 * mu * sig_v^2 + sig_u^2)
         z <- (eps_hat * sig_u / sig_v) / sigma
-        exp_u_hat <- exp((z / 2 + sig_v * sig_u / (2 * sigma))^2) / exp((z / 2)^2) * exp(lnDv(-2 * mu, z + sig_v * sig_u / sigma)) / exp(lnDv(-2 * mu, z))
+        exp_u_hat <- exp(.log_pcf_scaled(-2 * mu, z + sig_v * sig_u / sigma) -
+          .log_pcf_scaled(-2 * mu, z))
       }
       exp_u_hat <- pmax(exp_u_hat, 0)
       exp_u_hat <- pmin(exp_u_hat, 1)
