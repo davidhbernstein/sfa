@@ -59,6 +59,21 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "TSL")` could report a log-likelihood of +1.7e40 as
+  a converged fit (issue #28).** The composed density formed each exponential
+  tilt, `sigma_v^2 / (2 sigma_u^2) + eps / sigma_u`, separately from the
+  `log Phi()` it multiplies. Both are about `sigma_v^2 / (2 sigma_u^2)` with
+  opposite signs, so with `sigma_u` near its `1e-7` floor their sum was
+  rounding noise, and the optimizer climbed positive noise to
+  `sigma_v ~ 1e20`. Each tilt is exactly `z^2 / 2 - eps^2 / (2 sigma_v^2)`
+  for its own `log Phi()` argument `z`, so both terms now go through
+  `.log_phi_tilt()`, as NE's already did. The efficiency weights formed the
+  same terms and are changed the same way. At ordinary parameter values the
+  two forms agree to 1e-12. As `sigma_u -> 0` the likelihood now tends to its
+  normal limit instead of drifting: with `sigma_u = 1e-12`, the summed
+  log-likelihood on one test sample was -1.1e10 and is now -345.79, the
+  normal value.
+
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**
   Two separate defects sat behind the same `"no invertible Hessian"` message.

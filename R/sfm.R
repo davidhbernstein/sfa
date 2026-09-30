@@ -964,12 +964,19 @@ sfm <- function(formula,
         sig_v <- x[1]
         sig_u <- x[2]
         lam <- x[3]
-        A <- sig_v^2 / (2 * sig_u^2) + eps / sig_u
-        B <- (1 + lam)^2 * sig_v^2 / (2 * sig_u^2) + eps * (1 + lam) / sig_u
         aa <- -sig_v / sig_u - eps / sig_v
         bb <- -sig_v * (1 + lam) / sig_u - eps / sig_v
-        l1 <- log(2) + A + pnorm(aa, log.p = TRUE)
-        l2 <- B + pnorm(bb, log.p = TRUE)
+        ## Each tilt, sig_v^2/(2 sig_u^2) + eps/sig_u and its (1 + lam)
+        ## counterpart, equals z^2/2 - eps^2/(2 sig_v^2) for its own argument z,
+        ## so l1 and l2 go through .log_phi_tilt(), as NE does (issue #28).
+        ## Formed directly, the tilt and log Phi(z) are each ~sig_v^2/(2 sig_u^2)
+        ## with opposite signs; with sig_u near its floor the sum was rounding
+        ## noise, and the optimizer converged to a reported logLik of +1.7e40
+        ## at sigma_v ~ 1e20. The eps^2 term is common to l1 and l2, so it
+        ## leaves l2 - l1 exact.
+        q <- -eps^2 / (2 * sig_v^2)
+        l1 <- log(2) + q + .log_phi_tilt(aa)
+        l2 <- q + .log_phi_tilt(bb)
         like <- log1p(lam) - log(2 * lam + 1) - log(sig_u) +
           l1 + log(-expm1(pmin(l2 - l1, -.Machine$double.eps)))
       }
@@ -1522,10 +1529,10 @@ sfm <- function(formula,
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
       r1 <- 1 / sig_u
       r2 <- (1 + lam) / sig_u
-      lt1 <- log(2) + r1 * eps_hat + (r1^2 * sig_v^2) / 2 +
-        pnorm(-eps_hat / sig_v - r1 * sig_v, log.p = TRUE)
-      lt2 <- r2 * eps_hat + (r2^2 * sig_v^2) / 2 +
-        pnorm(-eps_hat / sig_v - r2 * sig_v, log.p = TRUE)
+      ## Only lt2 - lt1 is used, so the common -eps^2/(2 sig_v^2) drops out
+      ## and the tilt form (see the likelihood, issue #28) is exact.
+      lt1 <- log(2) + .log_phi_tilt(-eps_hat / sig_v - r1 * sig_v)
+      lt2 <- .log_phi_tilt(-eps_hat / sig_v - r2 * sig_v)
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
       w1 <- -1 / expm1(d)
       w2 <- w1 - 1
