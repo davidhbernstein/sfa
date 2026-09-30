@@ -99,6 +99,34 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "tHN")` lost every standard error on about a third of
+  fits.** The tHN branch returned `-.Machine$double.xmax / n` per observation
+  for a parameter outside its domain. Summed over the observations that **is**
+  `.Machine$double.xmax`, and `optim()` differences the objective to build its
+  gradient, so the first difference was not merely large but non-finite, and
+  the Hessian -- and with it every standard error -- came back `NA`.
+
+  The guard looked unreachable: `nu` is bounded below at 2.05 while the guard
+  tests `nu <= 2`, and `sigma_u` at `1e-7` while the guard tests
+  `sigma_u <= 0`. It is reached because `optim()` steps **outside** its own box
+  to form the finite difference -- `ndeps` defaults to `1e-3`, and the guard
+  was observed firing at `sigma_u = -0.0009999`, exactly `1e-7 - 1e-3`. Over
+  nine fits, every fit that reached the guard lost all its standard errors and
+  every fit that did not kept them.
+
+  Over 84 tHN fits the number losing every standard error falls from **25 to
+  2**, with the fitted log-likelihoods unchanged. The two that remain sit at
+  `nu = 7720` and `nu = 69` -- the t's normal limit, where the degrees of
+  freedom are weakly identified and the Hessian is legitimately near-singular.
+
+  The penalty is now `.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS`, chosen by
+  measurement rather than by analogy: the obvious fix of matching the `1e12`
+  used by the `NGE`, `NGB2`, `NLN` and `NW` branches recovers **nothing**, since
+  `1e12` differences just as badly. Those four branches are unchanged here --
+  whether their own guards are reachable the way tHN's is has not been measured,
+  and assuming it would repeat the reasoning that left tHN untouched.
+
+
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**
   Two separate defects sat behind the same `"no invertible Hessian"` message.
