@@ -1,6 +1,46 @@
 # sfa 1.2.1
 
+## Bug fixes
+
+* **`Method` now rejects any value other than `"L-BFGS-B"` instead of silently
+  optimizing without bounds.** `Method` is passed to `optim()` for the final
+  stage together with the lower and upper bounds that hold the scale parameters
+  positive -- but `optim()` applies bounds for `"L-BFGS-B"` only. With
+  `"BFGS"`, `"CG"`, `"Nelder-Mead"` or `"SANN"`, R warned
+  (`"bounds can only be used with method L-BFGS-B"`) and the stage then ran
+  UNBOUNDED, free to take a standard deviation to or past zero. That was
+  invisible on an interior optimum -- all five methods agree to eight figures on
+  a well-behaved fit, because the bounds never bind there -- and it bit only
+  where a bound was active, which is exactly the boundary-collapse region the
+  scaffold's guards exist for. `sfm()`, `zsfm()`, `lcsfm()`, `psfm()`,
+  `ttsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` now validate `Method` before
+  fitting anything, and `opt.optim()` enforces it as well, since that is the
+  function which passes the bounds.
+
 ## New features
+
+* **`marginal_effects()` now covers the truncated normal.** It previously
+  handled the families whose `E[u]` is proportional to the scale -- the
+  half-normal and the exponential -- where the effect collapses to
+  `half * delta_k * E[u]`. `model_name = "NTN"` fitted with `uhet`/`muhet` is
+  not one of those: the pre-truncation mean enters `E[u]` beside the scale, so
+  the effect is the chain rule through both designs. With `a = mu/sigma_u` and
+  `lambda(a) = phi(a)/Phi(a)`, `dE[u]/dmu = 1 - lambda(lambda + a)` and
+  `dE[u]/dsigma_u = lambda + a lambda(lambda + a)`; `mu` carries an identity
+  link, so `delta_mu` is not a semi-elasticity the way the scale coefficients
+  are. A covariate in one design but not the other contributes only through
+  that one. Every derivative is checked against `numDeriv` in the tests rather
+  than against a second hand derivation.
+
+* **`marginal_effects()` also reports the scaling property.** Under
+  `sfm(scaling = ~ z)` one factor `h = exp(z'delta_s)` multiplies both the scale
+  and the pre-truncation mean, so `a = mu/sigma_u` is constant in `z`,
+  `E[u] = h E[u*]`, and the effect is exactly `delta_s_k * E[u]` whatever the
+  family -- with `delta_s_k` itself the semi-elasticity, so `dE_u.dz / E_u` is
+  constant by construction. The quantity was already fitted and simply not
+  reported: the fit stored no scaling block, because `n_blocks` does not name
+  one. `sfm()` now stores `s_spec` alongside `z_spec`, `v_spec` and `mu_spec`.
+
 
 * **`vcov()` now offers four covariances, not two.** `type` gains
   `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and
@@ -85,6 +125,32 @@
   usable diagnostic: it flags 17 of the 432 fits before the fix and 0 after.
   Reported as issue #28.
 
+* **`sfm(model_name = "tHN")` lost every standard error on about a third of
+  fits.** The tHN branch returned `-.Machine$double.xmax / n` per observation
+  for a parameter outside its domain. Summed over the observations that **is**
+  `.Machine$double.xmax`, and `optim()` differences the objective to build its
+  gradient, so the first difference was not merely large but non-finite, and
+  the Hessian -- and with it every standard error -- came back `NA`.
+
+  The guard looked unreachable: `nu` is bounded below at 2.05 while the guard
+  tests `nu <= 2`, and `sigma_u` at `1e-7` while the guard tests
+  `sigma_u <= 0`. It is reached because `optim()` steps **outside** its own box
+  to form the finite difference -- `ndeps` defaults to `1e-3`, and the guard
+  was observed firing at `sigma_u = -0.0009999`, exactly `1e-7 - 1e-3`. Over
+  nine fits, every fit that reached the guard lost all its standard errors and
+  every fit that did not kept them.
+
+  Over 84 tHN fits the number losing every standard error falls from **25 to
+  2**, with the fitted log-likelihoods unchanged. The two that remain sit at
+  `nu = 7720` and `nu = 69` -- the t's normal limit, where the degrees of
+  freedom are weakly identified and the Hessian is legitimately near-singular.
+
+  The penalty is now `.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS`, chosen by
+  measurement rather than by analogy: the obvious fix of matching the `1e12`
+  used by the `NGE`, `NGB2`, `NLN` and `NW` branches recovers **nothing**, since
+  `1e12` differences just as badly. Those four branches are unchanged here --
+  whether their own guards are reachable the way tHN's is has not been measured,
+  and assuming it would repeat the reasoning that left tHN untouched.
 
 * **A covariance that failed on a badly scaled Hessian now succeeds, and one
   that genuinely cannot be computed now names the parameter responsible.**

@@ -23,7 +23,11 @@ keep_objective = FALSE,rand.psoptim = NULL)}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
 \item{inefdec}{Production or cost function}
 \item{upper}{Vector of upper values for the optim package.}
-\item{Method}{The method to be used for optim. See 'Details' within optim.}
+\item{Method}{Method passed to \code{optim} for the final stage. Must be
+\code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
+and upper bounds this package uses to keep scale parameters positive, and any
+other value is refused with an error rather than quietly optimized without
+them.}
 \item{logit}{Logical, \code{"ZISF_Z"} only. Link mapping the linear predictor \eqn{z'\gamma} to the probability of full efficiency. \code{TRUE} (the default) uses the logistic link \eqn{\Lambda(z'\gamma)}, which covers \eqn{(0,1)}. \code{FALSE} uses \eqn{\Phi(z'\gamma)/(1 + \Phi(z'\gamma))}, which is \bold{bounded above by 0.5}: under that link no observation can be assigned a probability of full efficiency exceeding one half, whatever the data. This is not the probit analogue of the default and is retained only for backward compatibility; prefer \code{logit = TRUE} unless you specifically want that restriction.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}

@@ -11,8 +11,18 @@ name: R-CMD-check
 # A superseded run holds the Windows runner for nearly four hours. Cancel it
 # when the same ref is pushed again; never cancel main, whose runs are the
 # record of what was green when it merged.
+#
+# `cancel-in-progress` alone did NOT protect main. Measured 2026-09-30: six
+# merges in eleven minutes, and the main run for every one of the first five was
+# cancelled within a minute, before a single job started -- b4dcf7fe created
+# 09:52:47, cancelled 09:53:33. Only the last survived, so five commits have no
+# record of what they were green against. Rather than depend on how the
+# expression is coerced, main gets a group of its OWN PER COMMIT: with one run
+# per group there is nothing for a later push to cancel, whatever
+# cancel-in-progress says. Pull requests keep sharing a group per ref, which is
+# where the four-hour saving actually comes from.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'shared' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
