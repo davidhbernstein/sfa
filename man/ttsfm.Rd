@@ -17,20 +17,17 @@ keep_objective = FALSE, rand.psoptim = NULL)}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
 \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
-\item{REPORT}{reporting parameter}
-\item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
-\item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
+\item{REPORT, trace, pgtol, upper}{Accepted but not used by \code{ttsfm()}: the optimizer's own tracing is controlled by \code{verbose}, and its bounds are set internally.}
 \item{start_val}{starting value (optional)}
 \item{PSopt}{Logical. Run the particle-swarm stage (\code{pso::psoptim}) between \code{bobyqa} and \code{optim}. \code{FALSE} by default. The swarm is the only stochastic step in \code{ttsfm()}: with the default, a fit is fully deterministic given the data and does not depend on the session's random-number state. See \code{rand.psoptim}.}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
 \item{inefdec}{Production or cost function}
-\item{upper}{Vector of upper values for the optim package.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
 and upper bounds this package uses to keep scale parameters positive, and any
 other value is refused with an error rather than quietly optimized without
 them.}
-\item{logit}{Choice of using logit function}
+\item{logit}{Accepted but not used by \code{ttsfm()}.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1, for \code{"TTNE"} and \code{"TTHN"}. It has no effect for \code{"TTNLS"}, which is nonlinear least squares rather than maximum likelihood and so has no score; that case warns. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}

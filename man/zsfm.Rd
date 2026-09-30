@@ -15,14 +15,11 @@ keep_objective = FALSE,rand.psoptim = NULL)}
 \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
 \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
 \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
-\item{REPORT}{reporting parameter}
-\item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more. \code{0} (the default) is silent.}
-\item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
+\item{REPORT, trace, pgtol, upper}{Accepted but not used by \code{zsfm()}: the optimizer's own tracing is controlled by \code{verbose}, and its bounds are set internally.}
 \item{start_val}{starting value (optional)}
 \item{PSopt}{use psoptim optimization routine (T or F)}
 \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
 \item{inefdec}{Production or cost function}
-\item{upper}{Vector of upper values for the optim package.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
 and upper bounds this package uses to keep scale parameters positive, and any

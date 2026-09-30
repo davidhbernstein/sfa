@@ -49,9 +49,7 @@
   \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine.}
   \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
   \item{maxit.optim}{Maximum number of iterations for the optim optimization routine}
-  \item{REPORT}{reporting parameter}
-  \item{trace}{Integer. Tracing level passed through to the optimizer; larger values print more.}
-  \item{pgtol}{Numeric. Projected-gradient tolerance passed to \code{optim()}'s \code{"L-BFGS-B"} method. \code{0} uses the optimizer's own default.}
+  \item{REPORT, trace, pgtol}{Accepted but not used by \code{psfm()}: the optimizer's own tracing is controlled by \code{verbose}.}
   \item{individual}{individual unit in the regression model}
   \item{halton_num}{Number of simulation draws per firm for the simulated-ML models (\code{"GTRE"} with \code{estimator = "sml"}, \code{"TRE"}, \code{"GTRE_Z"}, \code{"TRE_Z"}). Despite the name, it counts draws of whichever sequence \code{sim_type} selects. \code{NULL} uses \eqn{\lceil\sqrt{n}\rceil + 100}.}
   \item{start_val}{starting value (optional)}
