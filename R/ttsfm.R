@@ -458,7 +458,7 @@ ttsfm <- function(formula,
 
     ## Preserve current fallback logic
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -486,7 +486,7 @@ ttsfm <- function(formula,
 
     ## now for st errs
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -760,7 +760,7 @@ ttsfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -794,7 +794,7 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 
@@ -1023,7 +1023,7 @@ ttsfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE && PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
     }
 
     if (optHessian == FALSE && PSopt == TRUE) {
@@ -1040,7 +1040,7 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
 

@@ -188,6 +188,12 @@ lcsfm <- function(formula,
     opt <- Opt.Optim$opt
     End.Time <- end.time(Start.Time)
 
+    ## Without the final stage there is no optim() result; keep the stage that
+    ## did run, as the LCM/LCM_Z block below does (gap A52).
+    if (optHessian == FALSE) {
+      opt <- if (PSopt == TRUE) opt00 else .as_optim(bob1)
+    }
+
     ## The scales enter through abs(), so their sign is not identified and the
     ## optimizer may return either. Report the magnitude.
     .scale_at <- which(.lcm_pos)
@@ -348,7 +354,7 @@ lcsfm <- function(formula,
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- bob1
+      opt <- .as_optim(bob1)
       st_err <- rep(NA, length(opt$par))
     }
     if (optHessian == FALSE & PSopt == TRUE) {
