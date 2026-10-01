@@ -56,7 +56,7 @@ test_that("TTNLS without determinants equals OLS, standard errors included", {
   ## standard errors used to be sqrt(diag(H^-1)) of the sum of squares --
   ## missing the 2 s^2 factor, so they ignored the noise in the data -- and
   ## kept the unidentified scale directions, which put the intercept's at
-  ## 12.9 whatever the sample.
+  ## 40.8 for every sample of this size.
   d <- cs_small(N = 300)
   fit <- suppressWarnings(ttsfm(y_ttne ~ x1 + x2, model_name = "TTNLS", data = d))
   ols <- lm(y_ttne ~ x1 + x2, data = d)

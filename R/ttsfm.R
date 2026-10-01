@@ -1075,14 +1075,14 @@ ttsfm <- function(formula,
         ## Standard errors for the frontier coefficients only. Two things
         ## used to be wrong here. The Hessian kept the unidentified sigma_u
         ## and sigma_w directions, along which the intercept trades off one
-        ## for one, so the intercept's "standard error" came out at 12.9
-        ## whatever the data. And it was inverted as if it were an
-        ## information matrix: the objective is a sum of squares, whose
-        ## Hessian in beta is exactly 2 X'X, so Var(beta) = 2 s^2 H^-1 with
-        ## s^2 = SS / (n - k). Without that factor the slopes' errors did
-        ## not depend on the noise in the data at all. Where sigma_u and
-        ## sigma_w carry determinants these are conditional on the fitted
-        ## determinant coefficients.
+        ## for one, so the intercept's "standard error" depended only on n
+        ## (40.8 at n = 300, 12.9 at n = 3000), whatever the data. And it
+        ## was inverted as if it were an information matrix: the objective
+        ## is a sum of squares, whose Hessian in beta is exactly 2 X'X, so
+        ## Var(beta) = 2 s^2 H^-1 with s^2 = SS / (n - k). Without that
+        ## factor the slopes' errors did not depend on the noise in the
+        ## data at all. Where sigma_u and sigma_w carry determinants these
+        ## are conditional on the fitted determinant coefficients.
         H_b <- opt$hessian[1:n_x_vars, 1:n_x_vars, drop = FALSE]
         df_res <- length(as.numeric(Y)) - n_x_vars
         s2 <- if (df_res > 0) as.numeric(opt$value) / df_res else NA_real_
@@ -1092,19 +1092,6 @@ ttsfm <- function(formula,
       }
     }
 
-    ## Without determinants E[w] - E[u] = sigma_w - sigma_u is a constant,
-    ## and the identified quantity is the composite intercept
-    ## beta_0 + sigma_w - sigma_u. Report that rather than beta_0 alone,
-    ## which depends on wherever the optimizer left the two scales.
-    if (isTRUE(intercept == 1) && n_z_vars == 1 && n_zp_vars == 1 &&
-      length(unique(as.numeric(data_z_vars[, 1]))) == 1 &&
-      length(unique(as.numeric(data_zp_vars[, 1]))) == 1 &&
-      all(is.finite(opt$par[c(1, nls_unident)]))) {
-      nr <- n_x_vars
-      sigu_c <- .z_sigma(as.numeric(data_z_vars[1, 1]) * opt$par[nr + 2])
-      sigw_c <- .z_sigma(as.numeric(data_zp_vars[1, 1]) * opt$par[nr + 3])
-      opt$par[1] <- opt$par[1] + sigw_c - sigu_c
-    }
     if (any(is.finite(opt$par[nls_unident]))) {
       warning("ttsfm(model_name = \"TTNLS\"): nonlinear least squares identifies the ",
         "frontier slopes and the composite (intercept + sigma_w - sigma_u) only. ",
