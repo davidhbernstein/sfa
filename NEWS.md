@@ -2,6 +2,14 @@
 
 ## Bug fixes
 
+* **`ivsfm(instruments = ~1)` failed with an unrelated error before R 4.4.**
+  With no excluded instruments the instrument matrix was built by
+  `reformulate(character(0))`, which R 4.3 and earlier reject ("'termlabels'
+  must be a character vector of length at least one"). The intended message
+  -- that the order condition needs at least as many excluded instruments as
+  endogenous variables -- was reached only on R 4.4 and later. The package
+  supports R 4.0 and up; the message is now the same on all of them.
+
 * **`ttsfm(model_name = "TTNLS")` reported wrong standard errors for every
   coefficient.** Its standard errors came from inverting the Hessian of the
   sum of squares directly. That Hessian is `2 X'X` in the coefficients, so
