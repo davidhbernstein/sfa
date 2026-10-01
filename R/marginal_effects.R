@@ -135,15 +135,26 @@ marginal_effects <- function(object, average = FALSE, component = c("u", "h")) {
   ## SD link and delta_k/2 under the variance link.
   half <- if (identical(zs$link, "sd")) 1 else 0.5
 
-  keep <- vapply(seq_len(ncol(Z)), function(j) length(unique(Z[, j])) > 1L, logical(1))
-  if (!any(keep)) {
+  varying <- function(M) {
+    if (is.null(M) || !ncol(M)) return(character(0))
+    colnames(M)[vapply(seq_len(ncol(M)), function(j) length(unique(M[, j])) > 1L,
+                       logical(1))]
+  }
+  nm <- varying(Z)
+  ## The truncated normal has a second design, for mu. A covariate may sit in
+  ## it alone (muhet = ~ z2 beside uhet = ~ z1, or muhet with no uhet), and it
+  ## still moves E[u]; taking the names from Z alone used to drop it.
+  if (!scaling && identical(zs$family, "truncnormal")) {
+    nm <- union(nm, varying(object[["mu_spec"]][["Z"]]))
+  }
+  if (!length(nm)) {
     stop("every column of the variance-determinant design is constant, so ",
       "there is no covariate to differentiate with respect to.",
       call. = FALSE
     )
   }
-  nm <- colnames(Z)[keep]
-  d <- delta[keep]
+  ## delta for each reported covariate, 0 where the scale design lacks it.
+  d <- .sfa_me_delta_by_name(list(delta = stats::setNames(delta, colnames(Z))), nm)
 
   if (scaling) {
     ## a = mu/sigma_u is CONSTANT in z here, because h cancels out of it, so

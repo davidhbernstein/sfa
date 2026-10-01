@@ -101,3 +101,52 @@ test_that("a truncated-normal het fit reports both terms, matching a hand chain 
               1e-5 * max(1, abs(num)))
   }
 })
+
+test_that("a covariate in the mu design only is reported, not dropped", {
+  skip_on_cran()
+  ## The covariate list used to come from the sigma_u design alone, so with
+  ## muhet = ~ z2 and uhet = ~ z1 the z2 effect was silently missing, and with
+  ## muhet alone the call stopped claiming every column was constant.
+  set.seed(405)
+  n <- 250
+  d <- data_gen_cs(N = n, rand = 405, sig_u = 1, sig_v = 0.3, cons = 0.5,
+                   beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.5)
+  d$z1 <- runif(n, -1, 1)
+  d$z2 <- runif(n, -1, 1)
+
+  f <- sfm(y_pcs ~ x1 + x2, model_name = "NTN", data = d,
+           uhet = ~z1, muhet = ~z2)
+  me <- marginal_effects(f)
+  expect_true(all(c("dE_u.dz1", "dE_u.dz2", "dVar_u.dz1", "dVar_u.dz2") %in%
+                    names(me)))
+
+  ## Independent check: numerical derivatives of the closed-form moments,
+  ## moving one covariate in its own design.
+  zs <- f$z_spec
+  ms <- f$mu_spec
+  sig_of <- function(z1, row) {
+    Zr <- zs$Z[row, , drop = FALSE]; Zr[, "z1"] <- z1
+    eta <- as.numeric(Zr %*% zs$delta)
+    if (identical(zs$link, "sd")) exp(eta) else sqrt(exp(eta))
+  }
+  mu_of <- function(z2, row) {
+    Zr <- ms$Z[row, , drop = FALSE]; Zr[, "z2"] <- z2
+    as.numeric(Zr %*% ms$delta)
+  }
+  for (row in c(1L, 50L, 200L)) {
+    s0 <- sig_of(zs$Z[row, "z1"], row)
+    m0 <- mu_of(ms$Z[row, "z2"], row)
+    nE1 <- numDeriv::grad(function(v) E_tn(m0, sig_of(v, row)), zs$Z[row, "z1"])
+    nE2 <- numDeriv::grad(function(v) E_tn(mu_of(v, row), s0), ms$Z[row, "z2"])
+    nV2 <- numDeriv::grad(function(v) V_tn(mu_of(v, row), s0), ms$Z[row, "z2"])
+    expect_lt(abs(me$dE_u.dz1[row] - nE1), 1e-5 * max(1, abs(nE1)))
+    expect_lt(abs(me$dE_u.dz2[row] - nE2), 1e-5 * max(1, abs(nE2)))
+    expect_lt(abs(me$dVar_u.dz2[row] - nV2), 1e-5 * max(1, abs(nV2)))
+  }
+
+  ## mu-only heterogeneity: sigma_u is constant, the effect runs through mu.
+  g <- sfm(y_pcs ~ x1 + x2, model_name = "NTN", data = d, muhet = ~z2)
+  me2 <- marginal_effects(g)
+  expect_true("dE_u.dz2" %in% names(me2))
+  expect_true(all(is.finite(me2$dE_u.dz2)))
+})
