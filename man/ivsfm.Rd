@@ -3,12 +3,18 @@
 \title{Stochastic Frontier Models with Endogenous Regressors}
 \description{
 Fits the stochastic frontier model of Amsler, Prokhorov and Schmidt (2016) in
-which one or more regressors is endogenous, in the simultaneous-equation sense:
-correlated with the statistical noise \eqn{v}. Three estimators are provided --
-full information maximum likelihood, a two-step control function, and corrected
-2SLS. With \code{uhet} the model becomes that of Amsler, Prokhorov and Schmidt
-(2017), in which environmental variables entering the inefficiency scale may
-themselves be endogenous.
+which one or more regressors is endogenous: correlated with the noise
+\eqn{v}, not with the inefficiency. With \code{uhet} the model becomes that of
+Amsler, Prokhorov and Schmidt (2017), in which environmental variables
+entering the inefficiency scale may themselves be endogenous. Three
+estimators are provided:
+
+\tabular{lll}{
+  \bold{\code{model_name}} \tab \bold{estimator} \tab \bold{when to use it} \cr
+  \code{"IVLIML"} (default) \tab full-information maximum likelihood \tab efficient, and its standard errors are correct as reported \cr
+  \code{"IVCF"} \tab two-step control function (Kutlu, 2010) \tab cheaper; its standard errors are too small when the endogeneity is real \cr
+  \code{"C2SLS"} \tab corrected 2SLS \tab closed form, no likelihood; no \code{uhet}
+}
 }
 \usage{
 ivsfm(formula, endogenous, instruments, data,
@@ -52,14 +58,17 @@ them.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}
 }
 \details{
+\subsection{Formula syntax}{
 Unlike the rest of the package neither \code{formula} nor \code{endogenous} nor
 \code{instruments} takes a \code{|} segment. A pipe means \dQuote{variance
 determinant} in \code{\link{sfm}} and \code{\link{psfm}}, and reusing it here
 for \pkg{ivreg}-style instrument syntax would give the same character two
 meanings across entry points, so a pipe is an error rather than being
 reinterpreted.
+}
 
-\bold{The model.} Writing \eqn{p_i} for the endogenous block and \eqn{z_i} for
+\subsection{The model}{
+Writing \eqn{p_i} for the endogenous block and \eqn{z_i} for
 the instruments,
 \deqn{y_i = \beta'x_i + v_i - u_i, \qquad p_i = \Pi'z_i + \xi_i}
 \deqn{u_i = \sigma_{U,i}|U_i|, \quad U_i \sim N(0,1), \qquad
@@ -73,8 +82,9 @@ frontier in a shifted residual with a smaller noise variance,
 \deqn{\mu_{c,i} = \Sigma_{v\xi}\Sigma_{\xi\xi}^{-1}\xi_i, \qquad
       \sigma_c^2 = \sigma_V^2 - \Sigma_{v\xi}\Sigma_{\xi\xi}^{-1}\Sigma_{\xi v}}
 which is what makes the likelihood closed-form and needs no simulation.
+}
 
-\bold{The estimators.}
+\subsection{The estimators}{
 \describe{
   \item{\code{"IVLIML"}}{APS (2016) Equation (13): maximum likelihood over the
     frontier and the reduced form jointly, so \eqn{\Pi} and
@@ -112,27 +122,51 @@ which is what makes the likelihood closed-form and needs no simulation.
     estimates no \eqn{\rho}, since it never models the correlation it corrects
     for.}
 }
+}
 
-\bold{Inefficiency.} \code{jlms} implements APS (2016) Equations (14)--(15),
+\subsection{Inefficiency}{
+\code{jlms} implements APS (2016) Equations (14)--(15),
 which condition on \eqn{\xi} as well as on \eqn{\varepsilon}. Since \eqn{\xi}
 is correlated with \eqn{v} it carries information about \eqn{u} even though
 \eqn{u} is independent of \eqn{\xi}, so this is a strictly better predictor
 than the plain Jondrow et al. (1982) formula.
+}
 
-\bold{What is assumed, and what is not covered.} \eqn{u} is assumed independent
+\subsection{What is assumed, and what is not covered}{
+\eqn{u} is assumed independent
 of \eqn{(v, \xi)}. The case where the reduced-form error is correlated with the
 inefficiency as well requires the copula likelihood of APS (2016) Section 4.5
 and is \emph{not} implemented; the paper notes there that two intuitive
 approaches to that case do not work.
 }
+
+\subsection{Standard errors for \eqn{\rho}}{
+Standard errors for \eqn{\rho} arrived in 1.2.0. They were previously
+reported as \code{NA}, on the ground that \eqn{\rho = t/\sqrt{1+t't}} has a
+non-diagonal Jacobian and a delta-method value computed as though it were
+diagonal would be wrong. That much was true, but the Jacobian itself is short --
+\eqn{J = (I - \rho\rho')/s} with \eqn{s = \sqrt{1+t't}} -- so
+\eqn{\mathrm{Var}(\hat\rho) = J\,\mathrm{Var}(\hat t)\,J'} is available
+exactly. Checked against a numerical Jacobian in the tests, and validated
+end-to-end by the size of \code{\link{endogeneity_test}}, which is 0.046 at a
+nominal 5\% over 1000 replications.
+}
+}
 \value{
 An object of class \code{"sfareg"}. \code{out} is a \code{p x 3} matrix, one
 row per parameter, columns \code{par}, \code{st_err} and \code{t-val}.
-Parameters are the frontier coefficients, \code{sigma_u}, \code{sigma_v}, any
-\code{delta_} terms from \code{uhet}, and one \code{rho_} per endogenous
-variable (absent for \code{"C2SLS"}). Alongside the usual components:
-\item{Pi}{Reduced-form coefficient matrix.}
-\item{Sigma_xi}{Reduced-form error covariance.}
+For \code{"IVLIML"} and \code{"IVCF"} the parameters are the frontier
+coefficients, \code{sigma_u}, \code{sigma_v}, any \code{delta_} terms from
+\code{uhet}, and one \code{rho_} per endogenous variable. For \code{"C2SLS"}
+they are \code{sigma_u} and \code{sigma_v} first, then the frontier
+coefficients, all with \code{NA} standard errors; it reports no \code{rho_},
+and the fit carries no \code{rho}, \code{vcov_rho} or \code{sigma_c}.
+Alongside the usual components:
+\item{Pi}{Reduced-form coefficient matrix: estimated jointly for
+  \code{"IVLIML"}, the least-squares value for \code{"IVCF"} and
+  \code{"C2SLS"}.}
+\item{Sigma_xi}{Reduced-form error covariance, on the same footing as
+  \code{Pi}.}
 \item{rho}{Correlation of each reduced-form error with \eqn{v}.}
 \item{sigma_c}{The conditional noise standard deviation \eqn{\sigma_c}, which
   is smaller than \code{sigma_v} whenever \eqn{\rho \ne 0}.}
@@ -143,16 +177,6 @@ variable (absent for \code{"C2SLS"}). Alongside the usual components:
   \code{exp(-jlms)}.}
 \item{vcov_rho}{The full \eqn{q \times q} covariance of \eqn{\hat\rho}, which
   \code{\link{endogeneity_test}} needs for the joint Wald statistic.}
-
-\bold{Standard errors for \eqn{\rho}} arrived in 1.2.0. They were previously
-reported as \code{NA}, on the ground that \eqn{\rho = t/\sqrt{1+t't}} has a
-non-diagonal Jacobian and a delta-method value computed as though it were
-diagonal would be wrong. That much was true, but the Jacobian itself is short --
-\eqn{J = (I - \rho\rho')/s} with \eqn{s = \sqrt{1+t't}} -- so
-\eqn{\mathrm{Var}(\hat\rho) = J\,\mathrm{Var}(\hat t)\,J'} is available
-exactly. Checked against a numerical Jacobian in the tests, and validated
-end-to-end by the size of \code{\link{endogeneity_test}}, which is 0.046 at a
-nominal 5\% over 1000 replications.
 }
 \references{
 Amsler, C., Prokhorov, A. and Schmidt, P. (2016). Endogeneity in stochastic
