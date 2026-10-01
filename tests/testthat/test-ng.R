@@ -125,3 +125,25 @@ test_that(".ng_start_candidates sweeps the shape along the E[u] ridge", {
   eu <- vapply(cs, function(z) z[3]*z[2], numeric(1))
   expect_lt(stats::sd(eu[-1])/mean(eu[-1]), 1e-8)
 })
+
+test_that("NG never ends below the NE solution it nests at shape 1 (issue #45)", {
+  skip_on_cran()
+  ## On this sample every ridge start led NG to the OLS boundary (sigma_u on
+  ## its floor, log-likelihood -359.2835), below NE's maximum of -359.2456.
+  d <- as.data.frame(data_gen_cs(N = 200, rand = 1002816, cons = 0.5,
+    beta1 = 0.5, beta2 = 0.5, sig_u = 1, sig_v = 1, mu = 0.5, a = 5))
+  fg <- suppressWarnings(sfm(y_pcs_thn ~ x1 + x2, data = d, model_name = "NG"))
+  fe <- suppressWarnings(sfm(y_pcs_thn ~ x1 + x2, data = d, model_name = "NE"))
+  ## NE's log-likelihood from its definition: N(0, sigv^2) convolved with
+  ## Exp(mean = sigu), integrated numerically at NE's coefficients. NG at
+  ## shape 1 is this same density, so NG's maximum cannot be below it.
+  cf <- coef(fe)
+  r <- d$y_pcs_thn - cbind(1, d$x1, d$x2) %*% cf[c("(Intercept)", "x1", "x2")]
+  ne_ll <- sum(log(vapply(r, function(e) {
+    stats::integrate(function(u) {
+      stats::dnorm(e + u, 0, cf[["sigv"]]) * stats::dexp(u, 1 / cf[["sigu"]])
+    }, 0, Inf, rel.tol = 1e-10)$value
+  }, numeric(1))))
+  expect_gte(as.numeric(logLik(fg)), ne_ll - 1e-6)
+  expect_gt(coef(fg)[["sigu"]], 1e-3)
+})

@@ -1138,6 +1138,7 @@ sfm <- function(formula,
     ## its likelihood has a mode at small shape that its single moment start
     ## (the half-normal point, m = 0.5) does not reach.
     ng_starts <- NULL
+    .ne_ref <- NULL
     if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
       .cand <- if (model_name == "NG") {
         .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
@@ -1150,6 +1151,32 @@ sfm <- function(formula,
       .cand <- c(list(start_v), .cand)
       .is_extra <- seq_along(.cand) > 1L + .n_main
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
+      ## NG nests NE at shape 1 (issue #45). Fit NG's likelihood with the shape
+      ## held at 1 -- NE's likelihood -- from a few splits of the residual
+      ## variance between u and v; the fit is checked against this point at the
+      ## end (below).
+      if (model_name == "NG") {
+        .k2 <- mean((epsilon_hat - mean(epsilon_hat))^2)
+        .ne_fits <- lapply(c(0.1, 0.3, 0.5, 0.7), function(w) {
+          z <- start_v
+          z[1:3] <- c(sqrt((1 - w) * .k2), sqrt(w * .k2), 1)
+          if (!is.na(beta_0_st)) z[4] <- unname(beta_0_st) + z[2]
+          z <- pmax(z, lower_bob + 1e-10)
+          tryCatch(
+            suppressWarnings(stats::optim(z[-3],
+              function(p) like.fn(append(p, 1, after = 2L)),
+              method = "L-BFGS-B", lower = lower_bob[-3] + 1e-10,
+              control = list(maxit = 500)
+            )),
+            error = function(e) NULL
+          )
+        })
+        .ne_fits <- Filter(function(o) !is.null(o) && is.finite(o$value), .ne_fits)
+        if (length(.ne_fits)) {
+          .ne <- .ne_fits[[which.min(vapply(.ne_fits, function(o) o$value, numeric(1)))]]
+          .ne_ref <- append(.ne$par, 1, after = 2L)
+        }
+      }
       .obj <- vapply(.cand, function(z) {
         tryCatch(
           {
@@ -1247,19 +1274,28 @@ sfm <- function(formula,
     ## sample NG's polished multistart point scored -267.8 and the fit came back
     ## at -443 (gap A25). Never return worse than that start: polish from it too
     ## and keep the better.
+    ##
+    ## NG nests NE at shape 1 (issue #45), but on some samples every start led
+    ## the stages to sigma_u's floor -- the OLS point -- below NE's maximum. So
+    ## NG is checked the same way against the shape-1 fit made above. It is a
+    ## check at the end rather than another multistart candidate: as a
+    ## candidate it changed where the stages went on fits that never fell below
+    ## NE, and ended some of them lower than before.
     if (optHessian == TRUE && model_name %in% c("NG", "NNAK")) {
-      .ref_val <- tryCatch(like.fn(.start_ref), error = function(e) NA_real_)
-      if (is.finite(.ref_val) && (!is.finite(opt$value) || opt$value > .ref_val + 1e-6)) {
-        .lr <- lower.start(.start_ref, model_name, differ = 0.5)
-        .or <- opt.optim(
-          fn = like.fn, start_v = .start_ref, lower.optim = .lr$lower1,
-          upper.optim = .lr$upper1_open, maxit.optim = maxit.optim, opt.TF = optHessian,
-          method = Method, optHessian = TRUE, verbose = verbose
-        )
-        if (is.finite(.or$opt$value) && (!is.finite(opt$value) || .or$opt$value < opt$value)) {
-          opt <- .or$opt
-          start_v <- .or$start_v
-          start_feval <- .or$start_feval
+      for (.ref in Filter(Negate(is.null), list(.start_ref, .ne_ref))) {
+        .ref_val <- tryCatch(like.fn(.ref), error = function(e) NA_real_)
+        if (is.finite(.ref_val) && (!is.finite(opt$value) || opt$value > .ref_val + 1e-6)) {
+          .lr <- lower.start(.ref, model_name, differ = 0.5)
+          .or <- opt.optim(
+            fn = like.fn, start_v = .ref, lower.optim = .lr$lower1,
+            upper.optim = .lr$upper1_open, maxit.optim = maxit.optim, opt.TF = optHessian,
+            method = Method, optHessian = TRUE, verbose = verbose
+          )
+          if (is.finite(.or$opt$value) && (!is.finite(opt$value) || .or$opt$value < opt$value)) {
+            opt <- .or$opt
+            start_v <- .or$start_v
+            start_feval <- .or$start_feval
+          }
         }
       }
     }
