@@ -2,6 +2,17 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "NG")` could stop at the OLS point, below the NE
+  solution it nests (issue #45).** NG at shape 1 is NE, so its maximum can
+  never be below NE's. But its starting values only hold E[u] at a moment
+  anchor while sweeping the shape, and on some samples every such start led
+  to `sigma_u` on its floor, where the likelihood is OLS's. On the issue's
+  sample NG returned -359.2835 (OLS's value, every firm fully efficient)
+  against NE's -359.2456. NG now also fits its likelihood with the shape held
+  at 1 -- NE's likelihood -- from four splits of the residual variance, and
+  always polishes from the best of those. On that sample NG now reaches
+  -358.568, confirmed by numerical integration of the normal-gamma density.
+
 * **`ttsfm(model_name = "TTNLS")` reported wrong standard errors for every
   coefficient.** Its standard errors came from inverting the Hessian of the
   sum of squares directly. That Hessian is `2 X'X` in the coefficients, so

@@ -1150,6 +1150,39 @@ sfm <- function(formula,
       .cand <- c(list(start_v), .cand)
       .is_extra <- seq_along(.cand) > 1L + .n_main
       .cand <- lapply(.cand, function(z) pmax(z, lower_bob + 1e-10))
+      ## NG nests NE at shape 1 (issue #45). The ridge candidates only hold E[u]
+      ## at a moment anchor, and on some samples every one of them leads to the
+      ## OLS boundary (sigma_u on its floor) below NE's maximum. So also fit NG
+      ## with the shape held at 1 -- NE's likelihood -- from a few splits of the
+      ## residual variance between u and v, and always polish from the best of
+      ## those: the fit then never ends below NE.
+      .ne_idx <- integer(0)
+      if (model_name == "NG") {
+        .k2 <- mean((epsilon_hat - mean(epsilon_hat))^2)
+        .ne_fits <- lapply(c(0.1, 0.3, 0.5, 0.7), function(w) {
+          z <- start_v
+          z[1:3] <- c(sqrt((1 - w) * .k2), sqrt(w * .k2), 1)
+          if (!is.na(beta_0_st)) z[4] <- unname(beta_0_st) + z[2]
+          z <- pmax(z, lower_bob + 1e-10)
+          tryCatch(
+            suppressWarnings(stats::optim(z[-3],
+              function(p) like.fn(append(p, 1, after = 2L)),
+              method = "L-BFGS-B", lower = lower_bob[-3] + 1e-10,
+              control = list(maxit = 500)
+            )),
+            error = function(e) NULL
+          )
+        })
+        .ne_fits <- Filter(function(o) !is.null(o) && is.finite(o$value), .ne_fits)
+        .ne <- if (length(.ne_fits)) {
+          .ne_fits[[which.min(vapply(.ne_fits, function(o) o$value, numeric(1)))]]
+        }
+        if (!is.null(.ne) && is.finite(.ne$value)) {
+          .cand <- c(.cand, list(append(.ne$par, 1, after = 2L)))
+          .is_extra <- c(.is_extra, FALSE)
+          .ne_idx <- length(.cand)
+        }
+      }
       .obj <- vapply(.cand, function(z) {
         tryCatch(
           {
@@ -1167,6 +1200,7 @@ sfm <- function(formula,
           idx[order(.obj[idx])][seq_len(min(k, length(idx)))]
         }
         .ord <- c(.top(which(!.is_extra), 3L), .top(which(.is_extra), 2L))
+        .ord <- unique(c(.ord, .ne_idx[is.finite(.obj[.ne_idx])]))
         .fits <- Filter(Negate(is.null), lapply(.ord, function(i) {
           tryCatch(
             suppressWarnings(
