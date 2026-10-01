@@ -2,6 +2,29 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "NTN")` reported a collapsed noise component by saying
+  nothing at all.** On some samples NTN has no interior maximum in `lambda`:
+  the profile log-likelihood rises monotonically toward a finite limit as
+  `lambda` grows without bound, so the fit correctly runs to `lambda` of order
+  `1e6` and the boundary *is* the maximum likelihood estimate. But the
+  likelihood is flat in `lambda` there, so the Hessian is singular and every
+  standard error comes back `NA`. The user was given `lambda = 972468`, six
+  `NA` standard errors, and no message of any kind.
+
+  `sfm()` now warns and sets `ntn_sigma_v_at_bound` on the fit, saying that the
+  boundary is the estimate rather than a failure, that no finite standard error
+  for `lambda` exists at that point, and that the result should be read as "no
+  noise component identified in these data". This is the same treatment
+  `tHN` has had since 1.2.0 for the mirror case, `sigma_u` collapsing onto
+  zero; the other component was simply never covered.
+
+  The criterion is `sigma_v/sigma < 1e-3`, the same scale-free ratio
+  `thn_sigma_u_at_bound` uses. Measured over 12 samples it separates the two
+  regimes by five orders of magnitude -- the boundary fits sit at `4.9e-08` to
+  `1.3e-06` and the interior fits at `0.126` to `0.442` -- so the threshold
+  falls in empty space rather than being tuned to the data.
+
+
 * `marginal_effects()` on a truncated-normal fit (`sfm(model_name = "NTN")`
   with `uhet`/`muhet`) now reports every covariate of the `mu` design. The
   covariate list was taken from the `sigma_u` design alone, so with

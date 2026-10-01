@@ -1405,6 +1405,41 @@ sfm <- function(formula,
       exp_u_hat <- .te_battese_coelli(mu_star, sig_star)
       u_hat <- .jlms_u(mu_star, sig_star)
       u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_star, length(mu_star)))
+
+      ## The MIRROR of tHN's sigma_u boundary below, and it was silent. On a
+      ## sample with no interior maximum in lambda, NTN's likelihood rises
+      ## monotonically toward a finite limit as lambda -> Inf: measured by
+      ## continuation, -188.1003 at lambda = 9.7e5 and flat at -188.1001876
+      ## from lambda = 1e9 through 1e15. The boundary IS the supremum there, so
+      ## running to lambda = 1e6 is correct behaviour -- but the likelihood is
+      ## then flat in lambda, the Hessian is singular, and EVERY standard error
+      ## comes back NA. Before this, the user got lambda = 972468, six NA
+      ## standard errors and no explanation at all.
+      ##
+      ## Same scale-free ratio as thn_sigma_u_at_bound, on the other component:
+      ## sigma_v/sigma = 1/sqrt(1 + lambda^2), so lambda = 1e6 gives 1e-6 and
+      ## an interior lambda of 8 gives 0.12. Measured on 12 seeds, the five
+      ## boundary fits sit at lambda 7.7e5 to 2.0e7 and the seven interior ones
+      ## at lambda 2.0 to 7.9, so 1e-3 separates them by orders of magnitude
+      ## rather than by a tuned cut.
+      ntn_sigma_v_at_bound <- isTRUE(sig_v / sqrt(sig_u^2 + sig_v^2) < 1e-3)
+      if (ntn_sigma_v_at_bound) {
+        warning("sfm(model_name = \"NTN\"): sigma_v has collapsed to the ",
+          "boundary (lambda = ", signif(lamb, 4), ", sigma_v = ",
+          signif(sig_v, 3), "), so the fit attributes essentially all ",
+          "variation to inefficiency and none to noise. On such a sample the ",
+          "likelihood has no interior maximum in lambda -- it rises toward a ",
+          "finite limit as lambda grows without bound -- so the boundary IS ",
+          "the maximum likelihood estimate and this is not a numerical ",
+          "failure. The likelihood is flat in lambda there, so the Hessian is ",
+          "singular and the standard errors are NA for every coefficient; no ",
+          "finite standard error for lambda exists at that point. Read it as ",
+          "\"no noise component identified in these data\" rather than as an ",
+          "estimate of lambda, compare against a model that constrains the ",
+          "noise, and inspect $ntn_sigma_v_at_bound. See ?sfm.",
+          call. = FALSE
+        )
+      }
     }
 
     if (model_name == "NU") {
@@ -1712,6 +1747,16 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+    }
+
+    ## NTN additionally reports its sigma_v boundary flag. APPENDED rather than
+    ## rebuilt: NTN shares the results block above with seven other models, and
+    ## re-listing twelve values against twelve names to add one field is how a
+    ## name/value misalignment gets introduced. $ntn_sigma_v_at_bound is always
+    ## present for NTN and always logical, so a caller can test it without
+    ## checking for its existence.
+    if (model_name == "NTN") {
+      results$ntn_sigma_v_at_bound <- ntn_sigma_v_at_bound
     }
 
     ## tHN additionally reports the boundary flag and the multi-start diagnostic.
