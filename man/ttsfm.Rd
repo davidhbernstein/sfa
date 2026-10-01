@@ -49,7 +49,7 @@ Determinants of \eqn{u} and \eqn{w} enter through the second and third parts of 
 \subsection{\code{"TTNLS"}}{
 Nonlinear least squares makes no distributional assumption, and the price is that it identifies only the frontier slopes and a composite intercept. \eqn{E[y \mid x] = x'\beta - E[u] + E[w]}, so the sum of squares cannot separate \eqn{\sigma_u}, \eqn{\sigma_w} and the intercept. \code{ttsfm()} therefore:
 \itemize{
-\item reports an intercept that absorbs \eqn{E[w] - E[u]}. Its standard error is not meaningful: the Hessian it comes from still contains the unidentified \eqn{\sigma_u} and \eqn{\sigma_w} directions (12.9 against 0.013 for the slope, on 3,000 simulated observations);
+\item reports an intercept that absorbs \eqn{E[w] - E[u]}, with standard errors for the intercept and slopes from the least-squares covariance \eqn{s^2 (X'X)^{-1}}. Without determinants TTNLS is ordinary least squares, and its coefficients and standard errors equal those of \code{lm()}; with determinants the standard errors are conditional on the fitted determinant coefficients;
 \item returns \code{NA} for \code{sigma_v}, \code{sigma_u} and \code{sigma_w}, and for any determinant coefficients, with a warning;
 \item returns \code{metrics} whose entries are all \code{NA}, since they are functions of those scales.
 }
