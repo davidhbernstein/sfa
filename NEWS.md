@@ -2,6 +2,22 @@
 
 ## Bug fixes
 
+* **`ttsfm(model_name = "TTNLS")` reported wrong standard errors for every
+  coefficient.** Its standard errors came from inverting the Hessian of the
+  sum of squares directly. That Hessian is `2 X'X` in the coefficients, so
+  the covariance is `2 s^2` times its inverse, with `s^2` the residual
+  variance. Without that factor the slopes' standard errors did not depend on
+  the noise in the data at all: on 3,000 simulated observations they were
+  0.013 where OLS gives 0.020. The Hessian also kept the unidentified
+  `sigma_u` and `sigma_w` directions, along which the intercept trades off one
+  for one, so the intercept's standard error came out at 12.9 on every
+  sample. Both are fixed. Without determinants TTNLS is OLS, and its
+  coefficients and standard errors now equal `lm()`'s. The reported
+  intercept is now the identified composite `beta_0 + sigma_w - sigma_u`
+  exactly, rather than `beta_0` with the two scales wherever the optimizer
+  left them. Where `sigma_u` and `sigma_w` carry determinants the standard
+  errors are conditional on the fitted determinant coefficients.
+
 * **`Method` now rejects any value other than `"L-BFGS-B"` instead of silently
   optimizing without bounds.** `Method` is passed to `optim()` for the final
   stage together with the lower and upper bounds that hold the scale parameters

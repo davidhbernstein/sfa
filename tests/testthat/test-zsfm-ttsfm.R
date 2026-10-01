@@ -48,6 +48,22 @@ test_that("TTNLS returns NA for the parameters its objective cannot identify", {
   expect_true(all(is.na(fit$std.errors[4:6])))
 })
 
+test_that("TTNLS without determinants equals OLS, standard errors included", {
+  skip_on_cran()
+  ## With no determinants the NLS residual is y - X'beta + sigma_u - sigma_w,
+  ## and sigma_w - sigma_u is a constant absorbed by the intercept, so TTNLS
+  ## is OLS: an independent implementation of the same estimator. Its
+  ## standard errors used to be sqrt(diag(H^-1)) of the sum of squares --
+  ## missing the 2 s^2 factor, so they ignored the noise in the data -- and
+  ## kept the unidentified scale directions, which put the intercept's at
+  ## 12.9 whatever the sample.
+  d <- cs_small(N = 300)
+  fit <- suppressWarnings(ttsfm(y_ttne ~ x1 + x2, model_name = "TTNLS", data = d))
+  ols <- lm(y_ttne ~ x1 + x2, data = d)
+  expect_equal(unname(fit$coefficients[1:3]), unname(coef(ols)), tolerance = 1e-8)
+  expect_equal(unname(fit$std.errors[1:3]), unname(sqrt(diag(vcov(ols)))), tolerance = 1e-6)
+})
+
 test_that("the two-tier likelihood has the right sign", {
   skip_on_cran()
   ## TTNE and TTHN both had this sign backwards at one point, which produced
