@@ -130,7 +130,13 @@ ivsfm <- function(formula,
 
   ## Z: instruments = the INCLUDED exogenous regressors plus the EXCLUDED ones.
   X_exog <- X[, setdiff(colnames(X), endog_v), drop = FALSE]
-  W <- stats::model.matrix(stats::reformulate(inst_v), dsub)[, -1L, drop = FALSE]
+  ## Before R 4.4, reformulate(character(0)) is an error of its own, which
+  ## pre-empted the order-condition message below for `instruments = ~1`.
+  W <- if (length(inst_v)) {
+    stats::model.matrix(stats::reformulate(inst_v), dsub)[, -1L, drop = FALSE]
+  } else {
+    matrix(0, nrow(dsub), 0L)
+  }
   Z <- cbind(X_exog, W)
   Z <- Z[, !duplicated(t(Z)), drop = FALSE]
   L <- ncol(Z)

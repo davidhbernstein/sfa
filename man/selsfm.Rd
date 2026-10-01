@@ -2,21 +2,20 @@
 \alias{selsfm}
 \title{Stochastic Frontier Models with Sample Selection or Technology Choice}
 \description{
-Two models, chosen by \code{model_name}.
+Fits one of two models in which the frontier and a binary choice are
+estimated together. \code{model_name} picks the model:
 
-\code{"greene"} (the default) fits Greene's (2010) sample-selection stochastic frontier: a normal--half-normal
-frontier observed only for the subset of units that select into the
-sample, where the unobservables driving selection are correlated with the
-\emph{noise} in the frontier. Estimation follows the two-step scheme of the
-paper -- a probit for the selection equation on the full sample, then maximum
-\emph{simulated} likelihood for the frontier on the selected subsample.
+\tabular{lll}{
+  \bold{\code{model_name}} \tab \bold{model} \tab \bold{what drives the choice} \cr
+  \code{"greene"} (default) \tab Greene (2010): one frontier, seen only for units that select into the sample \tab the noise \eqn{v} \cr
+  \code{"kts"} \tab Kumbhakar, Tsionas and Sipilainen (2009): a frontier and two scales per technology \tab inefficiency \eqn{u}
+}
 
-\code{"kts"} fits Kumbhakar, Tsionas and Sipilainen (2009), which is a
-\emph{different} model rather than a variant. Both technologies are observed,
-each with its own frontier and its own two scales, and the technology choice
-depends on \bold{inefficiency itself}: \eqn{u} lowers output through the
-frontier and shifts the adoption decision through the choice equation. Fitted
-by single-step maximum likelihood over the whole sample.
+The two are different models, not variants of one, and neither nests the
+other. \code{"greene"} is a two-step estimator: a probit on the full sample,
+then maximum \emph{simulated} likelihood for the frontier on the selected rows.
+\code{"kts"} is single-step maximum likelihood over the whole sample, with the
+integral over \eqn{u} done by Gauss--Legendre quadrature.
 }
 \usage{
 selsfm(selection, frontier, data, model_name = c("greene", "kts"),
@@ -29,22 +28,25 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
        rand.psoptim = NULL)
 }
 \arguments{
-\item{selection}{A two-sided formula for the selection equation, \code{d ~ z1 + z2}.
-  The response must be binary (0/1, logical, or a two-level factor) and is
-  modelled by probit over \emph{all} rows of \code{data}.}
-\item{frontier}{A two-sided formula for the frontier, \code{y ~ x1 + x2}, fitted
-  on the selected rows only. The dependent variable need not be observed where
-  \code{d == 0}; those rows may be \code{NA}.}
+\item{selection}{A two-sided formula for the binary equation, \code{d ~ z1 + z2}:
+  selection into the sample for \code{"greene"}, the technology indicator for
+  \code{"kts"}. For \code{"greene"} the response may be 0/1, logical, or a
+  two-level factor, and the probit uses \emph{all} rows of \code{data}. For
+  \code{"kts"} it must be 0/1.}
+\item{frontier}{A two-sided formula for the frontier, \code{y ~ x1 + x2}.
+  \code{"greene"} fits it on the selected rows only, so \code{y} may be
+  \code{NA} where \code{d == 0}. \code{"kts"} fits a separate copy for each
+  technology and uses every row; a row with any missing value is dropped.}
 \item{model_name}{\code{"greene"} (default) or \code{"kts"}; see
-  \sQuote{Description} and \sQuote{The KTS model} below.}
-\item{n_nodes}{Gauss--Legendre nodes for the integral over \eqn{u}, used by
-  \code{"kts"} only. The half-normal integral is mapped to \eqn{[0,1]} by its
+  \sQuote{Description} and \sQuote{Details}.}
+\item{n_nodes}{\code{"kts"} only. Gauss--Legendre nodes for the integral over \eqn{u}. The half-normal integral is mapped to \eqn{[0,1]} by its
   own CDF, so no truncation point is needed.}
 \item{data}{A \code{data.frame} containing both equations' variables, with the
   unselected rows present. Unlike the rest of the package neither formula takes
   a \code{|} segment -- the two equations are separate arguments -- and a pipe
   is an error rather than being silently ignored.}
-\item{Nsim}{Number of simulation draws per selected observation. \code{"auto"}
+\item{Nsim}{\code{"greene"} only, like \code{sim_type}, \code{antithetics}
+  and \code{seed}. Number of simulation draws per selected observation. \code{"auto"}
   (the default) uses \code{max(200, ceiling(3*sqrt(n_selected)))}. Simulated ML
   is consistent only if the draw count grows with the sample size; a numeric
   value below the automatic floor warns.}
@@ -57,7 +59,11 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
   inefficiency is subtracted; \code{FALSE} for a cost frontier.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim}{Iteration caps for the three
   optimizer stages.}
-\item{start_val}{Name the starting-value vector in the returned object.}
+\item{start_val}{For \code{"greene"}, \code{TRUE} names the starting-value
+  vector returned as \code{$start_v}; starting values cannot be supplied. For
+  \code{"kts"}, a numeric vector is used as the starting values, in the order
+  of the \code{"kts"} parameters listed under \sQuote{Value} but with the four
+  scales given as logs.}
 \item{PSopt}{Run the particle-swarm stage between BOBYQA and \code{optim}.}
 \item{optHessian}{Compute the Hessian, and with it the standard errors.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
@@ -66,10 +72,12 @@ and upper bounds this package uses to keep scale parameters positive, and any
 other value is refused with an error rather than quietly optimized without
 them.}
 \item{verbose}{Report optimizer progress.}
-\item{keep_objective}{Logical. Retain the second-stage likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The contributions are over the \emph{selected} observations, which is the sum the second stage maximises. \bold{This is a two-step estimator:} \eqn{\hat\alpha} comes from the first-stage probit and enters the second stage as if known, so the OPG ignores first-stage estimation error exactly as the stored Hessian already does. It is the same conditional-on-\eqn{\hat\alpha} variance computed a different way, not a correction for it. \code{FALSE} by default, because a closure carries its enclosing environment.}
+\item{keep_objective}{Logical. Retain the second-stage likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. The contributions are over the \emph{selected} observations, which is the sum the second stage maximises. \bold{This is a two-step estimator:} \eqn{\hat\alpha} comes from the first-stage probit and enters the second stage as if known, so the OPG ignores first-stage estimation error exactly as the stored Hessian already does. It is the same conditional-on-\eqn{\hat\alpha} variance computed a different way, not a correction for it. \code{FALSE} by default, because a closure carries its enclosing environment.
+  \code{"kts"} ignores this argument and always returns \code{$objective}.}
 \item{rand.psoptim}{Optional seed for the particle-swarm stage.}
 }
 \details{
+\subsection{Greene (2010): selection through the noise}{
 The model is Greene's Equation (10):
 \deqn{d_i = 1[\alpha'z_i + w_i > 0], \quad w_i \sim N(0,1)}
 \deqn{y_i = \beta'x_i + v_i - u_i, \quad \mathrm{observed\ only\ when\ } d_i = 1}
@@ -108,22 +116,8 @@ the Murphy--Topel correction at this point, which is not implemented here.
 Treat them as a lower bound, and bootstrap over both stages when the precision
 matters.
 }
-\value{
-An object of class \code{"sfareg"}. As elsewhere in the package \code{out} is a
-\code{p x 3} matrix, one row per parameter, with columns \code{par},
-\code{st_err} and \code{t-val}; the parameters are ordered
-\code{sigma_u}, \code{sigma_v}, \code{rho}, then the frontier coefficients.
-Alongside the usual components:
-\item{alpha}{First-stage probit coefficients.}
-\item{probit}{The fitted first-stage object.}
-\item{jlms}{\eqn{E[u_i \mid \varepsilon_i]} by the simulated Bayes rule of
-  Greene's Equation (21), computed over the same draws the likelihood used.}
-\item{efficiency}{\code{exp(-jlms)}.}
-\item{selection_formula}{The selection equation.}
-\item{n_selected, n_total}{Selected and total observation counts.}
-\item{Nsim, sim_type}{The draw count and sequence actually used.}
-}
-\section{The KTS model}{
+
+\subsection{Kumbhakar, Tsionas and Sipilainen (2009): choice through inefficiency}{
 For technology \eqn{I_i \in \{0,1\}},
 
 \deqn{y_i \mid I_i, u_i \sim N(x_i'\beta_{I_i} - u_i,\ \sigma_{v,I_i}^2), \qquad
@@ -161,7 +155,32 @@ but it is properly identified: holding the rest at the truth, the mean
 log-likelihood falls monotonically away from \eqn{\delta = 0.9} in both
 directions, by about 0.069 per observation across \eqn{[0.1, 1.8]}.
 }
+}
+\value{
+An object of class \code{"sfareg"}. As elsewhere in the package \code{out} is a
+\code{p x 3} matrix, one row per parameter, with columns \code{par},
+\code{st_err} and \code{t-val}. Both models return \code{jlms},
+\code{efficiency} (\code{exp(-jlms)}), \code{selection_formula} and
+\code{nobs}.
 
+For \code{"greene"} (\code{model_name} \code{"SEL"} on the fit), the
+parameters are \code{sigma_u}, \code{sigma_v}, \code{rho}, then the frontier
+coefficients, and \code{nobs} is the number of selected rows, the sample the
+second-stage likelihood sums over. Also returned:
+\item{alpha}{First-stage probit coefficients.}
+\item{probit}{The fitted first-stage object.}
+\item{jlms}{\eqn{E[u_i \mid \varepsilon_i]} by the simulated Bayes rule of
+  Greene's Equation (21), computed over the same draws the likelihood used.}
+\item{n_selected, n_total}{Selected and total observation counts.}
+\item{Nsim, sim_type}{The draw count and sequence actually used.}
+
+For \code{"kts"} (\code{model_name} \code{"KTS"} on the fit), the parameters
+are the technology-0 frontier (\code{t0.}), the technology-1 frontier
+(\code{t1.}), \code{sigma_v0}, \code{sigma_v1}, \code{sigma_u0},
+\code{sigma_u1}, the choice equation (\code{choice.}), then \code{delta}.
+\code{nobs} counts every row used, \code{n_selected} the rows with
+technology 1, and \code{n_nodes} the quadrature nodes.
+}
 \references{
 Kumbhakar, S.C., Tsionas, E.G. and Sipilainen, T. (2009). Joint estimation of
 technology choice and technical efficiency: an application to organic and

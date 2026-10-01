@@ -17,6 +17,14 @@
   samples of n = 200, every `data_gen_cs()` column) NG ended more than 1e-3
   below NE on 4 and now on none; the other 353 fits are bit-for-bit unchanged.
 
+* **`ivsfm(instruments = ~1)` failed with an unrelated error before R 4.4.**
+  With no excluded instruments the instrument matrix was built by
+  `reformulate(character(0))`, which R 4.3 and earlier reject ("'termlabels'
+  must be a character vector of length at least one"). The intended message
+  -- that the order condition needs at least as many excluded instruments as
+  endogenous variables -- was reached only on R 4.4 and later. The package
+  supports R 4.0 and up; the message is now the same on all of them.
+
 * **`ivsfm(model_name = "C2SLS")` silently ignored `uhet`.** C2SLS is 2SLS
   with a homoskedastic moment correction for `sigma_u` and the intercept, so
   it has no `delta` to estimate. It accepted `uhet` anyway and returned the
