@@ -33,7 +33,8 @@ ivsfm(formula, endogenous, instruments, data,
 \item{uhet}{Optional one-sided formula of environmental variables, giving
   \eqn{\sigma_{U,i} = \sigma_U \exp(q_i'\delta)}. Supplying it selects the
   2017 model; omitting it gives the 2016 one. Variables may appear in both
-  \code{uhet} and \code{endogenous}.}
+  \code{uhet} and \code{endogenous}. Not available for \code{"C2SLS"},
+  whose moment correction is homoskedastic; supplying it there is an error.}
 \item{inefdec}{\code{TRUE} (default) for a production frontier, where
   inefficiency is subtracted; \code{FALSE} for a cost frontier.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim}{Iteration caps for the three

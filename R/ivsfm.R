@@ -35,6 +35,17 @@ ivsfm <- function(formula,
       call. = FALSE
     )
   }
+  ## C2SLS is 2SLS plus a homoskedastic moment correction: nothing in it can
+  ## carry sigma_u,i = sigma_u exp(q_i'delta). It used to accept `uhet` and
+  ## return the homoskedastic fit unchanged, with no delta_ rows.
+  if (!is.null(uhet) && identical(model_name, "C2SLS")) {
+    stop("ivsfm(): `uhet` is not supported for model_name = \"C2SLS\", which ",
+      "corrects 2SLS with homoskedastic moments and has no delta to estimate. ",
+      "Use \"IVLIML\" or \"IVCF\" for the APS (2017) model with ",
+      "environmental variables.",
+      call. = FALSE
+    )
+  }
   Start.Time <- Sys.time()
 
   for (nm in c("formula", "endogenous", "instruments")) {

@@ -115,6 +115,18 @@ test_that("a cost frontier flips the sign of the inefficiency term", {
   expect_equal(unname(fc$out["x2", "par"]), -0.6, tolerance = 0.12)
 })
 
+test_that("C2SLS refuses uhet rather than ignoring it", {
+  ## C2SLS's moment correction is homoskedastic. It used to accept uhet and
+  ## return the same fit, jlms included, as without it, with no delta_ rows.
+  d <- iv_data(3, n = 600, with_q = TRUE)
+  expect_error(
+    ivsfm(y ~ x1 + x2, endogenous = ~x2, instruments = ~ w1 + w2,
+      uhet = ~q, data = d, model_name = "C2SLS"
+    ),
+    "uhet"
+  )
+})
+
 test_that("C2SLS is moment-based, so it reports no likelihood", {
   d <- iv_data(5)
   f <- ivsfm(y ~ x1 + x2, endogenous = ~x2, instruments = ~ w1 + w2,
