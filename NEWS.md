@@ -2,6 +2,15 @@
 
 ## Bug fixes
 
+* `marginal_effects()` on a truncated-normal fit (`sfm(model_name = "NTN")`
+  with `uhet`/`muhet`) now reports every covariate of the `mu` design. The
+  covariate list was taken from the `sigma_u` design alone, so with
+  `uhet = ~ z1, muhet = ~ z2` the `z2` effect was silently missing, and with
+  `muhet` alone the call stopped claiming every column was constant. The
+  chain rule already handled a covariate in one design only; it was never
+  given the names. `?marginal_effects` also now lists the `"component"`
+  attribute and the `_h` column names returned for `component = "h"`.
+
 * **`sfm(model_name = "NG")` could stop at the OLS point, below the NE
   solution it nests (issue #45).** NG at shape 1 is NE, so its maximum can
   never be below NE's. But its starting values only hold E[u] at a moment

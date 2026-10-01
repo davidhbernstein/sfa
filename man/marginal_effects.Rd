@@ -6,6 +6,14 @@ For a model whose inefficiency scale depends on covariates (the \code{_Z}
 models), the marginal effects of those covariates on the mean and variance of
 the inefficiency term, \eqn{\partial E[u]/\partial z_k} and
 \eqn{\partial \mathrm{Var}[u]/\partial z_k}.
+
+\tabular{lll}{
+  \strong{Fit} \tab \strong{Link on \eqn{\sigma_u}} \tab \strong{Covariates reported} \cr
+  \code{sfm()} \code{"NHN_Z"}, \code{"NE_Z"} \tab SD (default) or \code{z_link = "var"} \tab those in \code{z} \cr
+  \code{sfm()} \code{"NTN"} with \code{uhet}/\code{muhet} \tab SD (default) or \code{z_link = "var"} \tab those in either design \cr
+  \code{sfm()} \code{"NTN"} with \code{scaling} \tab one factor \eqn{h(z)} \tab those in \code{scaling} \cr
+  \code{psfm()} \code{"TRE_Z"}, \code{"GTRE_Z"} \tab variance \tab those in \code{z} (or \code{zp}, \code{component = "h"})
+}
 }
 \usage{
 marginal_effects(object, average = FALSE, component = c("u", "h"))
@@ -62,7 +70,9 @@ The reported effect is the chain rule through \emph{both} designs, since
 \eqn{\mu} and \eqn{\sigma_u} may depend on different covariates:
 \eqn{\partial \mu/\partial z_k = \delta^{\mu}_k} (an identity link) and
 \eqn{\partial \sigma_u/\partial z_k} as above. A covariate appearing in one
-design but not the other contributes only through that one. Note that
+design but not the other contributes only through that one, and every
+non-constant covariate of either design gets a column, so \code{muhet = ~ z}
+alone, with a constant \eqn{\sigma_u}, still reports \eqn{z}. Note that
 \eqn{\delta^{\mu}} is therefore \emph{not} a semi-elasticity, unlike the
 scale coefficients.
 
@@ -114,9 +124,11 @@ a number printed without one would be read as inference.
 \value{
 With \code{average = FALSE}, a data frame with one row per observation:
 \code{sigma_u}, \code{E_u}, \code{Var_u}, then one \code{dE_u.d<z>} and one
-\code{dVar_u.d<z>} column per non-constant variance determinant. Attributes
-\code{"average"} (the average marginal effects), \code{"link"} and
-\code{"family"} record the convention used.
+\code{dVar_u.d<z>} column per non-constant variance determinant. With
+\code{component = "h"} the same columns are named \code{sigma_h},
+\code{E_h}, \code{Var_h}, \code{dE_h.d<z>} and \code{dVar_h.d<z>}.
+Attributes \code{"average"} (the average marginal effects), \code{"link"},
+\code{"family"} and \code{"component"} record the convention used.
 
 With \code{average = TRUE}, just the named vector of average marginal effects.
 }
