@@ -17,9 +17,26 @@ symmetry_test(object)
 \item{object}{An \code{"esfm"} fit.}
 }
 \value{
-An object of class \code{"esfm"} (and \code{"sfareg"}), whose \code{out}
-matrix reports \code{gamma}, \code{sigv} and the frontier coefficients, with
-\code{Efficiency} holding \eqn{E[\exp(-U) \mid W]} for each firm.
+\code{esfm()} returns an object of class \code{"esfm"} (and \code{"sfareg"}).
+The components most often needed:
+\tabular{ll}{
+  \code{out} \tab matrix of \code{par}, \code{st_err}, \code{t-val} for
+    \code{gamma}, \code{sigv} and the frontier coefficients \cr
+  \code{gamma}, \code{sigma_v} \tab the two scale estimates; \code{gamma < 0}
+    means a wrongly skewed fit \cr
+  \code{Efficiency} \tab \eqn{E[\exp(-U) \mid W]} for each firm \cr
+  \code{logLik}, \code{logLik_restricted} \tab log-likelihood, and that of the
+    \eqn{\gamma = 0} (OLS) fit \cr
+  \code{lr_symmetry}, \code{p_symmetry} \tab the LR statistic for
+    \eqn{\gamma = 0} and its \eqn{\chi^2(1)} p-value \cr
+  \code{wrong_skew_sample}, \code{residual_m3} \tab whether the OLS residuals
+    are wrongly skewed, and their third moment \cr
+  \code{model_name} \tab \code{"EXT-HALFNORMAL"} or \code{"EXT-EXPONENTIAL"}
+}
+
+\code{symmetry_test()} returns a one-row data frame with columns \code{test},
+\code{statistic}, \code{df} (always 1), \code{null} (\code{"chi2(1)"}) and
+\code{p.value}, read from the fit's \code{lr_symmetry} and \code{p_symmetry}.
 }
 \description{
 Fits the extended stochastic frontier model of Hafner, Manner and Simar
