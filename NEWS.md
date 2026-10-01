@@ -2,6 +2,14 @@
 
 ## Bug fixes
 
+* **`ivsfm(model_name = "C2SLS")` silently ignored `uhet`.** C2SLS is 2SLS
+  with a homoskedastic moment correction for `sigma_u` and the intercept, so
+  it has no `delta` to estimate. It accepted `uhet` anyway and returned the
+  homoskedastic fit unchanged -- the same coefficients and the same `jlms` as
+  without it, and no `delta_` rows -- so a user asking for the APS (2017)
+  model got the 2016 one without being told. Supplying `uhet` with
+  `"C2SLS"` is now an error that points to `"IVLIML"` or `"IVCF"`.
+
 * **`ttsfm(model_name = "TTNLS")` reported wrong standard errors for every
   coefficient.** Its standard errors came from inverting the Hessian of the
   sum of squares directly. That Hessian is `2 X'X` in the coefficients, so
