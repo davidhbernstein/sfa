@@ -118,18 +118,30 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
         call. = FALSE
       )
     }
+    ## Both failure paths below used to advise type = "bhhh" unconditionally,
+    ## on the reasoning that it needs no Hessian. That is true and not
+    ## sufficient: BHHH still has to invert crossprod(G), and the fits that
+    ## reach these errors are frequently flat in a parameter, which kills the
+    ## outer product too. Advising it blind sends the user to a second error.
+    ## So ask first, and only recommend what is actually available.
+    bhhh_ok <- !is.null(tryCatch(solve(crossprod(G)), error = function(e) NULL))
+    bhhh_hint <- if (bhhh_ok) {
+      " type = \"bhhh\" needs no Hessian and is defined here."
+    } else {
+      " type = \"bhhh\" needs no Hessian, but is ALSO undefined here: the outer product of the scores is singular too."
+    }
     H <- if (!is.null(object$opt)) object$opt$hessian else NULL
     if (is.null(H)) {
       stop(what, ": this covariance needs the Hessian for its bread and this ",
-        "fit carries none (was optHessian = FALSE?). type = \"bhhh\" needs no ",
-        "Hessian and is defined here.",
+        "fit carries none (was optHessian = FALSE?).", bhhh_hint,
+        if (!bhhh_ok) .sfa_dead_parameters(object, G),
         call. = FALSE
       )
     }
     Hi <- .sfa_solve_equilibrated(H)
     if (is.null(Hi)) {
-      stop(what, ": the Hessian is singular, so the bread is undefined. ",
-        "type = \"bhhh\" needs no Hessian and is defined here.",
+      stop(what, ": the Hessian is singular, so the bread is undefined.",
+        bhhh_hint,
         .sfa_dead_parameters(object, G),
         call. = FALSE
       )
