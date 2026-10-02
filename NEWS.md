@@ -2,6 +2,23 @@
 
 ## Bug fixes
 
+* **`vcov(type = "sandwich")` and `vcov(type = "clustered")` recommended a fallback
+  that did not work.** When the bread is undefined -- the fit carries no
+  Hessian, or the Hessian is singular -- both paths advised
+  `type = "bhhh"` on the grounds that it needs no Hessian. That is true but not
+  sufficient: BHHH still has to invert the outer product of the scores, and a
+  fit that reaches these errors is frequently flat in a parameter, which makes
+  that singular too. On such a fit the error said `type = "bhhh"` "is defined
+  here" while `vcov(type = "bhhh")` raised "the outer product of gradients is
+  singular", so a user following the advice met a second error.
+
+  The recommendation is now made only when BHHH is actually available, and when
+  it is not the message says so and names the parameter responsible. Found by
+  measuring test coverage: `.sfa_dead_parameters()`, which supplies that name,
+  had **no** test coverage at all -- 57 of 57 expressions never executed -- so
+  the whole diagnostic path for these covariances had never run in the suite.
+
+
 * `marginal_effects()` on a truncated-normal fit (`sfm(model_name = "NTN")`
   with `uhet`/`muhet`) now reports every covariate of the `mu` design. The
   covariate list was taken from the `sigma_u` design alone, so with
