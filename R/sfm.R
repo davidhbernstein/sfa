@@ -1406,22 +1406,8 @@ sfm <- function(formula,
       u_hat <- .jlms_u(mu_star, sig_star)
       u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_star, length(mu_star)))
 
-      ## The MIRROR of tHN's sigma_u boundary below, and it was silent. On a
-      ## sample with no interior maximum in lambda, NTN's likelihood rises
-      ## monotonically toward a finite limit as lambda -> Inf: measured by
-      ## continuation, -188.1003 at lambda = 9.7e5 and flat at -188.1001876
-      ## from lambda = 1e9 through 1e15. The boundary IS the supremum there, so
-      ## running to lambda = 1e6 is correct behaviour -- but the likelihood is
-      ## then flat in lambda, the Hessian is singular, and EVERY standard error
-      ## comes back NA. Before this, the user got lambda = 972468, six NA
-      ## standard errors and no explanation at all.
-      ##
-      ## Same scale-free ratio as thn_sigma_u_at_bound, on the other component:
-      ## sigma_v/sigma = 1/sqrt(1 + lambda^2), so lambda = 1e6 gives 1e-6 and
-      ## an interior lambda of 8 gives 0.12. Measured on 12 seeds, the five
-      ## boundary fits sit at lambda 7.7e5 to 2.0e7 and the seven interior ones
-      ## at lambda 2.0 to 7.9, so 1e-3 separates them by orders of magnitude
-      ## rather than by a tuned cut.
+      ## sigma_v on its boundary: lambda -> Inf is the supremum, so the fit is
+      ## right but flat and has no standard errors. notes/code_history/sfm.md.
       ntn_sigma_v_at_bound <- isTRUE(sig_v / sqrt(sig_u^2 + sig_v^2) < 1e-3)
       if (ntn_sigma_v_at_bound) {
         warning("sfm(model_name = \"NTN\"): sigma_v has collapsed to the ",
