@@ -1405,6 +1405,27 @@ sfm <- function(formula,
       exp_u_hat <- .te_battese_coelli(mu_star, sig_star)
       u_hat <- .jlms_u(mu_star, sig_star)
       u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_star, length(mu_star)))
+
+      ## sigma_v on its boundary: lambda -> Inf is the supremum, so the fit is
+      ## right but flat and has no standard errors. notes/code_history/sfm.md.
+      ntn_sigma_v_at_bound <- isTRUE(sig_v / sqrt(sig_u^2 + sig_v^2) < 1e-3)
+      if (ntn_sigma_v_at_bound) {
+        warning("sfm(model_name = \"NTN\"): sigma_v has collapsed to the ",
+          "boundary (lambda = ", signif(lamb, 4), ", sigma_v = ",
+          signif(sig_v, 3), "), so the fit attributes essentially all ",
+          "variation to inefficiency and none to noise. On such a sample the ",
+          "likelihood has no interior maximum in lambda -- it rises toward a ",
+          "finite limit as lambda grows without bound -- so the boundary IS ",
+          "the maximum likelihood estimate and this is not a numerical ",
+          "failure. The likelihood is flat in lambda there, so the Hessian is ",
+          "singular and the standard errors are NA for every coefficient; no ",
+          "finite standard error for lambda exists at that point. Read it as ",
+          "\"no noise component identified in these data\" rather than as an ",
+          "estimate of lambda, compare against a model that constrains the ",
+          "noise, and inspect $ntn_sigma_v_at_bound. See ?sfm.",
+          call. = FALSE
+        )
+      }
     }
 
     if (model_name == "NU") {
@@ -1712,6 +1733,16 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+    }
+
+    ## NTN additionally reports its sigma_v boundary flag. APPENDED rather than
+    ## rebuilt: NTN shares the results block above with seven other models, and
+    ## re-listing twelve values against twelve names to add one field is how a
+    ## name/value misalignment gets introduced. $ntn_sigma_v_at_bound is always
+    ## present for NTN and always logical, so a caller can test it without
+    ## checking for its existence.
+    if (model_name == "NTN") {
+      results$ntn_sigma_v_at_bound <- ntn_sigma_v_at_bound
     }
 
     ## tHN additionally reports the boundary flag and the multi-start diagnostic.
