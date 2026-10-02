@@ -970,12 +970,23 @@ sfm <- function(formula,
         sig <- x[2]
         mu <- x[3]
 
-        l1 <- -log(sig^2) / 2
-        l2 <- -log(2 * pi) / 2
-        l3 <- -(1 / (2 * sig^2)) * (-eps - mu)^2
-        l4 <- pnorm(((mu / lam) - eps * lam) / sig, log.p = TRUE)
-        l5 <- -pnorm((mu / sig) * sqrt(1 + lam^(-2)), log.p = TRUE)
-        like <- l1 + l2 + l3 + l4 + l5
+        aa <- ((mu / lam) - eps * lam) / sig
+        bb <- (mu / sig) * sqrt(1 + lam^(-2))
+        ## log Phi(aa) - log Phi(bb) shares mu / lam, so both reach O(-1e13) as
+        ## lam -> 0 with mu < 0 while the difference is O(1) (issue #55); the
+        ## tilt cancels aa^2 - bb^2 in closed form. Indexed, not ifelse(), so
+        ## neither side runs twice. notes/code_history/sfm.md.
+        .tl <- aa < 0 & bb < 0
+        like <- numeric(length(aa))
+        if (any(.tl)) {
+          like[.tl] <- -eps[.tl]^2 * (1 + lam^2) / (2 * sig^2) +
+            .log_phi_tilt(aa[.tl]) - .log_phi_tilt(bb)
+        }
+        if (any(!.tl)) {
+          like[!.tl] <- -(eps[!.tl] + mu)^2 / (2 * sig^2) +
+            pnorm(aa[!.tl], log.p = TRUE) - pnorm(bb, log.p = TRUE)
+        }
+        like <- like - log(sig^2) / 2 - log(2 * pi) / 2
       }
 
       if (model_name == "TSL") {
@@ -1139,6 +1150,40 @@ sfm <- function(formula,
     ## (the half-normal point, m = 0.5) does not reach.
     ng_starts <- NULL
     .ne_ref <- NULL
+    ## NTN nests NHN at mu = 0, which is INTERIOR here (lower_bob leaves mu
+    ## unbounded), so a fit below NHN's maximum is a real failure (issue #55).
+    ## Held at mu = 0, NTN's likelihood IS NHN's; polished from NHN's own start
+    ## and from splits of the residual variance. notes/code_history/sfm.md.
+    .nhn_ref <- NULL
+    if (model_name == "NTN" && isFALSE(is.numeric(start_val))) {
+      .k2 <- mean((epsilon_hat - mean(epsilon_hat))^2)
+      .seeds <- c(list(append(start_v_nhn, 0, after = 2L)), lapply(
+        c(0.1, 0.3, 0.5, 0.7, 0.9), function(w) {
+          z <- start_v
+          z[1:3] <- c(sqrt(w / (1 - w)), sqrt(.k2), 0)
+          if (!is.na(beta_0_st)) {
+            z[4] <- unname(beta_0_st) + sqrt(w * .k2) * sqrt(2 / pi)
+          }
+          z
+        }
+      ))
+      .nhn_fits <- lapply(.seeds, function(z) {
+        z <- pmax(z, lower_bob + 1e-10)
+        tryCatch(
+          suppressWarnings(stats::optim(z[-3],
+            function(p) like.fn(append(p, 0, after = 2L)),
+            method = "L-BFGS-B", lower = lower_bob[-3] + 1e-10,
+            control = list(maxit = 500)
+          )),
+          error = function(e) NULL
+        )
+      })
+      .nhn_fits <- Filter(function(o) !is.null(o) && is.finite(o$value), .nhn_fits)
+      if (length(.nhn_fits)) {
+        .nh <- .nhn_fits[[which.min(vapply(.nhn_fits, function(o) o$value, numeric(1)))]]
+        .nhn_ref <- append(.nh$par, 0, after = 2L)
+      }
+    }
     if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
       .cand <- if (model_name == "NG") {
         .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
@@ -1281,8 +1326,10 @@ sfm <- function(formula,
     ## check at the end rather than another multistart candidate: as a
     ## candidate it changed where the stages went on fits that never fell below
     ## NE, and ended some of them lower than before.
-    if (optHessian == TRUE && model_name %in% c("NG", "NNAK")) {
-      for (.ref in Filter(Negate(is.null), list(.start_ref, .ne_ref))) {
+    ## NTN joins on the same terms (issue #55): checked at the end against the
+    ## mu = 0 fit, not started from it, for the reason recorded above.
+    if (optHessian == TRUE && model_name %in% c("NG", "NNAK", "NTN")) {
+      for (.ref in Filter(Negate(is.null), list(.start_ref, .ne_ref, .nhn_ref))) {
         .ref_val <- tryCatch(like.fn(.ref), error = function(e) NA_real_)
         if (is.finite(.ref_val) && (!is.finite(opt$value) || opt$value > .ref_val + 1e-6)) {
           .lr <- lower.start(.ref, model_name, differ = 0.5)
