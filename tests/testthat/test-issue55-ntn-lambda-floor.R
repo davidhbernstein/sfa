@@ -36,13 +36,27 @@ test_that("NTN reaches its lambda -> 0 limit instead of cancelling (#55)", {
 
   for (mu in c(-1.0061, -0.5, -2)) {
     target <- lam0_limit(d$y_pcs_ge, X, stats::coef(ols), sig, mu)
-    ## The gap to the limit is O(lam^2), so it must SHRINK as lam falls. On the
-    ## old form it turned around below lam = 1e-4 and grew without bound.
-    errs <- vapply(c(1e-4, 1e-5, 1e-6, 1e-7), function(lam) {
+    ## The gap to the limit is O(lam^2), asserted as the log-log SLOPE and only
+    ## on rungs ABOVE the floating-point noise floor. The log-likelihood is
+    ## about -372, so one ulp is 8.3e-14 and summing 200 terms puts the floor
+    ## near 3e-13. At lam = 1e-7 the gap is already there -- on one of these
+    ## samples it comes out as exactly 0 -- so requiring a strict monotone
+    ## decrease into that range is asserting a property of rounding noise, and
+    ## it failed on four of five CI platforms while macOS passed by luck.
+    lams <- c(1e-2, 1e-3, 1e-4, 1e-5)
+    errs <- vapply(lams, function(lam) {
       abs(-f$objective(mk(lam, mu)) - target)
     }, numeric(1))
-    expect_true(all(diff(errs) < 0))
-    expect_lt(errs[length(errs)], 1e-8)
+    ## Each rung must be well clear of the floor, or the slope means nothing.
+    expect_true(all(errs > 1e-12))
+    slope <- stats::coef(stats::lm(log10(errs) ~ log10(lams)))[[2]]
+    expect_equal(slope, 2, tolerance = 0.08)
+    ## And once it reaches the floor it must STAY there. The old form turned
+    ## around below lam = 1e-4 and grew without bound instead.
+    deep <- vapply(c(1e-6, 1e-7, 1e-8), function(lam) {
+      abs(-f$objective(mk(lam, mu)) - target)
+    }, numeric(1))
+    expect_true(all(deep < 1e-11))
   }
 })
 
