@@ -2,6 +2,54 @@
 
 ## Bug fixes
 
+* **`sfm(model_name = "NTN")` reported a log-likelihood above the true one, and
+  above OLS, as `lambda` approached its lower bound.** The truncated-normal
+  density was formed as `log Phi(aa) - log Phi(bb)` with
+  `aa = (mu/lambda - eps*lambda)/sigma` and
+  `bb = (mu/sigma)*sqrt(1 + lambda^-2)`. Both arguments carry the same
+  `mu/lambda`, so with `mu < 0` each term reached about `-1e13` while their
+  difference stayed `O(1)`: the answer was the rounding error of two enormous
+  numbers. On one sample the reported value was `-370.99` where the true value
+  is `-372.73`, which also put it `1.21` ABOVE the OLS log-likelihood -- and
+  near `lambda = 0` the model collapses to a normal regression, so OLS is an
+  upper bound there and cannot be beaten. The error was granular in exactly the
+  way the diagnosis predicts: on one fit it came out as a multiple of the
+  floating-point spacing of `aa^2/2`, 512, once per observation.
+
+  `aa^2 - bb^2` is `(-2*mu*eps + eps^2*lambda^2 - mu^2)/sigma^2` analytically,
+  with the `mu^2/lambda^2` cancelling exactly, so the difference is now taken
+  through `.log_phi_tilt()` -- as `"NE"`, `"NGE"` and `"TSL"` already do -- and the
+  quadratic reduces in closed form to `-eps^2*(1 + lambda^2)/(2*sigma^2)`.
+
+  That path is taken **only** where the cancellation is real, namely both
+  arguments below `-1e3` (the switch `.log_phi_tilt()` itself uses, below which
+  the direct form is accurate to `1e-11`). Everywhere else -- `mu > 0`, or
+  `lambda` away from its bound -- the pre-existing expression is kept
+  **bit for bit**, including its association order. That matters: on the flat
+  `sigma_v` ridge where `lambda -> Inf` is a supremum, `lambda` is not
+  identified, and a last-bit change to the likelihood moved the reported
+  `lambda` by a factor of 20 at an unchanged log-likelihood. 2413 of 2700 fits
+  are now bit-identical to before. Verified two independent
+  ways: against the analytic `lambda -> 0` limit, which the fix now approaches
+  at the expected `O(lambda^2)` rate down to `2e-16` while the old form turned
+  around below `lambda = 1e-4` and reached `0.63`; and, where neither logarithm
+  underflows, against `log(Phi(aa)/Phi(bb))` evaluated in level space.
+  Reported in #55.
+
+* **`sfm(model_name = "NTN")` could return a fit far below the nested `"NHN"`.**
+  At `mu = 0` the truncated-normal likelihood IS the half-normal one with the
+  same `(lambda, sigma)`, and `mu = 0` is *interior* -- `start_cs()` bounds only
+  `lambda` and `sigma` below -- so a maximum below NHN's is a failure rather
+  than a limit that is merely approached. It happened on 200 of 2700 fits, by up
+  to 764. NTN is now checked at the end against a fit made with `mu` held at 0,
+  and polished from it when that point is better, exactly as `"NG"` is checked
+  against shape 1 (#45) and `"NNAK"` against `m = 0.5` (#30) -- a check at the
+  end rather than another start, because as a start it moves fits that were
+  never in trouble. On the same 2700 fits this leaves 13 below NHN, by at most
+  0.39; all 13 sit at `lambda` above 1300, which is the flat `sigma_v` boundary
+  of the A59 case, where a single polish stops short on the ridge. Reported
+  in #55.
+
 * **`vcov(type = "sandwich")` and `vcov(type = "clustered")` recommended a fallback
   that did not work.** When the bread is undefined -- the fit carries no
   Hessian, or the Hessian is singular -- both paths advised
