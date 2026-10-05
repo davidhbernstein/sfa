@@ -19,9 +19,17 @@
   `aa^2 - bb^2` is `(-2*mu*eps + eps^2*lambda^2 - mu^2)/sigma^2` analytically,
   with the `mu^2/lambda^2` cancelling exactly, so the difference is now taken
   through `.log_phi_tilt()` -- as `"NE"`, `"NGE"` and `"TSL"` already do -- and the
-  quadratic reduces in closed form to `-eps^2*(1 + lambda^2)/(2*sigma^2)`. Where
-  the old expression did not cancel (`mu > 0`, or `lambda` away from its bound)
-  the direct path is kept and the value is unchanged. Verified two independent
+  quadratic reduces in closed form to `-eps^2*(1 + lambda^2)/(2*sigma^2)`.
+
+  That path is taken **only** where the cancellation is real, namely both
+  arguments below `-1e3` (the switch `.log_phi_tilt()` itself uses, below which
+  the direct form is accurate to `1e-11`). Everywhere else -- `mu > 0`, or
+  `lambda` away from its bound -- the pre-existing expression is kept
+  **bit for bit**, including its association order. That matters: on the flat
+  `sigma_v` ridge where `lambda -> Inf` is a supremum, `lambda` is not
+  identified, and a last-bit change to the likelihood moved the reported
+  `lambda` by a factor of 20 at an unchanged log-likelihood. 2413 of 2700 fits
+  are now bit-identical to before. Verified two independent
   ways: against the analytic `lambda -> 0` limit, which the fix now approaches
   at the expected `O(lambda^2)` rate down to `2e-16` while the old form turned
   around below `lambda = 1e-4` and reached `0.63`; and, where neither logarithm

@@ -970,23 +970,28 @@ sfm <- function(formula,
         sig <- x[2]
         mu <- x[3]
 
+        l1 <- -log(sig^2) / 2
+        l2 <- -log(2 * pi) / 2
+        l3 <- -(1 / (2 * sig^2)) * (-eps - mu)^2
         aa <- ((mu / lam) - eps * lam) / sig
         bb <- (mu / sig) * sqrt(1 + lam^(-2))
-        ## log Phi(aa) - log Phi(bb) shares mu / lam, so both reach O(-1e13) as
-        ## lam -> 0 with mu < 0 while the difference is O(1) (issue #55); the
-        ## tilt cancels aa^2 - bb^2 in closed form. Indexed, not ifelse(), so
-        ## neither side runs twice. notes/code_history/sfm.md.
-        .tl <- aa < 0 & bb < 0
+        ## Both arguments share mu / lam, so as lam -> 0 with mu < 0 each log
+        ## Phi reaches O(-1e13) while the difference is O(1) and is lost (issue
+        ## #55). Only THERE is the tilt used, which carries aa^2 - bb^2
+        ## analytically; the threshold is .log_phi_tilt()'s own switch, and
+        ## below it the direct form is accurate to 1e-11. Everywhere else this
+        ## stays bit-identical to the pre-#55 expression, which the flat
+        ## sigma_v ridge of A59 needs. notes/code_history/sfm.md.
+        .tl <- aa < -1e3 & bb < -1e3
         like <- numeric(length(aa))
-        if (any(.tl)) {
-          like[.tl] <- -eps[.tl]^2 * (1 + lam^2) / (2 * sig^2) +
-            .log_phi_tilt(aa[.tl]) - .log_phi_tilt(bb)
-        }
         if (any(!.tl)) {
-          like[!.tl] <- -(eps[!.tl] + mu)^2 / (2 * sig^2) +
+          like[!.tl] <- l1 + l2 + l3[!.tl] +
             pnorm(aa[!.tl], log.p = TRUE) - pnorm(bb, log.p = TRUE)
         }
-        like <- like - log(sig^2) / 2 - log(2 * pi) / 2
+        if (any(.tl)) {
+          like[.tl] <- l1 + l2 - eps[.tl]^2 * (1 + lam^2) / (2 * sig^2) +
+            .log_phi_tilt(aa[.tl]) - .log_phi_tilt(bb)
+        }
       }
 
       if (model_name == "TSL") {
