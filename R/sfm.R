@@ -1882,6 +1882,14 @@ sfm <- function(formula,
       results$residual_m3 <- ws$m3
       if (isTRUE(ws$wrong_skew) && isTRUE(ws$at_bound)) {
         .warn_wrong_skew_boundary(ws, model_name, scale_nm[1])
+      } else if (isFALSE(ws$wrong_skew) && isTRUE(ws$at_bound)) {
+        ## The opposite case was flagged and silent (A60): correct skew means
+        ## the boundary should NOT be the answer, so it is the suspicious one.
+        .warn_boundary_correct_skew(ws, model_name, scale_nm[1],
+          conv = tryCatch(as.integer(results$opt$convergence),
+            error = function(e) NA_integer_
+          )
+        )
       }
     }
 
