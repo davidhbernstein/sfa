@@ -118,12 +118,8 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
         call. = FALSE
       )
     }
-    ## Both failure paths below used to advise type = "bhhh" unconditionally,
-    ## on the reasoning that it needs no Hessian. That is true and not
-    ## sufficient: BHHH still has to invert crossprod(G), and the fits that
-    ## reach these errors are frequently flat in a parameter, which kills the
-    ## outer product too. Advising it blind sends the user to a second error.
-    ## So ask first, and only recommend what is actually available.
+    ## BHHH needs no Hessian but still inverts crossprod(G), which these flat
+    ## fits often kill too. notes/code_history/sfareg_methods.md.
     bhhh_ok <- !is.null(tryCatch(solve(crossprod(G)), error = function(e) NULL))
     bhhh_hint <- if (bhhh_ok) {
       " type = \"bhhh\" needs no Hessian and is defined here."
