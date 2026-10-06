@@ -397,6 +397,14 @@ print.sfareg <- function(x, ...) {
         " the wrong\n  skew. Under wrong skewness this is the correct MLE, not",
         " a failure\n  (Waldman 1982); see ?skewness_test for a p-value.\n",
         sep = "")
+    } else if (identical(x$model_name, "tHN")) {
+      ## tHN's own note below gives the model-specific reading, on its own
+      ## threshold; print only the fact when that one has not fired.
+      if (!isTRUE(x$thn_sigma_u_at_bound)) {
+        cat("NOTE: sigma_u is on the zero boundary. For tHN, heavy-tailed",
+          " noise absorbing\n  the one-sided component is a known property of",
+          " the model rather than a\n  numerical failure. See ?sfm.\n", sep = "")
+      }
     } else {
       cat("NOTE: sigma_u is on the zero boundary, but the OLS residuals are",
         " skewed the\n  right way for a production frontier, which is evidence",

@@ -1882,9 +1882,12 @@ sfm <- function(formula,
       results$residual_m3 <- ws$m3
       if (isTRUE(ws$wrong_skew) && isTRUE(ws$at_bound)) {
         .warn_wrong_skew_boundary(ws, model_name, scale_nm[1])
-      } else if (isFALSE(ws$wrong_skew) && isTRUE(ws$at_bound)) {
+      } else if (isFALSE(ws$wrong_skew) && isTRUE(ws$at_bound) &&
+        !identical(model_name, "tHN")) {
         ## The opposite case was flagged and silent (A60): correct skew means
         ## the boundary should NOT be the answer, so it is the suspicious one.
+        ## tHN is excluded: it warns above that heavy-tailed noise absorbing u
+        ## is a known property of the model, which would contradict this.
         .warn_boundary_correct_skew(ws, model_name, scale_nm[1],
           conv = tryCatch(as.integer(results$opt$convergence),
             error = function(e) NA_integer_

@@ -36,6 +36,12 @@
   one, says the fit may not be a maximum, and states that the wrong-skew
   reading does not apply. The sound case keeps the message it had.
 
+  `"tHN"` is excluded from the new reading and keeps its own: it already warns
+  that heavy-tailed noise absorbing the whole one-sided component is a known
+  property of the model rather than a numerical failure, and its row names put
+  it through this same generic block, so the two would otherwise contradict
+  each other on one fit.
+
 * **`sfm(model_name = "NTN")` reported a log-likelihood above the true one, and
   above OLS, as `lambda` approached its lower bound.** The truncated-normal
   density was formed as `log Phi(aa) - log Phi(bb)` with

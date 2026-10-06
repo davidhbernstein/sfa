@@ -108,3 +108,47 @@ test_that("the two boundary warnings stay distinguishable", {
   expect_false(grepl("unlikely to be the maximum likelihood estimate", a,
     fixed = TRUE))
 })
+
+test_that("tHN keeps its own reading of a collapsed sigma_u", {
+  ## tHN warns separately that heavy-tailed noise absorbing the one-sided
+  ## component is a known property of the model, so calling the same fit
+  ## "suspect" would contradict it on the same console. tHN's row names put it
+  ## through the generic block, so it has to be excluded explicitly.
+  thn_both <- structure(list(sigma_u_at_bound = TRUE, wrong_skew = FALSE,
+    model_name = "tHN", thn_sigma_u_at_bound = TRUE), class = "sfareg")
+  o <- paste(capture.output(sfa:::.sfa_report_boundary(thn_both)),
+    collapse = " ")
+  expect_match(o, "known property of tHN")
+  expect_false(grepl("may not be a maximum", o, fixed = TRUE))
+  expect_false(grepl("does NOT apply", o, fixed = TRUE))
+  ## And exactly one NOTE, not the tHN one plus a contradicting one.
+  expect_equal(lengths(regmatches(o, gregexpr("NOTE:", o, fixed = TRUE)))[[1]], 1L)
+
+  ## The two thresholds differ (tHN uses sig_u/sqrt(sig_u^2+sig_v^2) < 1e-3,
+  ## the generic one sigu/sd(resid) < 1e-2), so the generic flag can fire alone.
+  ## That must still report the boundary, with tHN's reading and not the
+  ## suspect one.
+  thn_gen <- structure(list(sigma_u_at_bound = TRUE, wrong_skew = FALSE,
+    model_name = "tHN", thn_sigma_u_at_bound = FALSE), class = "sfareg")
+  g <- paste(capture.output(sfa:::.sfa_report_boundary(thn_gen)), collapse = " ")
+  expect_match(g, "sigma_u is on the zero boundary")
+  expect_match(g, "known property")
+  expect_false(grepl("may not be a maximum", g, fixed = TRUE))
+  expect_false(grepl("correct MLE", g, fixed = TRUE))
+
+  ## Under WRONG skew tHN still gets the Waldman reading, which is unchanged.
+  thn_wrong <- structure(list(sigma_u_at_bound = TRUE, wrong_skew = TRUE,
+    model_name = "tHN", thn_sigma_u_at_bound = FALSE), class = "sfareg")
+  w <- paste(capture.output(sfa:::.sfa_report_boundary(thn_wrong)),
+    collapse = " ")
+  expect_match(w, "correct MLE")
+})
+
+test_that("a model with no model_name still gets the generic reading", {
+  ## Defensive: identical(NULL, "tHN") is FALSE, so an object missing
+  ## model_name must not silently fall into the tHN branch.
+  o <- structure(list(sigma_u_at_bound = TRUE, wrong_skew = FALSE),
+    class = "sfareg")
+  out <- paste(capture.output(sfa:::.sfa_report_boundary(o)), collapse = " ")
+  expect_match(out, "may not be a maximum")
+})
