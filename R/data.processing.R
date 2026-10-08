@@ -372,11 +372,30 @@ print.sfareg <- function(x, ...) {
 ## that the intercept moved to absorb the difference. So the flags the fit
 ## already carries are reported here too.
 .sfa_report_boundary <- function(x) {
+  ## Two cases, and they read in OPPOSITE directions (A60). This used to cite
+  ## Waldman for both, which exculpates the fit the skew says is suspect.
   if (isTRUE(x$sigma_u_at_bound)) {
-    cat("NOTE: sigma_u is on the zero boundary")
-    if (isTRUE(x$wrong_skew)) cat(" and the OLS residuals have the wrong skew")
-    cat(".\n  Under wrong skewness this is the correct MLE, not a failure ",
-      "(Waldman 1982);\n  see ?skewness_test for a p-value.\n", sep = "")
+    if (isTRUE(x$wrong_skew)) {
+      cat("NOTE: sigma_u is on the zero boundary and the OLS residuals have",
+        " the wrong\n  skew. Under wrong skewness this is the correct MLE, not",
+        " a failure\n  (Waldman 1982); see ?skewness_test for a p-value.\n",
+        sep = "")
+    } else if (identical(x$model_name, "tHN")) {
+      ## tHN's own note below gives the model-specific reading, on its own
+      ## threshold; print only the fact when that one has not fired.
+      if (!isTRUE(x$thn_sigma_u_at_bound)) {
+        cat("NOTE: sigma_u is on the zero boundary. For tHN, heavy-tailed",
+          " noise absorbing\n  the one-sided component is a known property of",
+          " the model rather than a\n  numerical failure. See ?sfm.\n", sep = "")
+      }
+    } else {
+      cat("NOTE: sigma_u is on the zero boundary, but the OLS residuals are",
+        " skewed the\n  right way for a production frontier, which is evidence",
+        " that inefficiency\n  IS present. The boundary is therefore unlikely",
+        " to be the MLE and this fit\n  may not be a maximum -- check",
+        " convergence and refit from other starting\n  values. The Waldman",
+        " (1982) wrong-skew reading does NOT apply here.\n", sep = "")
+    }
   }
   ## tHN reports the same condition under its own name, and for its own reason:
   ## heavy-tailed noise can absorb the whole one-sided component, so this is not

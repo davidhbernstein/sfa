@@ -2,6 +2,46 @@
 
 ## Bug fixes
 
+* **A `sigma_u` collapsed to zero was reported as the correct answer even when
+  the residual skew said inefficiency was present.** `sfm()` sets
+  `$sigma_u_at_bound` whenever the fitted one-sided scale reaches the zero
+  boundary, and the two cases that reach it read in OPPOSITE directions. Under
+  WRONG skew (third central moment `>= 0`) the boundary genuinely is the
+  maximum likelihood estimate -- the Type I failure of Olson, Schmidt and
+  Waldman (1980) -- and should be read as no evidence of inefficiency. Under
+  CORRECT skew the data say inefficiency IS present, so the boundary should not
+  be the answer and the fit is suspect.
+
+  Only the first case was handled. The fit-time warning was guarded on
+  `wrong_skew && at_bound`, so the second case was flagged and **silent**.
+  Worse, `print()` and `summary()` printed the sentence "Under wrong skewness
+  this is the correct MLE, not a failure (Waldman 1982)" in **both** cases,
+  having only dropped the clause that names the skew -- so the suspect fit was
+  shown the exculpation belonging to the sound one, in the output that survives
+  `saveRDS()` and a fresh session.
+
+  Measured on `sfm(model_name = "NW")`, `y_pcs_w`, `N = 150`: seeds 1, 5 and 7
+  all return `optim()` convergence code 52
+  (`ABNORMAL_TERMINATION_IN_LNSRCH`), no standard errors,
+  `$sigma_u_at_bound = TRUE`, `$wrong_skew = FALSE` and residual third moments
+  of `-1585.5`, `-469.3` and `-4007.9`. Two of the three are not even
+  stationary: moving `sigma_v` alone, with every other parameter held at its
+  fitted value, gains `0.4771` and `0.0452` in log-likelihood. On seed 1 a
+  point `6.5743` better exists at the same `sigma_u`. So a user saw a boundary
+  flag, no standard errors and a printed note calling it correct, on a fit that
+  had not converged and was not a maximum.
+
+  Both reporting paths now branch on the skew. The warning for the suspect case
+  names the residual moment, reports a non-zero convergence code when there is
+  one, says the fit may not be a maximum, and states that the wrong-skew
+  reading does not apply. The sound case keeps the message it had.
+
+  `"tHN"` is excluded from the new reading and keeps its own: it already warns
+  that heavy-tailed noise absorbing the whole one-sided component is a known
+  property of the model rather than a numerical failure, and its row names put
+  it through this same generic block, so the two would otherwise contradict
+  each other on one fit.
+
 * **`sfm(model_name = "NTN")` reported a log-likelihood above the true one, and
   above OLS, as `lambda` approached its lower bound.** The truncated-normal
   density was formed as `log Phi(aa) - log Phi(bb)` with
