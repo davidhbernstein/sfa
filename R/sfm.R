@@ -950,15 +950,8 @@ sfm <- function(formula,
         nu <- x[3]
         like <- if (!is.finite(sig_v) || !is.finite(sig_u) || !is.finite(nu) ||
           sig_v <= 0 || sig_u <= 0 || nu <= 2) {
-          ## NOT .Machine$double.xmax / n: summed over n that IS double.xmax,
-          ## and optim() differences the objective, so the gradient overflows to
-          ## a genuinely non-finite value. Measured at n = 300: 5.99e305 per
-          ## observation, 1.7977e308 summed, (f - 295.5)/1e-3 = Inf. This guard
-          ## is reached in practice -- optim()'s ndeps = 1e-3 step takes sig_u
-          ## from its 1e-7 bound to -0.0009999 -- and instrumenting it gave a
-          ## 9/9 correlation between reaching it and losing every standard
-          ## error. The sibling branches' literal 1e12 does NOT fix that; see
-          ## .SFA_CONSTANTS$DOMAIN_PENALTY for the sweep behind this value.
+          ## NOT double.xmax / n: optim() differences the objective and the
+          ## gradient overflows. notes/code_history/sfm.md (A56a).
           rep(-.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS, length(eps))
         } else {
           .log_d_thn(eps, sig_v, sig_u, nu)
