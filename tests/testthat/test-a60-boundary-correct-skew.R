@@ -70,9 +70,12 @@ test_that(".warn_boundary_correct_skew() reports the moment and the code", {
   ## A non-zero convergence code is the actionable part of A60's three NW fits.
   expect_match(w, "convergence code 52", fixed = TRUE)
   expect_match(w, "did not converge", fixed = TRUE)
-  ## It must not repeat the wrong-skew exculpation as if it applied.
+  ## It must not repeat the wrong-skew exculpation as if it applied, and must
+  ## say so explicitly. "does NOT apply" is the PRINT path's wording; the
+  ## warning denies the same reading in its own words, so assert the warning's.
   expect_false(grepl("correct maximum likelihood estimate", w, fixed = TRUE))
-  expect_match(w, "does NOT", fixed = TRUE)
+  expect_match(w, "Do NOT read it as no evidence of inefficiency", fixed = TRUE)
+  expect_match(w, "applies only under wrong skew", fixed = TRUE)
 
   ## conv 0 and conv NA both drop the convergence clause rather than printing
   ## "code 0" or "code NA".
