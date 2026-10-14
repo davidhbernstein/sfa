@@ -2483,6 +2483,31 @@
   )
 }
 
+## Helper: the OPPOSITE case -- the boundary reached with CORRECT skew (A60).
+## Suspect rather than correct, so this asks the user to check.
+.warn_boundary_correct_skew <- function(ws, model_name, scale_name = "sigma_u",
+                                        conv = NA_integer_) {
+  conv_txt <- if (is.finite(conv) && !identical(as.integer(conv), 0L)) {
+    paste0(" optim() also returned convergence code ", as.integer(conv),
+      ", so it did not converge.")
+  } else {
+    ""
+  }
+  warning("sfm(model_name = \"", model_name, "\"): ", scale_name,
+    " has collapsed to the boundary, but the OLS residuals are skewed the ",
+    "right way for a production frontier (third central moment ",
+    signif(ws$m3, 3), " < 0), which is evidence that inefficiency IS present. ",
+    "The boundary is therefore unlikely to be the maximum likelihood estimate ",
+    "and this fit may not be a maximum.", conv_txt,
+    " Do NOT read it as no evidence of inefficiency -- that reading applies ",
+    "only under wrong skew (the Type I case of Olson, Schmidt and Waldman ",
+    "1980), which is not what these residuals show. Refit from different ",
+    "starting values via `start_val`, and inspect $opt$convergence, ",
+    "$wrong_skew, $sigma_u_at_bound and $residual_m3.",
+    call. = FALSE
+  )
+}
+
 ## Helper: the variance-determinant block of a psfm() _Z fit, in the shape
 ## marginal_effects() expects. psfm() places z'delta on the VARIANCE, so the
 ## link is "var"; sfm()'s default is "sd". The delta coefficients are the
