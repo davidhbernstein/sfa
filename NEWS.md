@@ -2,6 +2,27 @@
 
 ## Bug fixes
 
+* **`sfm()` could report a fit as converged, with standard errors, at a point
+  that is not a maximum.** On a flat ridge `optim()` can stop with
+  convergence code 0 short of the maximum. In an RTMB scoping study on
+  `sfm(model_name = "NTN")` (180 fits; `ad_scoping/RESULTS.md` in the
+  development workspace), two fits did this: N = 150 seed 31 and N = 300
+  seed 56 of `y_pcs_tn`. They sat 1.53 and 3.60 log-likelihood units below the
+  supremum, which in both cases is the `sigma_v` collapse. One had an
+  indefinite Hessian.
+
+  `sfm()` now computes the Newton decrement at the returned point whenever it
+  is about to report standard errors. It polishes with `nlminb()` when the
+  decrement exceeds `1e-4`; the 167 sound interior fits in that study were all
+  below `7e-9`. The polish works on the log scale for positive parameters, so
+  it can walk a ridge to a scale's infinity, and is kept only if the
+  log-likelihood rises. On seed 31 it reaches the supremum, and the existing
+  `ntn_sigma_v_at_bound` flag and warning then apply. On seed 56 it recovers
+  3.48 of the 3.60 and warns that the point is still not a maximum. Either way
+  the fit no longer looks clean. The result is recorded in `$stationarity`.
+  The NTN `sigma_v` boundary now sets its standard errors to `NA` explicitly,
+  because a polished Hessian can invert numerically there.
+
 * **A `sigma_u` collapsed to zero was reported as the correct answer even when
   the residual skew said inefficiency was present.** `sfm()` sets
   `$sigma_u_at_bound` whenever the fitted one-sided scale reaches the zero

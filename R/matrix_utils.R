@@ -2483,6 +2483,48 @@
   )
 }
 
+## Helper: is the returned point a maximum? Newton decrement 0.5 g'H^-1 g from
+## a Richardson gradient; if a step predicts a real gain, polish (A62).
+.stationarity_polish <- function(fn, opt, lower, tol = 1e-4) {
+  g <- tryCatch(numDeriv::grad(fn, opt$par), error = function(e) NULL)
+  dec <- if (is.null(g) || !all(is.finite(g))) NA_real_ else
+    tryCatch(0.5 * sum(g * solve(opt$hessian, g)), error = function(e) NA_real_)
+  info <- list(decrement = dec, grad_max = if (is.null(g)) NA_real_ else max(abs(g)),
+               polished = FALSE, gain = 0)
+  if (!is.finite(dec) || abs(dec) <= tol) return(list(opt = opt, info = info))
+
+  ## Log scale for the positive parameters, where a ridge to a scale's infinity
+  ## is walkable. Gradient only: a numDeriv Hessian on that ridge stalls it.
+  pos <- which(is.finite(lower) & lower >= 0 & opt$par > 0)
+  to_x <- function(z) { x <- z; x[pos] <- exp(z[pos]); x }
+  fz <- function(z) fn(to_x(z))
+  zl <- lower
+  zl[pos] <- log(pmax(lower[pos], .Machine$double.xmin))
+  ## Restarted while it gains: nlminb's "false convergence" stops are frequent here.
+  for (round in 1:3) {
+    z0 <- opt$par
+    z0[pos] <- log(opt$par[pos])
+    pol <- tryCatch(suppressWarnings(stats::nlminb(z0, fz,
+      gradient = function(z) numDeriv::grad(fz, z), lower = zl,
+      control = list(eval.max = 400, iter.max = 200))), error = function(e) NULL)
+    if (is.null(pol) || !is.finite(pol$objective) || pol$objective >= opt$value - 1e-6) break
+    info$gain <- info$gain + opt$value - pol$objective
+    info$polished <- TRUE
+    opt$par <- to_x(pol$par)
+    opt$value <- pol$objective
+    opt$convergence <- pol$convergence
+    opt$message <- paste("polished by nlminb after a non-stationary stop:", pol$message)
+  }
+  if (info$polished) {
+    opt$hessian <- tryCatch(stats::optimHess(opt$par, fn), error = function(e)
+      matrix(NA_real_, length(opt$par), length(opt$par)))
+    g2 <- tryCatch(numDeriv::grad(fn, opt$par), error = function(e) NULL)
+    info$decrement_after <- if (is.null(g2)) NA_real_ else
+      tryCatch(0.5 * sum(g2 * solve(opt$hessian, g2)), error = function(e) NA_real_)
+  }
+  list(opt = opt, info = info)
+}
+
 ## Helper: the OPPOSITE case -- the boundary reached with CORRECT skew (A60).
 ## Suspect rather than correct, so this asks the user to check.
 .warn_boundary_correct_skew <- function(ws, model_name, scale_name = "sigma_u",
