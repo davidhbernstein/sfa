@@ -2483,6 +2483,83 @@
   )
 }
 
+## Helper: is the returned point a maximum? Newton decrement 0.5 g'H^-1 g over
+## the coordinates clear of a bound; if a step predicts a real gain, polish (A62).
+.stationarity_polish <- function(fn, opt, lower, tol = 1e-4) {
+  pr <- opt$par
+  ## numDeriv's own step, so a coordinate the stencil cannot straddle without
+  ## leaving the box is differenced forward and judged by its sign instead.
+  h <- 1e-4 * abs(pr) + 1e-4 * (abs(pr) < sqrt(.Machine$double.eps / 7e-7))
+  at_bound <- is.finite(lower) & (pr - lower) <= h
+  sides <- rep(NA_real_, length(pr))
+  sides[at_bound] <- 1
+  g <- tryCatch(numDeriv::grad(fn, pr, side = sides), error = function(e) NULL)
+  free <- which(!at_bound)
+  dec <- if (is.null(g) || !all(is.finite(g))) {
+    NA_real_
+  } else if (!length(free)) {
+    0
+  } else {
+    tryCatch(0.5 * sum(g[free] * solve(opt$hessian[free, free, drop = FALSE], g[free])),
+      error = function(e) NA_real_
+    )
+  }
+  ## A minimum of the negative log-likelihood at a lower bound needs a
+  ## non-negative one-sided slope. Recorded, not acted on: see the note.
+  info <- list(decrement = dec, grad_max = if (is.null(g)) NA_real_ else max(abs(g)),
+               n_at_bound = sum(at_bound), at_bound = at_bound,
+               bound_ok = if (is.null(g) || !any(at_bound)) TRUE else
+                 all(g[at_bound] >= -tol * max(1, abs(opt$value))),
+               polished = FALSE, gain = 0)
+  if (!is.finite(dec) || abs(dec) <= tol) return(list(opt = opt, info = info))
+
+  ## Log scale for the positive parameters, where a ridge to a scale's infinity
+  ## is walkable. Gradient only: a numDeriv Hessian on that ridge stalls it.
+  pos <- which(is.finite(lower) & lower >= 0 & opt$par > 0)
+  to_x <- function(z) { x <- z; x[pos] <- exp(z[pos]); x }
+  fz <- function(z) fn(to_x(z))
+  zl <- lower
+  zl[pos] <- log(pmax(lower[pos], .Machine$double.xmin))
+  ## Restarted while it gains: nlminb's "false convergence" stops are frequent here.
+  for (round in 1:3) {
+    z0 <- opt$par
+    z0[pos] <- log(opt$par[pos])
+    pol <- tryCatch(suppressWarnings(stats::nlminb(z0, fz,
+      gradient = function(z) numDeriv::grad(fz, z), lower = zl,
+      control = list(eval.max = 400, iter.max = 200))), error = function(e) NULL)
+    if (is.null(pol) || !is.finite(pol$objective) || pol$objective >= opt$value - 1e-6) break
+    info$gain <- info$gain + opt$value - pol$objective
+    info$polished <- TRUE
+    opt$par <- to_x(pol$par)
+    opt$value <- pol$objective
+    opt$convergence <- pol$convergence
+    opt$message <- paste("polished by nlminb after a non-stationary stop:", pol$message)
+  }
+  if (info$polished) {
+    opt$hessian <- tryCatch(stats::optimHess(opt$par, fn), error = function(e)
+      matrix(NA_real_, length(opt$par), length(opt$par)))
+    ## The polish can have walked INTO a bound, so the free set is recomputed.
+    pr2 <- opt$par
+    h2 <- 1e-4 * abs(pr2) + 1e-4 * (abs(pr2) < sqrt(.Machine$double.eps / 7e-7))
+    ab2 <- is.finite(lower) & (pr2 - lower) <= h2
+    sd2 <- rep(NA_real_, length(pr2))
+    sd2[ab2] <- 1
+    g2 <- tryCatch(numDeriv::grad(fn, pr2, side = sd2), error = function(e) NULL)
+    fr2 <- which(!ab2)
+    info$n_at_bound_after <- sum(ab2)
+    info$decrement_after <- if (is.null(g2) || !all(is.finite(g2))) {
+      NA_real_
+    } else if (!length(fr2)) {
+      0
+    } else {
+      tryCatch(0.5 * sum(g2[fr2] * solve(opt$hessian[fr2, fr2, drop = FALSE], g2[fr2])),
+        error = function(e) NA_real_
+      )
+    }
+  }
+  list(opt = opt, info = info)
+}
+
 ## Helper: the OPPOSITE case -- the boundary reached with CORRECT skew (A60).
 ## Suspect rather than correct, so this asks the user to check.
 .warn_boundary_correct_skew <- function(ws, model_name, scale_name = "sigma_u",

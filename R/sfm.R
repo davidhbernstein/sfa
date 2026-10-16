@@ -1345,6 +1345,15 @@ sfm <- function(formula,
       }
     }
 
+    ## optim() can stop with code 0 short of a maximum on a flat ridge (A62).
+    stationarity <- NULL
+    if (optHessian == TRUE && robust == "mle" && !is.null(opt$hessian) &&
+      all(is.finite(opt$hessian))) {
+      .sp <- .stationarity_polish(like.fn, opt, lower_bob)
+      opt <- .sp$opt
+      stationarity <- .sp$info
+    }
+
     ## A Hessian that cannot be inverted.
     if (optHessian == TRUE) {
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
@@ -1455,6 +1464,8 @@ sfm <- function(formula,
       ## right but flat and has no standard errors. notes/code_history/sfm.md.
       ntn_sigma_v_at_bound <- isTRUE(sig_v / sqrt(sig_u^2 + sig_v^2) < 1e-3)
       if (ntn_sigma_v_at_bound) {
+        ## A polished Hessian can invert numerically here; no SE exists (A62).
+        out[2:3, ] <- NA_real_
         warning("sfm(model_name = \"NTN\"): sigma_v has collapsed to the ",
           "boundary (lambda = ", signif(lamb, 4), ", sigma_v = ",
           signif(sig_v, 3), "), so the fit attributes essentially all ",
@@ -1885,6 +1896,42 @@ sfm <- function(formula,
           )
         )
       }
+    }
+
+    ## Still not a maximum after the A62 polish, and no boundary flag explains it.
+    .st <- stationarity
+    if (!is.null(.st)) results$stationarity <- .st
+    if (!is.null(.st) && is.finite(.st$decrement) && abs(.st$decrement) > 1e-4 &&
+      !(isTRUE(.st$polished) && isTRUE(abs(.st$decrement_after) <= 1e-4)) &&
+      !isTRUE(results$sigma_u_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound) &&
+      !isTRUE(results$thn_sigma_u_at_bound)) {
+      .now <- if (isTRUE(.st$polished)) .st$decrement_after else .st$decrement
+      ## A NEGATIVE decrement is not a gain: it says the reduced Hessian is
+      ## indefinite, which is a stronger statement and gets its own wording.
+      .dtxt <- if (is.finite(.now) && .now < 0) {
+        paste0("the Hessian over the coordinates clear of a bound is not ",
+          "positive definite there (Newton decrement ", signif(.now, 3),
+          "), so the point is a saddle rather than a maximum")
+      } else {
+        paste0("a Newton step from the returned point still predicts a gain of ",
+          signif(abs(.now), 3))
+      }
+      .btxt <- if (isTRUE(.st$n_at_bound > 0)) {
+        paste0(" ", .st$n_at_bound, " parameter(s) sit on a lower bound and ",
+          "were judged by the sign of a one-sided slope instead",
+          if (isFALSE(.st$bound_ok)) ", which the fit fails" else "", ".")
+      } else {
+        ""
+      }
+      warning("sfm(model_name = \"", model_name, "\"): the optimizer stopped at a ",
+        "point that is not a maximum. ", if (isTRUE(.st$polished)) paste0(
+          "A polish gained ", signif(.st$gain, 3), " in log-likelihood but did ",
+          "not reach one") else "A polish from it did not improve it",
+        "; ", .dtxt, ". The estimates and standard errors are not ",
+        "those of an MLE.", .btxt, " Refit ",
+        "from other starting values via `start_val`, and inspect $stationarity.",
+        call. = FALSE
+      )
     }
 
     ## The variance-determinant block, kept so marginal_effects() can report d
