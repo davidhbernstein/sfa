@@ -64,6 +64,45 @@ test_that("a polish that cannot improve leaves the fit unchanged", {
   expect_identical(r$opt$par, c(1, 2))
 })
 
+test_that("a coordinate against its bound is differenced forward, not across the cliff", {
+  ## The real case: NHN_Z returns sigma_v = 1.5e-6 against a bound, and the
+  ## likelihood's domain guard returns a huge penalty below it. numDeriv's
+  ## two-sided stencil takes an ABSOLUTE 1e-4 step that close to zero, so it
+  ## straddles the guard and the gradient becomes the penalty's.
+  fn <- function(x) if (x[1] < 0) 1e12 else x[1] + (x[2] - 1)^2
+  o <- mk_opt(fn, c(1e-7, 1), diag(c(1, 2)))
+  r <- sfa:::.stationarity_polish(fn, o, lower = c(1e-7, -Inf))
+  expect_equal(r$info$n_at_bound, 1L)
+  ## The slope out of the bound is +1, so the bound is where a minimum belongs.
+  expect_true(r$info$bound_ok)
+  ## 1e12 / 2e-4 would be 5e15; a forward difference sees the objective itself.
+  expect_lt(r$info$grad_max, 10)
+  expect_lt(abs(r$info$decrement), 1e-6)
+  expect_false(r$info$polished)
+  expect_identical(r$opt$par, c(1e-7, 1))
+})
+
+test_that("a bound the objective wants to leave is recorded, not acted on", {
+  fn <- function(x) if (x[1] < 0) 1e12 else -x[1] + (x[2] - 1)^2
+  o <- mk_opt(fn, c(1e-7, 1), diag(c(1, 2)))
+  r <- sfa:::.stationarity_polish(fn, o, lower = c(1e-7, -Inf))
+  expect_equal(r$info$n_at_bound, 1L)
+  ## One-sided slope -1: this bound is not a constrained minimum.
+  expect_false(r$info$bound_ok)
+  ## Deliberately NOT a polish trigger -- the free coordinates are stationary,
+  ## and widening the trigger would change what the 180-fit study measured.
+  expect_false(r$info$polished)
+})
+
+test_that("an indefinite Hessian gives a NEGATIVE decrement, not a gain", {
+  ## 0.5 g'H^-1 g = x'Ax for a quadratic x'Ax, so the sign is the Hessian's.
+  fn <- function(x) x[1]^2 - x[2]^2
+  o <- mk_opt(fn, c(0.5, 1), diag(c(2, -2)))
+  r <- sfa:::.stationarity_polish(fn, o, lower = c(-Inf, -Inf))
+  expect_equal(r$info$decrement, -0.75, tolerance = 1e-6)
+  expect_lt(r$info$decrement, 0)
+})
+
 test_that("an interior sfm() fit carries $stationarity and is not polished", {
   d <- data_gen_cs(300, 1, sig_u = 1, sig_v = 0.3, cons = 0.5, beta1 = 0.5,
     beta2 = 0.5, a = 5, mu = 0.5)

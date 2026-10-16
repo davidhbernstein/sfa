@@ -1906,13 +1906,29 @@ sfm <- function(formula,
       !isTRUE(results$sigma_u_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound) &&
       !isTRUE(results$thn_sigma_u_at_bound)) {
       .now <- if (isTRUE(.st$polished)) .st$decrement_after else .st$decrement
+      ## A NEGATIVE decrement is not a gain: it says the reduced Hessian is
+      ## indefinite, which is a stronger statement and gets its own wording.
+      .dtxt <- if (is.finite(.now) && .now < 0) {
+        paste0("the Hessian over the coordinates clear of a bound is not ",
+          "positive definite there (Newton decrement ", signif(.now, 3),
+          "), so the point is a saddle rather than a maximum")
+      } else {
+        paste0("a Newton step from the returned point still predicts a gain of ",
+          signif(abs(.now), 3))
+      }
+      .btxt <- if (isTRUE(.st$n_at_bound > 0)) {
+        paste0(" ", .st$n_at_bound, " parameter(s) sit on a lower bound and ",
+          "were judged by the sign of a one-sided slope instead",
+          if (isFALSE(.st$bound_ok)) ", which the fit fails" else "", ".")
+      } else {
+        ""
+      }
       warning("sfm(model_name = \"", model_name, "\"): the optimizer stopped at a ",
         "point that is not a maximum. ", if (isTRUE(.st$polished)) paste0(
           "A polish gained ", signif(.st$gain, 3), " in log-likelihood but did ",
           "not reach one") else "A polish from it did not improve it",
-        "; a Newton step from the returned point still predicts a gain of ",
-        signif(abs(.now), 3), ". The estimates and standard errors are not ",
-        "those of an MLE. Refit ",
+        "; ", .dtxt, ". The estimates and standard errors are not ",
+        "those of an MLE.", .btxt, " Refit ",
         "from other starting values via `start_val`, and inspect $stationarity.",
         call. = FALSE
       )

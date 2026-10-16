@@ -23,6 +23,19 @@
   The NTN `sigma_v` boundary now sets its standard errors to `NA` explicitly,
   because a polished Hessian can invert numerically there.
 
+  The decrement is taken over the parameters clear of a bound. A parameter
+  sitting closer to a bound than the differencing stencil reaches is otherwise
+  differenced across the likelihood's own domain penalty, and the gradient
+  becomes the penalty's: on `sfm(model_name = "NHN_Z")` fitted to the package's
+  own `cs_small(N = 200)` fixture, where `sigma_v` collapses to `1.5e-06`, the
+  reported gradient was `1.8e+18` and the decrement `2.4e+21`. Such a
+  coordinate is now differenced forward, left out of the decrement, and judged
+  by the sign of its one-sided slope, which is recorded in `$stationarity` as
+  `at_bound`, `n_at_bound` and `bound_ok`. On that fit the decrement is `-886`
+  and the bound is where a minimum belongs. A negative decrement is reported as
+  what it is -- the Hessian over the remaining parameters is not positive
+  definite, so the point is a saddle -- rather than as a predicted gain.
+
 * **A `sigma_u` collapsed to zero was reported as the correct answer even when
   the residual skew said inefficiency was present.** `sfm()` sets
   `$sigma_u_at_bound` whenever the fitted one-sided scale reaches the zero
