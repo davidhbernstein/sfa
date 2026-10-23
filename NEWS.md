@@ -2,6 +2,27 @@
 
 ## Bug fixes
 
+* **`ttsfm()` said nothing when it could not compute a standard error, and
+  errored outright when the Hessian was exactly singular.** On a fit whose
+  Hessian is indefinite the negative-variance coordinates lose their standard
+  error, which is correct -- no standard error exists for them there -- but
+  the fit reported `NaN` in those cells and no warning of any kind. Measured on
+  `data_gen_cs(N = 300, rand = 3002, sig_u = .5, sig_v = .2, cons = 5,
+  beta1 = 1.5, beta2 = 2, a = 5, mu = .1)` fitted with `model_name = "TTHN"`:
+  428 seconds, one negative eigenvalue (`-0.00312` against a largest of
+  `30578.7`), two of six standard errors `NaN`, zero warnings. Seed 3049 of the
+  same design gives three of six, also silently.
+
+  `ttsfm()` now names the parameters whose standard error could not be
+  computed, reports the Hessian's smallest and largest eigenvalue, and says
+  explicitly that an indefinite Hessian here is *either* a point that is not a
+  maximum *or* a boundary solution -- where the Hessian in the full parameter
+  space need not be positive definite -- rather than asserting one reading. The
+  result is recorded in `$se_unresolved` and printed by `print()` and
+  `summary()`, since a warning does not survive `saveRDS()`. `solve()` on a
+  singular Hessian is also caught now: it used to throw away a fit that had
+  already taken minutes.
+
 * **A negative variance estimate was reported as a standard error of
   exactly zero, and a t-value of `Inf`.** Standard errors were taken as
   `sqrt(pmax(diag(V), 0))` at 21 places, so a parameter whose estimated

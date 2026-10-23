@@ -416,6 +416,21 @@ print.sfareg <- function(x, ...) {
       " both the split and any\n  level from coef() as unidentified in this",
       " sample. See ?psfm.\n", sep = "")
   }
+  ## A standard error that could not be computed at all, named for the same
+  ## reason as the flags above: a warning does not survive saveRDS().
+  if (!is.null(x$se_unresolved)) {
+    cat("NOTE: no standard error could be computed for ",
+      paste(x$se_unresolved$parameters, collapse = ", "), " (",
+      x$se_unresolved$n_missing, " of ", x$se_unresolved$n_par,
+      " parameters)",
+      if (isTRUE(x$se_unresolved$indefinite)) {
+        ": the Hessian at the reported\n  point is not positive definite"
+      } else {
+        ""
+      },
+      ". Either the point is not a maximum or it is a\n  boundary solution --",
+      " the two readings differ. Inspect $se_unresolved.\n", sep = "")
+  }
   invisible(NULL)
 }
 
