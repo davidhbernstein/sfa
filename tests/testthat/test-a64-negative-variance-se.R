@@ -36,8 +36,12 @@ test_that("a t-value built on the result is NA rather than Inf", {
 
 test_that("psfm('GTRE_FML') reports no zero standard error on the A55 design", {
   skip_on_cran()
-  ## Seed 1, N = 40, T = 5: three parameters (x1, sigv, sigh) have a NEGATIVE
-  ## variance estimate here, and on main all three came back se = 0, t = Inf.
+  ## Seed 1, N = 40, T = 5. Whether the optimizer lands on a point whose
+  ## Hessian inverse carries a negative diagonal entry is platform-dependent:
+  ## three parameters do on macOS arm64, where the defect was found, and none
+  ## do on any of CI's five platforms. So the invariant below is unconditional
+  ## and the negative-variance clause is not; the helper's own contract above
+  ## is what pins the fix down deterministically.
   d <- as.data.frame(data_gen_p(t = 5, N = 40, rand = 1, sig_u = 1, sig_v = 0.3,
                                 sig_r = 0.2, sig_h = 0.4, cons = 0.5,
                                 beta1 = 0.5, beta2 = 0.5, eta = 0.1))
@@ -45,12 +49,14 @@ test_that("psfm('GTRE_FML') reports no zero standard error on the A55 design", {
                              data = d, individual = "name"))
   se <- f$out[, "st_err"]
   tv <- f$out[, "t-val"]
-  ## The variance estimates really are negative -- the fit is not being asked
-  ## to produce a different Hessian, only to report it honestly.
-  v <- diag(solve(f$opt$hessian))
-  expect_gt(sum(v < 0), 0)
   expect_equal(sum(is.finite(se) & se == 0), 0L)
   expect_equal(sum(is.infinite(tv)), 0L)
+  ## Where the variance estimates really are negative, the fit is not being
+  ## asked for a different Hessian, only to report this one honestly.
+  v <- tryCatch(diag(solve(f$opt$hessian)), error = function(e) NULL)
+  skip_if_not(!is.null(v) && any(v < 0),
+    "no negative variance estimate on this platform"
+  )
   ## Exactly the negative-variance coordinates lose their standard error.
   expect_true(all(is.na(se[v < 0])))
   expect_true(all(is.finite(se[v > 0])))
