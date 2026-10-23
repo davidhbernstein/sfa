@@ -1360,7 +1360,7 @@ sfm <- function(formula,
         rep(NA, length(opt$par))
       } else {
         vc <- tryCatch(suppressWarnings(solve(opt$hessian)), error = function(e) NULL)
-        if (is.null(vc)) rep(NA, length(opt$par)) else suppressWarnings(sqrt(pmax(diag(vc), 0)))
+        if (is.null(vc)) rep(NA, length(opt$par)) else suppressWarnings(.sfa_se_from_var(diag(vc)))
       }
     }
 
