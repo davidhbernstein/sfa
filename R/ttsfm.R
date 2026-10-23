@@ -510,10 +510,14 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == TRUE) {
+      ## solve() on a singular Hessian errors outright, which threw away a fit
+      ## that had already taken minutes; report it as missing instead (A53).
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
       } else {
-        suppressWarnings(sqrt(diag(solve(opt$hessian))))
+        tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+          error = function(e) rep(NA_real_, length(opt$par))
+        )
       }
     }
     ## Natural scale and distinct names; see .tt_report() above.
@@ -606,9 +610,23 @@ ttsfm <- function(formula,
 
     metric.ne.res <- metrics.ne(p = opt$par)
 
+    ## A fit that could not report a standard error used to say nothing about
+    ## it, however long it had taken to get there (A53).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("ttsfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.ne.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    ## Appended, not rebuilt: re-listing eleven values against eleven names to
+    ## add one field is how a misalignment gets introduced (see sfm.R).
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
     results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
@@ -819,10 +837,14 @@ ttsfm <- function(formula,
     }
 
     if (optHessian == TRUE) {
+      ## solve() on a singular Hessian errors outright, which threw away a fit
+      ## that had already taken minutes; report it as missing instead (A53).
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
       } else {
-        suppressWarnings(sqrt(diag(solve(opt$hessian))))
+        tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+          error = function(e) rep(NA_real_, length(opt$par))
+        )
       }
     }
     ## Natural scale and distinct names; see .tt_report() above.
@@ -921,9 +943,23 @@ ttsfm <- function(formula,
 
     metric.hn.res <- tryCatch(metrics.hn(p = opt$par), error = function(e) NULL)
 
+    ## A fit that could not report a standard error used to say nothing about
+    ## it, however long it had taken to get there (A53).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("ttsfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.hn.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    ## Appended, not rebuilt: re-listing eleven values against eleven names to
+    ## add one field is how a misalignment gets introduced (see sfm.R).
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     ## Rows actually used; bread() scales by this.
     results$nobs <- length(as.numeric(Y))
     results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
