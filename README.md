@@ -494,11 +494,22 @@ object (`$frontier`, `$frontier.grad`, `$sigma.u`, `$sigma.v`).
 
 ## Troubleshooting
 
-- **`sigma_u` is essentially zero, with a wrong-skew warning.** The OLS
-  residuals are skewed the wrong way, and the maximum likelihood estimate is
-  then OLS with no inefficiency. `fit$wrong_skew` and `fit$sigma_u_at_bound`
-  record it. This is usually a feature of the sample, not a bug: see the
-  wrong-skew row of [Which model should I use?](#which-model-should-i-use).
+`?"sfa-troubleshooting"` is the long version of this list, with the message
+each state actually prints and what to change in which order.
+
+- **`sigma_u` is essentially zero.** This reads two opposite ways and the
+  residual skew decides which, so check `fit$wrong_skew` before concluding
+  anything. With the skew the **wrong** way (`wrong_skew = TRUE`) the boundary
+  *is* the maximum likelihood estimate -- OLS with no inefficiency -- and
+  refitting will not move it; this is usually a feature of the sample, not a
+  bug, and `skewness_test()` says whether the skew is significantly wrong at
+  all. See the wrong-skew row of
+  [Which model should I use?](#which-model-should-i-use). With the skew the
+  **right** way the data say inefficiency is present, so the boundary is
+  unlikely to be the maximum and the fit is suspect: refit from other starting
+  values via `start_val` and check `fit$opt$convergence`. `fit$sigma_u_at_bound`
+  and `fit$residual_m3` record the state either way, and `print()` spells out
+  which reading applies.
 - **Standard errors are `NA`.** A parameter sits on its bound, or the Hessian
   cannot be inverted there, so the usual standard errors are not valid. They
   are reported as `NA` on purpose. `sfa_diagnostics(fit)` reports how the
