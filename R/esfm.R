@@ -154,7 +154,7 @@ esfm <- function(formula, data, dist = c("halfnormal", "exponential"),
   se <- rep(NA_real_, length(par))
   if (!is.null(H)) {
     V <- tryCatch(solve(H), error = function(e) NULL)
-    if (!is.null(V)) se <- sqrt(pmax(diag(V), 0))
+    if (!is.null(V)) se <- .sfa_se_from_var(diag(V))
   }
   out <- cbind(par = par, st_err = se, "t-val" = par / se)
 

@@ -201,7 +201,7 @@
   df <- n * Tn - K - (n * L + Tn * L - L^2)
   s2 <- sum(resid^2) / max(df, 1L)
   vc <- tryCatch(s2 * solve(crossprod(Xflat)), error = function(e) NULL)
-  se <- if (is.null(vc)) rep(NA_real_, K) else sqrt(pmax(diag(vc), 0))
+  se <- if (is.null(vc)) rep(NA_real_, K) else .sfa_se_from_var(diag(vc))
 
   ## Back to the original row order.
   ## Everything above works on the (firm x period) matrix; `ord` maps it back

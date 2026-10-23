@@ -87,5 +87,5 @@
     return(na_result)
   }
 
-  sqrt(pmax(diag(V), 0))
+  .sfa_se_from_var(diag(V))
 }

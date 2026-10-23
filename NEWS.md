@@ -23,6 +23,22 @@
   singular Hessian is also caught now: it used to throw away a fit that had
   already taken minutes.
 
+* **A negative variance estimate was reported as a standard error of
+  exactly zero, and a t-value of `Inf`.** Standard errors were taken as
+  `sqrt(pmax(diag(V), 0))` at 21 places, so a parameter whose estimated
+  variance came back negative -- which is what an indefinite Hessian gives --
+  was reported as infinitely precise rather than as unidentified. On
+  `psfm(model_name = "GTRE_FML")` with `data_gen_p(t = 5, N = 40, rand = 1)`,
+  three of seven parameters have a negative variance estimate (`x1`
+  -2.83e-06, `sigv` -3.87e-04, `sigh` -3.76e-04) and all three were reported
+  with `st_err` 0 and `t-val` `Inf`, including the slope `x1 = 0.5426`. Such a
+  parameter now reports `NA`, which is what the other entry points already did
+  by taking the square root of the negative value directly. The remaining
+  standard errors on that fit are unchanged, and quantities that are not a
+  parameter's standard error -- the per-firm posterior spread in `sfm()`, where
+  a small negative is quadrature rounding on a genuinely near-zero variance --
+  still report zero.
+
 * **`sfm()` could report a fit as converged, with standard errors, at a point
   that is not a maximum.** On a flat ridge `optim()` can stop with
   convergence code 0 short of the maximum. In an RTMB scoping study on

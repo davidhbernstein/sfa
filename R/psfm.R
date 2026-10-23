@@ -648,7 +648,7 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0)))
+      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
@@ -1344,7 +1344,7 @@ psfm <- function(formula,
         st_err <- rep(NA, length(opt$par))
       } else {
         st_err <- tryCatch(
-          suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0))),
+          suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
           error = function(e) rep(NA_real_, length(opt$par))
         )
       }
@@ -1462,7 +1462,7 @@ psfm <- function(formula,
               warning("OPG matrix is singular; OPG standard errors set to NA.", call. = FALSE)
               rep(NA_real_, length(opt$par))
             } else {
-              sqrt(pmax(diag(OPG_vcov), 0))
+              .sfa_se_from_var(diag(OPG_vcov))
             }
           },
           error = function(e) {
@@ -1490,7 +1490,7 @@ psfm <- function(formula,
                 rep(NA_real_, length(opt$par))
               } else {
                 sw_vcov <- H_inv %*% OPG_meat %*% H_inv
-                sqrt(pmax(diag(sw_vcov), 0))
+                .sfa_se_from_var(diag(sw_vcov))
               }
             }
           },
@@ -1784,7 +1784,7 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0) | optHessian == FALSE)) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0)))
+      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
@@ -1997,7 +1997,7 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      tryCatch(suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0))),
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
         error = function(e) rep(NA_real_, length(opt$par))
       )
     }
@@ -2196,7 +2196,7 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0)))
+      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
@@ -2371,7 +2371,7 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      tryCatch(suppressWarnings(sqrt(pmax(diag(solve(opt$hessian)), 0))),
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
         error = function(e) rep(NA_real_, length(opt$par))
       )
     }
@@ -2635,7 +2635,7 @@ psfm <- function(formula,
       if (is.null(jac) || is.null(vc)) {
         c(NA_real_, NA_real_)
       } else {
-        suppressWarnings(sqrt(pmax(diag(jac %*% vc %*% t(jac)), 0)))
+        suppressWarnings(.sfa_se_from_var(diag(jac %*% vc %*% t(jac))))
       }
     }
 
@@ -2908,7 +2908,7 @@ psfm <- function(formula,
       if (is.null(jac_rep) || is.null(vc)) {
         rep(NA, length(par_names))
       } else {
-        suppressWarnings(sqrt(pmax(diag(jac_rep %*% vc %*% t(jac_rep)), 0)))
+        suppressWarnings(.sfa_se_from_var(diag(jac_rep %*% vc %*% t(jac_rep))))
       }
     }
     out[2, ] <- st_err

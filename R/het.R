@@ -250,7 +250,7 @@
   st_err <- rep(NA_real_, length(opt$par))
   if (isTRUE(optHessian) && !is.null(opt$hessian)) {
     vc <- tryCatch(suppressWarnings(solve(opt$hessian)), error = function(e) NULL)
-    if (!is.null(vc)) st_err <- suppressWarnings(sqrt(pmax(diag(vc), 0)))
+    if (!is.null(vc)) st_err <- suppressWarnings(.sfa_se_from_var(diag(vc)))
   }
 
   out <- matrix(NA_real_, nrow = 3L, ncol = length(opt$par),
