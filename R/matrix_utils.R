@@ -99,6 +99,66 @@
 ## log(phi(z) - z * Phi(-z)), the normal-Rayleigh density's one-sided factor.
 ## Direct below z = 3; above, the two terms cancel, so use the continued
 ## fraction for the Mills ratio (see notes/code_history/matrix_utils.md, A26).
+## Why a reported standard error is missing, in the fit's own names. An
+## indefinite Hessian puts negative entries on the inverse diagonal (A53).
+.se_missing_report <- function(se, nms, hessian = NULL, label = "") {
+  bad <- which(!is.finite(se))
+  if (!length(bad)) {
+    return(NULL)
+  }
+  if (length(nms) != length(se)) nms <- paste0("[", seq_along(se), "]")
+  ev <- if (is.matrix(hessian) && all(is.finite(hessian))) {
+    tryCatch(eigen(hessian, symmetric = TRUE, only.values = TRUE)$values,
+      error = function(e) NULL
+    )
+  } else {
+    NULL
+  }
+  info <- list(
+    parameters = nms[bad], n_missing = length(bad), n_par = length(se),
+    min_eigenvalue = if (is.null(ev)) NA_real_ else min(ev),
+    max_eigenvalue = if (is.null(ev)) NA_real_ else max(ev),
+    indefinite = if (is.null(ev)) NA else any(ev < 0)
+  )
+  ## The conditioning, when it could be read, and otherwise nothing: a claim
+  ## about eigenvalues that were never computed is worse than silence.
+  cond <- if (isTRUE(info$indefinite)) {
+    paste0(
+      " The Hessian at the reported point is not positive definite -- its ",
+      "smallest eigenvalue is ", signif(info$min_eigenvalue, 3), " against a ",
+      "largest of ", signif(info$max_eigenvalue, 3), " -- so the estimated ",
+      "variance of those parameters is negative and no standard error exists ",
+      "for them there."
+    )
+  } else if (is.null(ev)) {
+    paste0(
+      " The Hessian could not be read, so the estimated variance of those ",
+      "parameters is unavailable rather than merely imprecise."
+    )
+  } else {
+    paste0(
+      " The Hessian's smallest eigenvalue is ", signif(info$min_eigenvalue, 3),
+      " against a largest of ", signif(info$max_eigenvalue, 3), ", so it is ",
+      "positive definite but close enough to singular that inverting it lost ",
+      "those entries."
+    )
+  }
+  info$message <- paste0(
+    label, "no standard error could be computed for ",
+    paste(info$parameters, collapse = ", "), " (", info$n_missing, " of ",
+    info$n_par, " parameters).", cond,
+    " This is EITHER a point that is not a maximum OR a boundary solution, ",
+    "where the Hessian in the full parameter space need not be positive ",
+    "definite; the two readings differ and are not distinguished by this ",
+    "check. The standard errors that ARE reported are conditional on this ",
+    "point. For a scale that has collapsed onto its lower bound see ",
+    "tt_boundary_report(); for a covariance that needs no Hessian, refit with ",
+    "keep_objective = TRUE and use vcov(type = \"bhhh\"). Inspect ",
+    "$se_unresolved."
+  )
+  info
+}
+
 .log_nr_g <- function(z, K = 80L) {
   z <- as.numeric(z)
   out <- rep(NA_real_, length(z))
