@@ -2,6 +2,25 @@
 
 ## Bug fixes
 
+* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` reported a `NaN`
+  standard error with no signal at all, and discarded a finished fit when the
+  Hessian was singular.** Each took its standard errors as
+  `suppressWarnings(sqrt(diag(solve(opt$hessian))))`, so on an indefinite
+  Hessian the negative-variance coordinates came back `NaN` while
+  `suppressWarnings()` discarded R's own "NaNs produced" -- the only thing said
+  about it. Nothing set a flag and the convergence code read 0. Measured on
+  `zsfm(model_name = "ZISF")` with `data_gen_cs(N = 25, rand = 8, sig_u = 1,
+  sig_v = .3, cons = .5, beta1 = .5, beta2 = .5, mu = .5, a = 5)`: one negative
+  eigenvalue (`-1474` against a largest of `3.48e6`), two of six standard errors
+  `NaN` -- one of them the slope `x2`, true value 0.5 -- `conv 0`, and zero
+  warnings. All five now report through the same helper `ttsfm()` uses, naming
+  the parameters and the Hessian's extreme eigenvalues in `$se_unresolved`,
+  which `print()` and `summary()` carry since a warning does not survive
+  `saveRDS()`. Their `sum(colMeans(hessian)) == 0` test caught only an all-zero
+  Hessian, so a singular but non-zero one made `solve()` error outright and
+  threw away a fit that had already run -- minutes of one for the two
+  simulated-ML models; that is now caught.
+
 * **`ttsfm()` said nothing when it could not compute a standard error, and
   errored outright when the Hessian was exactly singular.** On a fit whose
   Hessian is indefinite the negative-variance coordinates lose their standard

@@ -281,16 +281,31 @@ zsfm <- function(formula,
     }
 
     if (optHessian == TRUE) {
+      ## The colMeans test catches an all-zero Hessian only; a singular but
+      ## non-zero one made solve() error and discard a finished fit (A65).
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
       } else {
-        suppressWarnings(sqrt(diag(solve(opt$hessian))))
+        tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+          error = function(e) rep(NA_real_, length(opt$par))
+        )
       }
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("zsfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
     ## JLMS
     if (model_name %in% c("ZISF", "ZISF_Z")) {
@@ -357,6 +372,9 @@ zsfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "jlms", "post.prob",
         "coefficients", "std.errors", "t.values", "call"
       )
+      ## Appended, not rebuilt: re-listing twelve values against twelve names
+      ## to add one field is how a misalignment gets introduced.
+      if (!is.null(.sm)) results$se_unresolved <- .sm
       ## Rows actually used, not rows supplied: bread() scales by this.
       results$nobs <- length(as.numeric(Y))
       results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)

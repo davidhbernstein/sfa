@@ -290,10 +290,15 @@ selsfm <- function(selection,
     st_err <- rep(NA, length(opt$par))
   }
   if (optHessian == TRUE) {
+    ## The colMeans test catches an all-zero Hessian only; a singular but
+    ## non-zero one made solve() error and discard a finished fit -- minutes of
+    ## one, this being simulated ML (A65).
     st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(diag(solve(opt$hessian))))
+      tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
   }
 
@@ -306,6 +311,18 @@ selsfm <- function(selection,
   out[1, ] <- opt$par
   out[2, ] <- st_err
   out[3, ] <- opt$par / st_err
+
+  ## suppressWarnings() above discards R's own "NaNs produced", which was the
+  ## only signal that a standard error had gone missing (A65). The report is
+  ## conditional on alpha_hat, exactly as the stored Hessian is.
+  .sm <- if (optHessian == TRUE) {
+    .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+      paste0("selsfm(model_name = \"", model_name, "\"): ")
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
   ## ---- observation-specific inefficiency, Greene's (21) -------------------
   ## Simulated Bayes over the same draws the likelihood used: E[u_i | eps_i] is
@@ -337,6 +354,9 @@ selsfm <- function(selection,
     "sim_type", "n_selected", "n_total", "S", "nobs",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Appended, not rebuilt: re-listing a long value vector against a long name
+  ## vector to add one field is how a misalignment gets introduced.
+  if (!is.null(.sm)) results$se_unresolved <- .sm
   ## Optionally retain the objective for estfun()/vcov(type = "bhhh").
   ## CAVEAT: selsfm() is Greene's TWO-STEP estimator -- alpha_hat comes from
   ## the first-stage probit and enters the second stage as if known. The OPG

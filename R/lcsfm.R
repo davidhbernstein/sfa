@@ -203,12 +203,23 @@ lcsfm <- function(formula,
       isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
       rep(NA_real_, length(start_v))
     } else {
-      suppressWarnings(sqrt(diag(solve(opt$hessian))))
+      ## Those tests catch a missing or all-zero Hessian only; a singular but
+      ## non-zero one made solve() error and discard a finished fit (A65).
+      tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(start_v))
+      )
     }
     out[1, ] <- start_v
     out[2, ] <- st_err
     out[3, ] <- out[1, ] / out[2, ]
     rownames(out) <- c("par", "st_err", "t-val")
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+      paste0("lcsfm(model_name = \"", model_name, "\"): ")
+    )
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
     lpi <- .cn_logpi(start_v)
     class_prob <- colMeans(exp(lpi))
@@ -233,6 +244,9 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    ## Appended, not rebuilt: re-listing a long vector against a long name
+    ## vector to add one field is how a misalignment gets introduced.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     ## Rows actually used, not rows supplied: bread() scales by this.
     results$nobs <- length(as.numeric(Y))
     ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") can
@@ -363,10 +377,14 @@ lcsfm <- function(formula,
       st_err <- rep(NA, length(opt$par))
     }
     if (optHessian == TRUE) {
+      ## The colMeans test catches an all-zero Hessian only; a singular but
+      ## non-zero one made solve() error and discard a finished fit (A65).
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
       } else {
-        suppressWarnings(sqrt(diag(solve(opt$hessian))))
+        tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+          error = function(e) rep(NA_real_, length(opt$par))
+        )
       }
     }
     ## The two scales per class enter the likelihood through abs(), so their
@@ -379,6 +397,16 @@ lcsfm <- function(formula,
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## As above: the only signal was the warning suppressWarnings() ate (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("lcsfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
     ## Posterior class probabilities P(j | i), which weight the class-conditional JLMS
     ## scores: the firm's frontier is uncertain, so no single modal-class score is reported.
@@ -435,6 +463,9 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    ## Appended, not rebuilt: re-listing a long vector against a long name
+    ## vector to add one field is how a misalignment gets introduced.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     ## Rows actually used, not rows supplied: bread() scales by this.
     results$nobs <- length(as.numeric(Y))
     ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") can
