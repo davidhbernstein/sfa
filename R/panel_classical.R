@@ -95,7 +95,7 @@
   s2 <- sum(fit$residuals^2) / max(df, 1L)
   XtX <- crossprod(MX)
   vc <- tryCatch(s2 * solve(XtX), error = function(e) NULL)
-  se <- if (is.null(vc)) rep(NA_real_, K) else sqrt(pmax(diag(vc), 0))
+  se <- if (is.null(vc)) rep(NA_real_, K) else .sfa_se_from_var(diag(vc))
 
   ## The firm trajectories, recovered from the residual of the frontier.
   r <- y - as.numeric(X %*% beta)
@@ -205,7 +205,7 @@
   df <- n - K - (nlevels(id) + Tn - 1L)
   s2 <- sum(resid^2) / max(df, 1L)
   vc <- tryCatch(s2 * solve(crossprod(X)), error = function(e) NULL)
-  se <- if (is.null(vc)) rep(NA_real_, K) else sqrt(pmax(diag(vc), 0))
+  se <- if (is.null(vc)) rep(NA_real_, K) else .sfa_se_from_var(diag(vc))
   names(b) <- colnames(X)
 
   list(beta = b, se = se, df = df, alpha_it = as.numeric(alpha_it),

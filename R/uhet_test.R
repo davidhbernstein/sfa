@@ -197,8 +197,8 @@ uhet_test <- function(object, z, data = NULL) {
     stringsAsFactors = FALSE
   )
   attr(out, "gamma") <- gam[keep]
-  attr(out, "se_corrected") <- sqrt(pmax(diag(Vc)[keep], 0))
-  attr(out, "se_naive") <- sqrt(pmax(diag(Vn)[keep], 0))
+  attr(out, "se_corrected") <- .sfa_se_from_var(diag(Vc)[keep])
+  attr(out, "se_naive") <- .sfa_se_from_var(diag(Vn)[keep])
   rownames(out) <- NULL
   out
 }
