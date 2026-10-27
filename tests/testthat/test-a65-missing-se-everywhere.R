@@ -62,6 +62,46 @@ test_that("zsfm('ZISF') names the standard errors it could not compute", {
   )
 })
 
+test_that("psfm('GTRE_FML') names the standard errors it could not compute", {
+  skip_on_cran()
+  ## A64's own design, which is why no search was needed: on macOS arm64 three
+  ## of seven parameters have a NEGATIVE variance estimate here, so since #62
+  ## they report NA -- and until now nothing said why. 3 seconds to fit.
+  ##
+  ## Platform-dependent in exactly the way A64's end-to-end case was: that one
+  ## had to be gated after all five CI platforms disagreed with this Mac, so
+  ## this is gated from the start.
+  d <- as.data.frame(data_gen_p(t = 5, N = 40, rand = 1, sig_u = 1,
+                                sig_v = 0.3, sig_r = 0.2, sig_h = 0.4,
+                                cons = 0.5, beta1 = 0.5, beta2 = 0.5,
+                                eta = 0.1))
+  w <- character(0)
+  f <- withCallingHandlers(
+    psfm(y_gtre ~ x1 + x2, model_name = "GTRE_FML", data = d,
+         individual = "name"),
+    warning = function(cnd) {
+      w <<- c(w, conditionMessage(cnd))
+      invokeRestart("muffleWarning")
+    }
+  )
+  se <- f$out[, "st_err"]
+  bad <- names(se)[!is.finite(se)]
+  skip_if_not(length(bad) > 0L,
+    "every standard error is finite on this platform, so there is nothing to report"
+  )
+
+  r <- f$se_unresolved
+  expect_false(is.null(r))
+  expect_setequal(r$parameters, bad)
+  expect_identical(r$n_missing, length(bad))
+  expect_identical(r$n_par, length(se))
+  expect_true(any(grepl("no standard error could be computed", w, fixed = TRUE)))
+  expect_match(r$message, "psfm(model_name = \"GTRE_FML\")", fixed = TRUE)
+  expect_identical(isTRUE(r$indefinite), isTRUE(r$min_eigenvalue < 0))
+  out <- paste(capture.output(print(f)), collapse = " ")
+  expect_match(out, "no standard error could be computed for", fixed = TRUE)
+})
+
 test_that("an ordinary ZISF fit is left alone", {
   skip_on_cran()
   ## The same design at N = 300: on this Mac the min eigenvalue is 37.1 and all

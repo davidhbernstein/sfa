@@ -215,10 +215,17 @@ lcsfm <- function(formula,
     rownames(out) <- c("par", "st_err", "t-val")
 
     ## suppressWarnings() above discards R's own "NaNs produced", which was the
-    ## only signal that a standard error had gone missing (A65).
-    .sm <- .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
-      paste0("lcsfm(model_name = \"", model_name, "\"): ")
-    )
+    ## only signal that a standard error had gone missing (A65). Guarded on
+    ## optHessian because this branch's own test is not: with optHessian = FALSE
+    ## there is no Hessian by request, and reporting that none could be read
+    ## turns an answered question into a warning (caught by test-a52-opt-shape).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("lcsfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
     if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
     lpi <- .cn_logpi(start_v)

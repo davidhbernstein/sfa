@@ -2,9 +2,10 @@
 
 ## Bug fixes
 
-* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` reported a `NaN`
-  standard error with no signal at all, and discarded a finished fit when the
-  Hessian was singular.** Each took its standard errors as
+* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()` and `psfm()`
+  reported a `NaN` standard error with no signal at all, and discarded a
+  finished fit when the Hessian was singular.** The first five took their
+  standard errors as
   `suppressWarnings(sqrt(diag(solve(opt$hessian))))`, so on an indefinite
   Hessian the negative-variance coordinates came back `NaN` while
   `suppressWarnings()` discarded R's own "NaNs produced" -- the only thing said
@@ -16,14 +17,27 @@
   that machine the fit also reports `convergence = 0`, so nothing in the output
   flags it at all; on all five CI platforms the same fit reports `52`, where the
   convergence code does carry a signal and only the missing standard errors go
-  unexplained. The reported standard errors go missing on four of the five
-  either way.) All five now report through the same helper `ttsfm()` uses, naming
+  unexplained. The standard errors go missing on four of those five platforms
+  either way.) All six now report through the same helper `ttsfm()` uses, naming
   the parameters and the Hessian's extreme eigenvalues in `$se_unresolved`,
   which `print()` and `summary()` carry since a warning does not survive
   `saveRDS()`. Their `sum(colMeans(hessian)) == 0` test caught only an all-zero
   Hessian, so a singular but non-zero one made `solve()` error outright and
   threw away a fit that had already run -- minutes of one for the two
   simulated-ML models; that is now caught.
+
+  `psfm()` carries the same two defects at **seven** sites, covering `GTRE` and
+  `TRE` (which share one), `GTRE_Z`, `TRE_Z`, `GTRE_FML`, `TFE_WMLE`, `TFE` and
+  `FD`. **Four of the seven** left the inverse unguarded, so a singular but
+  non-zero Hessian discarded a finished *panel* fit, the most expensive kind the
+  package produces. Its guard tests `any(hessian == 0)`, which catches a zero
+  *entry* rather than singularity. `FD`'s site spells the same quantity
+  `sqrt(diag(qr.solve(opt$hessian)))`, which is why earlier sweeps for
+  `sqrt(pmax(diag(solve(...)), 0))` and `sqrt(diag(solve(...)))` both missed it.
+  Measured on `psfm(model_name = "GTRE_FML")` with `data_gen_p(t = 5, N = 40,
+  rand = 1, sig_u = 1, sig_v = .3, sig_r = .2, sig_h = .4, cons = .5,
+  beta1 = .5, beta2 = .5, eta = .1)`: three of seven parameters have a negative
+  variance estimate, so they report `NA`, and nothing said why.
 
 * **`ttsfm()` said nothing when it could not compute a standard error, and
   errored outright when the Hessian was exactly singular.** On a fit whose
