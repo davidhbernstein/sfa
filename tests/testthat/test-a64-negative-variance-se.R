@@ -61,3 +61,28 @@ test_that("psfm('GTRE_FML') reports no zero standard error on the A55 design", {
   expect_true(all(is.na(se[v < 0])))
   expect_true(all(is.finite(se[v > 0])))
 })
+
+test_that("vcov()'s diagonal fallback carries NA, not a zero variance", {
+  ## A64 reaches vcov() as well: with no invertible Hessian the fallback squares
+  ## the REPORTED standard errors (R/sfareg_methods.R), so on main a
+  ## negative-variance parameter arrived here as 0 and contributed an exact zero
+  ## variance -- infinite precision, one level up. It now arrives as NA.
+  ## This pins the COMPOSITION only. vcov() itself is unchanged, so given the NA
+  ## constructed below the test passes on main as well; what changed upstream is
+  ## which value arrives. Constructed rather than fitted, so it cannot depend on
+  ## an optimizer landing point.
+  x <- structure(
+    list(
+      coefficients = c(x1 = 0.542644, x2 = 0.475742, sigv = 0.409347),
+      std.errors = c(x1 = NA_real_, x2 = 0.002921, sigv = NA_real_)
+    ),
+    class = "sfareg"
+  )
+  V <- vcov(x)
+  expect_equal(dim(V), c(3L, 3L))
+  expect_identical(dimnames(V), list(names(x$coefficients), names(x$coefficients)))
+  expect_true(all(is.na(diag(V)[c("x1", "sigv")])))
+  expect_equal(diag(V)[["x2"]], 0.002921^2)
+  ## The defect's signature at this level: no variance is an exact zero.
+  expect_equal(sum(is.finite(diag(V)) & diag(V) == 0), 0L)
+})
