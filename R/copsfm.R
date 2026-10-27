@@ -497,10 +497,15 @@ copsfm <- function(formula,
   if (optHessian == FALSE & PSopt == FALSE) { opt <- .as_optim(bob1); st_err <- rep(NA, length(opt$par)) }
   if (optHessian == FALSE & PSopt == TRUE)  { opt <- opt00; st_err <- rep(NA, length(opt$par)) }
   if (optHessian == TRUE) {
+    ## The colMeans test catches an all-zero Hessian only; a singular but
+    ## non-zero one made solve() error and discard a finished fit -- minutes of
+    ## one, this being simulated ML (A65).
     st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(diag(solve(opt$hessian))))
+      tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
   }
 
@@ -519,6 +524,17 @@ copsfm <- function(formula,
   rownames(out) <- c("par", "st_err", "t-val")
   colnames(out) <- par_names
   out[1, ] <- par; out[2, ] <- se; out[3, ] <- par / se
+
+  ## Reported on the reported scale and names: the delta-method factors above
+  ## carry a missing estimation-scale standard error straight through (A65).
+  .sm <- if (optHessian == TRUE) {
+    .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+      paste0("copsfm(model_name = \"", model_name, "\"): ")
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
   ## The efficiency predictors, by the same quadrature -- and from the same
   ## closure -- that the likelihood used.
@@ -544,6 +560,9 @@ copsfm <- function(formula,
     "exp_u_hat", "S", "nobs", "n_nodes",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Appended, not rebuilt: re-listing twenty-one values against twenty-one
+  ## names to add one field is how a misalignment gets introduced.
+  if (!is.null(.sm)) results$se_unresolved <- .sm
   ## Optionally retain the objective for estfun()/vcov(type = "bhhh"), with
   ## the map from the estimation-scale vector `th` onto the reported one.
   ## These mirror `par` and `se` above exactly: same positions, and the same

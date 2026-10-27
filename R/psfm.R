@@ -648,12 +648,28 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
+      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
+      ## singular but non-zero Hessian made solve() error outright and discard
+      ## a finished PANEL fit -- the most expensive kind here (A65).
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
     ## TE Measurements : GTRE
     if (model_name == "GTRE") {
@@ -806,11 +822,17 @@ psfm <- function(formula,
       results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, H, out["par", ], out["st_err", ], out["t-val", ], call)
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "H", "coefficients", "std.errors", "t.values", "call")
+      ## Appended, not rebuilt: re-listing a long value vector against a
+      ## long name vector to add one field is how a misalignment gets in.
+      if (!is.null(.sm)) results$se_unresolved <- .sm
     }
     if (model_name == "TRE") {
       results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
+      ## Appended, not rebuilt: re-listing a long value vector against a
+      ## long name vector to add one field is how a misalignment gets in.
+      if (!is.null(.sm)) results$se_unresolved <- .sm
     }
 
     ## A persistent scale on the zero boundary. Reported, not suppressed: it is
@@ -1354,6 +1376,17 @@ psfm <- function(formula,
       out[2, ] <- st_err
       out[3, ] <- t_val
 
+      ## suppressWarnings() above discards R's own "NaNs produced", which was the
+      ## only signal that a standard error had gone missing (A65).
+      .sm <- if (optHessian == TRUE) {
+        .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+          paste0("psfm(model_name = \"", model_name, "\"): ")
+        )
+      } else {
+        NULL
+      }
+      if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
       ## Rename intercept labels if needed
       if (length(colnames(out)[which(colnames(out) == "(Intercept)")]) > 2) {
         colnames(out)[which(colnames(out) == "(Intercept)")] <-
@@ -1546,6 +1579,9 @@ psfm <- function(formula,
         "out_opg",
         "out_sandwich"
       )
+      ## Appended, not rebuilt: re-listing a long value vector against a
+      ## long name vector to add one field is how a misalignment gets in.
+      if (!is.null(.sm)) results$se_unresolved <- .sm
 
       results
     }
@@ -1784,12 +1820,28 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0) | optHessian == FALSE)) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
+      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
+      ## singular but non-zero Hessian made solve() error outright and discard
+      ## a finished PANEL fit -- the most expensive kind here (A65).
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
     if (length(colnames(out)[which(colnames(out) == "(Intercept)")]) == 2) {
       colnames(out)[which(colnames(out) == "(Intercept)")] <- c("(Intercept x)", "(Intercept u)")
     }
@@ -1819,6 +1871,9 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
+    ## Appended, not rebuilt: re-listing a long value vector against a
+    ## long name vector to add one field is how a misalignment gets in.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     ## The variance-determinant block, so marginal_effects() can report
     ## dE[u]/dz without re-deriving the design. psfm() puts z'delta on the
     ## VARIANCE, sigma_u = sqrt(exp(z'delta)) -- the opposite of sfm()'s
@@ -2005,6 +2060,17 @@ psfm <- function(formula,
     out[2, ] <- st_err
     out[3, ] <- opt$par / st_err
 
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
     ## Transient (time-varying) and persistent (time-invariant) efficiency.
     np <- length(opt$par)
     sig_r <- opt$par[np - 3]
@@ -2036,6 +2102,9 @@ psfm <- function(formula,
       "out", "opt", "total_time", "start_v", "U", "H", "model_name", "formula", "data",
       "coefficients", "std.errors", "t.values", "call", "start_search"
     )
+    ## Appended, not rebuilt: re-listing a long value vector against a
+    ## long name vector to add one field is how a misalignment gets in.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
 
     ## Same persistent-boundary check as the "sml" branch above. It matters
     ## MORE here, because this is the estimator psfm(model_name = "GTRE")
@@ -2196,15 +2265,34 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian))))
+      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
+      ## singular but non-zero Hessian made solve() error outright and discard
+      ## a finished PANEL fit -- the most expensive kind here (A65).
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
     results <- list(t(out), c(opt), End.Time, start_v, r_hat_m, exp_u_hat, model_name, formula, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "r_hat_m", "exp_u_hat", "model_name", "formula", "data", "coefficients", "std.errors", "t.values", "call")
+    ## Appended, not rebuilt: re-listing a long value vector against a
+    ## long name vector to add one field is how a misalignment gets in.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     if (isTRUE(keep_objective)) {
       results$objective <- like.tfe
       results$n_units <- N
@@ -2380,6 +2468,17 @@ psfm <- function(formula,
     out[2, ] <- st_err
     out[3, ] <- t_val
 
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
     results <- list(
       t(out), c(opt), End.Time, start_v, r_hat_m, exp_u_hat, u_hat, model_name,
       formula, data, out["par", ], out["st_err", ], out["t-val", ], call
@@ -2389,6 +2488,9 @@ psfm <- function(formula,
       "out", "opt", "total_time", "start_v", "r_hat_m", "exp_u_hat", "u_hat", "model_name",
       "formula", "data", "coefficients", "std.errors", "t.values", "call"
     )
+    ## Appended, not rebuilt: re-listing a long value vector against a
+    ## long name vector to add one field is how a misalignment gets in.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     return(results)
   }
   if (model_name == "FD") {
@@ -2596,15 +2698,33 @@ psfm <- function(formula,
     st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(diag(qr.solve(opt$hessian))))
+      ## qr.solve, not solve, which is why A64's sweep and A65's first pass
+      ## both missed this site. Same two defects as its six siblings (A65).
+      tryCatch(suppressWarnings(.sfa_se_from_var(diag(qr.solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
     t_val <- opt$par / st_err
     out[1, ] <- opt$par
     out[2, ] <- st_err
     out[3, ] <- t_val
+
+    ## suppressWarnings() above discards R's own "NaNs produced", which was the
+    ## only signal that a standard error had gone missing (A65).
+    .sm <- if (optHessian == TRUE) {
+      .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("psfm(model_name = \"", model_name, "\"): ")
+      )
+    } else {
+      NULL
+    }
+    if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, u_hat, h_hat, exp_u_hat, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "u_hat", "h_hat", "exp_u_hat", "data", "coefficients", "std.errors", "t.values", "call")
+    ## Appended, not rebuilt: re-listing a long value vector against a
+    ## long name vector to add one field is how a misalignment gets in.
+    if (!is.null(.sm)) results$se_unresolved <- .sm
     if (isTRUE(keep_objective)) {
       results$objective <- like.fd
       results$n_units <- N

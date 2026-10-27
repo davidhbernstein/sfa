@@ -407,10 +407,14 @@ ivsfm <- function(formula,
     st_err <- rep(NA, length(opt$par))
   }
   if (optHessian == TRUE) {
+    ## The colMeans test catches an all-zero Hessian only; a singular but
+    ## non-zero one made solve() error and discard a finished fit (A65).
     st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
       rep(NA, length(opt$par))
     } else {
-      suppressWarnings(sqrt(diag(solve(opt$hessian))))
+      tryCatch(suppressWarnings(sqrt(diag(solve(opt$hessian)))),
+        error = function(e) rep(NA_real_, length(opt$par))
+      )
     }
   }
 
@@ -464,6 +468,18 @@ ivsfm <- function(formula,
   out[2, ] <- se
   out[3, ] <- par / se
 
+  ## On the reported scale and names: the delta method above carries a missing
+  ## estimation-scale standard error straight through (A65). IVLIML estimates
+  ## more than it reports, so the count here is of REPORTED parameters.
+  .sm <- if (optHessian == TRUE) {
+    .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+      paste0("ivsfm(model_name = \"", model_name, "\"): ")
+    )
+  } else {
+    NULL
+  }
+  if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
+
   ## ---- inefficiency, APS (2016) Eqs (14)-(15) -----------------------------
   ## The predictor conditions on eta as well as epsilon: eta is correlated with
   ## v and so carries information about u even though u is independent of eta.
@@ -501,6 +517,9 @@ ivsfm <- function(formula,
     "rho", "vcov_rho", "sigma_c", "b_2sls", "wrong_skew", "S", "nobs", "uhet",
     "coefficients", "std.errors", "t.values", "call"
   )
+  ## Appended, not rebuilt: re-listing a long value vector against a long name
+  ## vector to add one field is how a misalignment gets introduced.
+  if (!is.null(.sm)) results$se_unresolved <- .sm
   ## Optionally retain the objective for estfun()/vcov(type = "bhhh"), with a
   ## FULL delta-method Jacobian rather than a diagonal one. Two reasons it has
   ## to be a matrix here:
