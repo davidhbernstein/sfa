@@ -12,8 +12,12 @@
   `zsfm(model_name = "ZISF")` with `data_gen_cs(N = 25, rand = 8, sig_u = 1,
   sig_v = .3, cons = .5, beta1 = .5, beta2 = .5, mu = .5, a = 5)`: one negative
   eigenvalue (`-1474` against a largest of `3.48e6`), two of six standard errors
-  `NaN` -- one of them the slope `x2`, true value 0.5 -- `conv 0`, and zero
-  warnings. All five now report through the same helper `ttsfm()` uses, naming
+  `NaN` -- one of them the slope `x2`, true value 0.5 -- and zero warnings. (On
+  that machine the fit also reports `convergence = 0`, so nothing in the output
+  flags it at all; on all five CI platforms the same fit reports `52`, where the
+  convergence code does carry a signal and only the missing standard errors go
+  unexplained. The reported standard errors go missing on four of the five
+  either way.) All five now report through the same helper `ttsfm()` uses, naming
   the parameters and the Hessian's extreme eigenvalues in `$se_unresolved`,
   which `print()` and `summary()` carry since a warning does not survive
   `saveRDS()`. Their `sum(colMeans(hessian)) == 0` test caught only an all-zero
