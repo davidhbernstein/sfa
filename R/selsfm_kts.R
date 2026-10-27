@@ -180,7 +180,7 @@
   nm <- c(paste0("t0.", colnames(X)), paste0("t1.", colnames(X)),
     "sigma_v0", "sigma_v1", "sigma_u0", "sigma_u1",
     paste0("choice.", colnames(Z)), "delta")
-  se <- tryCatch(sqrt(pmax(diag(solve(opt$hessian)), 0)),
+  se <- tryCatch(.sfa_se_from_var(diag(solve(opt$hessian))),
     error = function(e) rep(NA_real_, length(th)))
   ## The four scales are estimated as logs and reported on the natural scale,
   ## so their standard errors move with them: d(exp b)/db = exp(b).

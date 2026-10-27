@@ -96,9 +96,13 @@
   }
 }
 
-## log(phi(z) - z * Phi(-z)), the normal-Rayleigh density's one-sided factor.
-## Direct below z = 3; above, the two terms cancel, so use the continued
-## fraction for the Mills ratio (see notes/code_history/matrix_utils.md, A26).
+## sqrt() of a variance estimate, with a NEGATIVE estimate reported as NA.
+## pmax(v, 0) reported it as 0 -- an infinitely precise estimate (A64).
+.sfa_se_from_var <- function(v) {
+  v[!is.finite(v) | v < 0] <- NA_real_
+  sqrt(v)
+}
+
 ## Why a reported standard error is missing, in the fit's own names. An
 ## indefinite Hessian puts negative entries on the inverse diagonal (A53).
 .se_missing_report <- function(se, nms, hessian = NULL, label = "") {
@@ -159,6 +163,9 @@
   info
 }
 
+## log(phi(z) - z * Phi(-z)), the normal-Rayleigh density's one-sided factor.
+## Direct below z = 3; above, the two terms cancel, so use the continued
+## fraction for the Mills ratio (see notes/code_history/matrix_utils.md, A26).
 .log_nr_g <- function(z, K = 80L) {
   z <- as.numeric(z)
   out <- rep(NA_real_, length(z))
@@ -1508,7 +1515,7 @@
   s2 <- sum(e^2) / (n - k)
   R <- qr.R(fit$qr)
   V <- tryCatch(chol2inv(R) * s2, error = function(err) matrix(NA_real_, k, k))
-  se_b <- sqrt(pmax(diag(V), 0))
+  se_b <- .sfa_se_from_var(diag(V))
   if (!is.na(intercept_col) && intercept_col >= 1 && intercept_col <= length(se_b)) {
     se_b[intercept_col] <- NA_real_
   }
