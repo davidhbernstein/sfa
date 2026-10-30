@@ -267,6 +267,7 @@
     BigT = BigT, call = call, data = data
   )
   class(results) <- "sfareg"
+  results$inefdec <- isTRUE(inefdec_n > 0)
   if (isTRUE(keep_objective)) {
     ## Contributions are per FIRM, so n_units -- not nobs() -- is what
     ## bread() must scale by.

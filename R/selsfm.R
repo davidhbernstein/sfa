@@ -354,6 +354,7 @@ selsfm <- function(selection,
     "sim_type", "n_selected", "n_total", "S", "nobs",
     "coefficients", "std.errors", "t.values", "call"
   )
+  results$inefdec <- isTRUE(inefdec)
   ## Appended, not rebuilt: re-listing a long value vector against a long name
   ## vector to add one field is how a misalignment gets introduced.
   if (!is.null(.sm)) results$se_unresolved <- .sm

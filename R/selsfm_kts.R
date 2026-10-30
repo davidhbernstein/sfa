@@ -204,5 +204,6 @@
     "formula", "selection_formula", "jlms", "efficiency", "objective",
     "n_nodes", "nobs", "n_selected", "S",
     "coefficients", "std.errors", "t.values", "call")
+  results$inefdec <- isTRUE(inefdec)
   results
 }

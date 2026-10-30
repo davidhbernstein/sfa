@@ -560,6 +560,7 @@ copsfm <- function(formula,
     "exp_u_hat", "S", "nobs", "n_nodes",
     "coefficients", "std.errors", "t.values", "call"
   )
+  results$inefdec <- isTRUE(inefdec)
   ## Appended, not rebuilt: re-listing twenty-one values against twenty-one
   ## names to add one field is how a misalignment gets introduced.
   if (!is.null(.sm)) results$se_unresolved <- .sm
