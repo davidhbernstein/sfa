@@ -409,6 +409,7 @@ sfm <- function(formula,
       "exp_u_hat", "u_hat",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(as.numeric(Y))
     results$u_posterior <- HF$u_posterior
     results$sigma_u <- HF$sigma_u
@@ -626,6 +627,7 @@ sfm <- function(formula,
       "exp_u_hat", "wrong_skew", "residual_moments", "cols_boot_draws",
       "estimator", "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(Yc)
     return(results)
   }
@@ -698,6 +700,7 @@ sfm <- function(formula,
       "exp_u_hat", "boundary", "residual_moments", "estimator",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(Yc)
     return(results)
   }
@@ -1749,6 +1752,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "med_u_hat",
         "coefficients", "std.errors", "t.values", "call", "robust", "robust_c"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     if (model_name %in% c("NHN_Z", "NR", "NNAK")) {
@@ -1761,6 +1765,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## NG additionally reports its starting-value search, which is what decides
@@ -1775,6 +1780,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "ng_starts",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## NE/NTN additionally return u_hat (the JLMS E[u|e] point predictor)
@@ -1789,6 +1795,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## NTN additionally reports its sigma_v boundary flag. APPENDED rather than
@@ -1814,6 +1821,7 @@ sfm <- function(formula,
         "thn_sigma_u_at_bound", "thn_nu_unidentified", "thn_starts",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## THT additionally reports sd_exp_u_hat, the standard deviation of
@@ -1828,6 +1836,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "exp_u_hat", "u_hat", "sd_exp_u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## Fallback for models with no efficiency predictor yet (currently the _Z
@@ -1842,6 +1851,7 @@ sfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
     }
 
     ## Rows actually used, which is not the row count of the supplied `data`

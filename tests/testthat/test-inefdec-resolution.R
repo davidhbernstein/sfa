@@ -49,6 +49,9 @@ test_that("inefdec passed as a variable resolves, for a fit made inside a functi
 test_that("an unresolvable inefdec errors instead of defaulting to production", {
   d <- .orient_data()
   fx <- .cost_fit(d)
+  ## A67 made every fit record its orientation, so the field has to be dropped
+  ## to reach this path at all -- it is what a fit saved before A67 looks like.
+  fx$inefdec <- NULL
   fx$call$inefdec <- as.name("no_such_variable_anywhere")
   ## Before A43 this returned TRUE -- a cost fit silently read as production.
   expect_error(.sfa_inefdec(fx), "cannot tell whether")

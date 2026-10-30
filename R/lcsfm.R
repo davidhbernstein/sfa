@@ -251,6 +251,7 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long vector against a long name
     ## vector to add one field is how a misalignment gets introduced.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -470,6 +471,7 @@ lcsfm <- function(formula,
       "penalty", "logLik_unpenalised", "penalty_c",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long vector against a long name
     ## vector to add one field is how a misalignment gets introduced.
     if (!is.null(.sm)) results$se_unresolved <- .sm

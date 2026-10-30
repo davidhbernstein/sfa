@@ -624,6 +624,7 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.ne.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing eleven values against eleven names to
     ## add one field is how a misalignment gets introduced (see sfm.R).
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -957,6 +958,7 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.hn.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing eleven values against eleven names to
     ## add one field is how a misalignment gets introduced (see sfm.R).
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -1175,6 +1177,7 @@ ttsfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, out["par", ], out["st_err", ], out["t-val", ], metric.nls.res, call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "coefficients", "std.errors", "t.values", "metrics", "call")
+    results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(as.numeric(Y))
     results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
     return(results)
