@@ -31,15 +31,35 @@ efficiency_ci <- function(object, level = 0.95, type = c("both", "u", "te")) {
     u_hat <- .jlms_u(post$mu_star, post$sigma_star)
   }
   te_hat <- object$exp_u_hat
-  ## A data frame column recycles a vector whose length divides the row count,
-  ## so a mismatched predictor would be misaligned silently (GitHub issue #2).
   n <- length(ci$lower)
+  ## Each stored predictor is a fixed function of the posterior, so recompute
+  ## it and compare. Length alone does not settle it: a vector of the right
+  ## length and the wrong order passes a length check and is still wrong (A69).
+  expected <- list(
+    u_hat = function() as.numeric(.jlms_u(post$mu_star, post$sigma_star)),
+    exp_u_hat = function() {
+      as.numeric(.te_battese_coelli(post$mu_star, post$sigma_star))
+    }
+  )
   for (nm in c("u_hat", "exp_u_hat")) {
-    v <- if (nm == "u_hat") u_hat else te_hat
-    if (!is.null(v) && length(v) != n) {
+    v <- object[[nm]]
+    if (is.null(v)) next
+    ## A data frame column recycles a vector whose length divides the row
+    ## count, so a mismatched predictor is misaligned silently (issue #2).
+    if (length(v) != n) {
       stop("efficiency_ci(): `object$", nm, "` has ", length(v), " values but ",
         "the fitted posterior has ", n, ", so they cannot be matched to the ",
         "same observations.",
+        call. = FALSE
+      )
+    }
+    want <- expected[[nm]]()
+    gap <- max(abs(as.numeric(v) - want))
+    if (!is.finite(gap) || gap > 1e-8 * max(1, max(abs(want)))) {
+      stop("efficiency_ci(): `object$", nm, "` is not what this fit's ",
+        "posterior gives -- they differ by ", format(gap, digits = 3),
+        ", so the stored values do not belong to these observations. Refit, ",
+        "or remove the field to have it rebuilt from the posterior.",
         call. = FALSE
       )
     }
