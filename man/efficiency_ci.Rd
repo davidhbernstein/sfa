@@ -46,8 +46,12 @@ A data frame with one row per observation, carrying \code{u_lower},
 \code{u_hat}, \code{u_upper} and/or \code{te_lower}, \code{te_hat},
 \code{te_upper} according to \code{type}, and a \code{"level"} attribute.
 \code{u_hat} is the Jondrow et al. (1982) posterior mean and \code{te_hat} the
-Battese and Coelli (1988) score -- exactly the values the fit already reports,
-taken from the fitted object rather than recomputed.
+Battese and Coelli (1988) score. Each is taken from the fitted object where it
+carries that field, so what this function reports and what \code{print()} and
+\code{summary()} report cannot drift apart. Where the fit does not carry it --
+\code{u_hat} is not stored by every model, and a fit may have been stripped of
+\code{exp_u_hat} -- the value is rebuilt from the fit's own \code{u_posterior},
+which reproduces the same estimator rather than substituting the other one.
 }
 \references{
 Horrace, W. C. and Schmidt, P. (1996). Confidence statements for efficiency
