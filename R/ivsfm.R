@@ -221,6 +221,7 @@ ivsfm <- function(formula,
       "b_2sls", "wrong_skew", "S", "nobs",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     return(results)
   }
 
@@ -517,6 +518,7 @@ ivsfm <- function(formula,
     "rho", "vcov_rho", "sigma_c", "b_2sls", "wrong_skew", "S", "nobs", "uhet",
     "coefficients", "std.errors", "t.values", "call"
   )
+  results$inefdec <- isTRUE(inefdec)
   ## Appended, not rebuilt: re-listing a long value vector against a long name
   ## vector to add one field is how a misalignment gets introduced.
   if (!is.null(.sm)) results$se_unresolved <- .sm

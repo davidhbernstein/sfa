@@ -298,19 +298,9 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
 }
 
 
-## Production (TRUE) or cost (FALSE) frontier, from the fit or its recorded call;
-## accepts both sfm()'s logical and psfm()'s "cost function" string.
+## Production (TRUE) or cost (FALSE) frontier. Everything goes through the one
+## resolver, which reports NA rather than guessing (gap A43).
 .sfa_inefdec <- function(object) {
-  if (!is.null(object$inefdec)) {
-    if (is.character(object$inefdec)) {
-      return(!grepl("cost", object$inefdec, ignore.case = TRUE))
-    }
-    if (is.logical(object$inefdec) && length(object$inefdec) == 1L) {
-      return(isTRUE(object$inefdec))
-    }
-  }
-  ## Everything else goes through the one resolver, which evaluates in the
-  ## formula's environment and reports NA rather than guessing (gap A43).
   cost <- .is_cost_fit(object)
   if (is.na(cost)) {
     stop(.cost_fit_unknown("this fit"), call. = FALSE)

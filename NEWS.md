@@ -2,6 +2,29 @@
 
 ## Bug fixes
 
+* **A fit made inside a wrapper function could no longer say whether it was a
+  production or a cost frontier.** Cost-vs-production orientation was
+  recoverable only by re-evaluating the `inefdec` expression recorded in the
+  call, in the environment of the fit's formula. That fails for an ordinary
+  pattern -- the formula built at top level, the fit made inside a helper that
+  passes `inefdec` as a local variable -- because the variable is not reachable
+  from where the formula lives. `.is_cost_fit()` then returned `NA` and
+  `efficiency(logDepVar = FALSE)`, `.sfa_inefdec()`, the composed CDF and
+  `lcsfm_homogeneity()` all refused to run on a finished fit, reporting that
+  they could not tell the orientation. Every entry point that takes `inefdec`
+  now records the resolved value in the fit as `$inefdec`, a scalar logical
+  (37 result assemblies across `sfm()`, `psfm()`, `zsfm()`, `lcsfm()`,
+  `ttsfm()`, `copsfm()`, `selsfm()` and `ivsfm()`; `esfm()` already did), and
+  `.is_cost_fit()` reads that in preference to the call. A fit that carries no
+  such field -- one saved before this change -- still reports `NA` and still
+  errors rather than defaulting to production, which is the guard gap A43 added.
+
+  Two things found while fixing it. `.sfa_inefdec()` duplicated the resolution
+  rather than delegating, so A43's "one resolver" was really two; it now
+  delegates, and the character branch it carried for "`psfm()`'s cost function
+  string" moved into the resolver -- no entry point has ever stored a character
+  `inefdec`, so that branch is reachable only by setting the field by hand.
+
 * **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()` and `psfm()`
   reported a `NaN` standard error with no signal at all, and discarded a
   finished fit when the Hessian was singular.** The first five took their

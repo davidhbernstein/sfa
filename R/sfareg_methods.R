@@ -562,6 +562,15 @@ predict.sfareg <- function(object, newdata = NULL,
 ## evaluated. It is looked up where the formula was created, which is where a
 ## variable passed as `inefdec` normally lives.
 .is_cost_fit <- function(object) {
+  ## Every fit records the orientation it used, so a saved one resolves without
+  ## re-evaluating the call's `inefdec` in an environment that may be gone.
+  v <- object$inefdec
+  if (length(v) == 1L && is.character(v)) {
+    return(grepl("cost", v, ignore.case = TRUE))
+  }
+  if (length(v) == 1L && is.logical(v) && !is.na(v)) {
+    return(!v)
+  }
   v <- object$call$inefdec
   if (is.null(v)) {
     return(FALSE)

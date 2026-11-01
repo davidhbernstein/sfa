@@ -333,6 +333,7 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \item{std.errors}{A vector of standard errors for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{t.values}{A vector of t-values for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{call}{The matched call.}
+\item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}
 \item{data}{The data used in estimation.}
 
 \bold{Additional model-specific components:}

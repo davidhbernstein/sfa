@@ -42,6 +42,9 @@ test_that("inefdec passed as a variable is read, and an unreadable one is refuse
   expect_equal(as.numeric(predict(fc, type = "response")), as.numeric(fitted(fc) + u))
 
   fx <- fv
+  ## A67 made every fit record its orientation, so the field has to be dropped
+  ## to reach this path at all -- it is what a fit saved before A67 looks like.
+  fx$inefdec <- NULL
   fx$call$inefdec <- as.name("no_such_variable_anywhere")
   expect_error(efficiency(fx, logDepVar = FALSE), "cannot tell whether")
   expect_error(predict(fx, type = "response"), "cannot tell whether")

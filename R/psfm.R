@@ -309,6 +309,7 @@ psfm <- function(formula,
         "u_hat", "exp_u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
       results$nobs <- length(su$y)
       results$sigma_v <- sqrt(KS$sigma2)
       results$residuals <- KS$residuals
@@ -348,6 +349,7 @@ psfm <- function(formula,
         "u_hat", "exp_u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
       results$nobs <- nrow(data)
       results$theta <- RE$theta
       results$ercomp <- RE$ercomp
@@ -393,6 +395,7 @@ psfm <- function(formula,
         "u_hat", "exp_u_hat",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
       results$nobs <- length(setup$y)
       results$sigma_v <- sqrt(FT$sigma2)
       results$residuals <- FT$residuals
@@ -822,6 +825,7 @@ psfm <- function(formula,
       results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, H, out["par", ], out["st_err", ], out["t-val", ], call)
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "H", "coefficients", "std.errors", "t.values", "call")
+      results$inefdec <- isTRUE(inefdec)
       ## Appended, not rebuilt: re-listing a long value vector against a
       ## long name vector to add one field is how a misalignment gets in.
       if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -830,6 +834,7 @@ psfm <- function(formula,
       results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
+      results$inefdec <- isTRUE(inefdec)
       ## Appended, not rebuilt: re-listing a long value vector against a
       ## long name vector to add one field is how a misalignment gets in.
       if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -1579,6 +1584,7 @@ psfm <- function(formula,
         "out_opg",
         "out_sandwich"
       )
+      results$inefdec <- isTRUE(inefdec)
       ## Appended, not rebuilt: re-listing a long value vector against a
       ## long name vector to add one field is how a misalignment gets in.
       if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -1871,6 +1877,7 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -2102,6 +2109,7 @@ psfm <- function(formula,
       "out", "opt", "total_time", "start_v", "U", "H", "model_name", "formula", "data",
       "coefficients", "std.errors", "t.values", "call", "start_search"
     )
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -2290,6 +2298,7 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, r_hat_m, exp_u_hat, model_name, formula, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "r_hat_m", "exp_u_hat", "model_name", "formula", "data", "coefficients", "std.errors", "t.values", "call")
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -2488,6 +2497,7 @@ psfm <- function(formula,
       "out", "opt", "total_time", "start_v", "r_hat_m", "exp_u_hat", "u_hat", "model_name",
       "formula", "data", "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -2722,6 +2732,7 @@ psfm <- function(formula,
     results <- list(t(out), c(opt), End.Time, start_v, model_name, formula, u_hat, h_hat, exp_u_hat, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "u_hat", "h_hat", "exp_u_hat", "data", "coefficients", "std.errors", "t.values", "call")
+    results$inefdec <- isTRUE(inefdec)
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -2814,6 +2825,7 @@ psfm <- function(formula,
     results <- list(t(out), End.Time, other_parms, model_name, formula, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "total_time", "other_parms", "model_name", "formula", "data", "coefficients", "std.errors", "t.values", "call")
+    results$inefdec <- isTRUE(inefdec)
     return(results)
   }
   if (model_name == "SSFE") {
@@ -2863,6 +2875,7 @@ psfm <- function(formula,
       "out", "total_time", "model_name", "formula", "data", "alpha_hat", "u_hat", "exp_u_hat",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     return(results)
   }
   if (model_name %in% c("PL80", "BC92", "K1990", "K1990modified")) {
@@ -3065,6 +3078,7 @@ psfm <- function(formula,
       "out", "opt", "total_time", "model_name", "formula", "data", "exp_u_hat",
       "coefficients", "std.errors", "t.values", "call"
     )
+    results$inefdec <- isTRUE(inefdec)
     if (!is.null(jac_rep)) results$par_scale <- jac_rep
     if (isTRUE(keep_objective)) {
       results$objective <- like.pl
@@ -3142,6 +3156,7 @@ psfm <- function(formula,
     results <- list(t(out), End.Time, other_parms, model_name, formula, data, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "total_time", "other_parms", "model_name", "formula", "data", "coefficients", "std.errors", "t.values", "call")
+    results$inefdec <- isTRUE(inefdec)
     return(results)
   } else {
     stop(paste0(

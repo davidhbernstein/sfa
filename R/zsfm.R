@@ -372,6 +372,7 @@ zsfm <- function(formula,
         "out", "opt", "total_time", "start_v", "model_name", "formula", "jlms", "post.prob",
         "coefficients", "std.errors", "t.values", "call"
       )
+      results$inefdec <- isTRUE(inefdec)
       ## Appended, not rebuilt: re-listing twelve values against twelve names
       ## to add one field is how a misalignment gets introduced.
       if (!is.null(.sm)) results$se_unresolved <- .sm

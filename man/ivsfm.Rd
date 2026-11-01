@@ -177,6 +177,7 @@ Alongside the usual components:
   \code{exp(-jlms)}.}
 \item{vcov_rho}{The full \eqn{q \times q} covariance of \eqn{\hat\rho}, which
   \code{\link{endogeneity_test}} needs for the joint Wald statistic.}
+\item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}
 }
 \references{
 Amsler, C., Prokhorov, A. and Schmidt, P. (2016). Endogeneity in stochastic
