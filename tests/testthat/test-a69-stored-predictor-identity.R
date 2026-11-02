@@ -18,6 +18,51 @@ a69_fit <- function(N = 150) {
   sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = cs_small(N = N))
 }
 
+## A posterior written down rather than fitted, so the guard's behaviour is
+## pinned identically on every platform. The fitted cases below add realism;
+## this one adds certainty.
+a69_handmade <- function() {
+  mu <- c(-1.0, -0.4, 0.0, 0.3, 0.8, 1.5, 2.0)
+  s <- c(0.5, 0.7, 0.4, 0.9, 0.6, 1.0, 0.8)
+  obj <- structure(
+    list(model_name = "NHN",
+         u_posterior = list(mu_star = mu, sigma_star = s)),
+    class = "sfareg"
+  )
+  obj$exp_u_hat <- as.numeric(sfa:::.te_battese_coelli(mu, s))
+  obj$u_hat <- as.numeric(sfa:::.jlms_u(mu, s))
+  obj
+}
+
+test_that("the guard is exact on a posterior written down, not fitted", {
+  obj <- a69_handmade()
+  ## Correct by construction, so it must pass.
+  expect_s3_class(efficiency_ci(obj), "data.frame")
+
+  ## Reversal: same values, same mean, same range, pairing destroyed.
+  rev_obj <- obj
+  rev_obj$exp_u_hat <- rev(obj$exp_u_hat)
+  expect_error(efficiency_ci(rev_obj), "exp_u_hat")
+  expect_error(efficiency_ci(rev_obj), "do not belong to these observations")
+
+  ## One observation moved by 1e-4, against a guard tolerance of 1e-8. Both
+  ## numbers are fixed here, so this sensitivity does not depend on a fit.
+  one <- obj
+  one$exp_u_hat[3] <- one$exp_u_hat[3] + 1e-4
+  expect_error(efficiency_ci(one), "do not belong to these observations")
+
+  ## And the same for u_hat.
+  u_obj <- obj
+  u_obj$u_hat <- rev(obj$u_hat)
+  expect_error(efficiency_ci(u_obj), "u_hat")
+
+  ## Wrong length is still refused, and the message names the count.
+  short <- obj
+  short$exp_u_hat <- obj$exp_u_hat[1:3]
+  expect_error(efficiency_ci(short), "cannot be matched")
+  expect_error(efficiency_ci(short), "3 values")
+})
+
 test_that("a stored predictor of the wrong length is refused by name", {
   skip_on_cran()
   fit <- a69_fit()
@@ -43,6 +88,14 @@ test_that("a stored predictor of the right length and wrong contents is refused"
   fit <- a69_fit()
   stored <- as.numeric(fit$exp_u_hat)
 
+  ## Reversing a fitted fixture is only a corruption if its scores actually
+  ## differ across observations, which is a property of where the optimizer
+  ## landed. Skip rather than fail if it collapsed -- the handmade block above
+  ## already pins the guard's sensitivity with no such dependence.
+  spread <- max(abs(rev(stored) - stored))
+  skip_if_not(spread > 1e-2,
+              sprintf("fitted scores too flat for reversal to corrupt (%.2g)", spread))
+
   ## Reversal is the sharp case: same length, same values, same mean, same
   ## range -- only the pairing with observations is destroyed. Nothing
   ## downstream can see it.
@@ -50,11 +103,6 @@ test_that("a stored predictor of the right length and wrong contents is refused"
   rev_fit$exp_u_hat <- rev(stored)
   expect_error(efficiency_ci(rev_fit), "exp_u_hat")
   expect_error(efficiency_ci(rev_fit), "do not belong to these observations")
-
-  ## Before the guard, that object was accepted and left the reported point
-  ## outside its own interval. Pin that the corruption is of a size the guard
-  ## must see, rather than assuming it.
-  expect_gt(max(abs(rev(stored) - stored)), 1e-2)
 
   ## A single perturbed observation, far smaller than a reversal, is still
   ## caught -- the guard is an identity, not a tolerance on aggregates.
