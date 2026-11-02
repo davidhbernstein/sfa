@@ -1,117 +1,96 @@
 ## efficiency_ci()'s te_hat fallback, for a fit that no longer carries
 ## exp_u_hat.
 ##
-## The reference is the Battese-Coelli definition integrated numerically:
-## E[exp(-u) | e] for u | e truncated normal on (0, Inf). That is an
-## independent implementation of the quantity rather than the fit's own stored
-## field, so these tests pin the estimator instead of pinning agreement with
-## whatever the fit happened to save. Closed form and quadrature agree to
-## 2e-12 over mu_star in [-2, 5].
+## Before A68 the fallback computed exp(-JLMS) = exp(-E[u | e]) where the
+## stored field is the Battese-Coelli score E[exp(-u) | e]. Jensen separates
+## them, so the column reported a different estimator under the same name.
 ##
-## Before A68 the fallback computed exp(-JLMS) = exp(-E[u | e]), which Jensen
-## separates from E[exp(-u) | e] -- a measured 8.0e-3 on the NHN fixture here.
+## The estimator is pinned on a posterior written down here rather than on a
+## fitted one. That is deliberate: it makes the reference exact and the test
+## platform-independent. An earlier version of this file drove the same check
+## from fits and selected the observations where plain-scale quadrature could
+## be trusted. It passed locally and failed on four of five CI platforms,
+## because which observations those are depends on where the optimizer landed
+## -- NHN_Z's sigma_star collapses to 5.3e-07 here (that is A63) and to
+## something larger on CI. The fits below are still used, but only for
+## invariants that hold wherever they land.
 
-## E[exp(-u)] for u ~ N(mu, s^2) truncated below at zero. Plain-scale
-## quadrature, usable only where integrate() can actually resolve the density:
-## NHN_Z collapses sigma_star to 5.3e-07 on this fixture (that is A63), and a
-## spike that narrow integrates to zero over (0, Inf). The package's own closed
-## form works in logs and has no such limit, which is exactly why it cannot be
-## its own reference.
+## E[exp(-u)] for u ~ N(mu, s^2) truncated below at zero, by quadrature. NA
+## when integrate() cannot resolve the density -- for a narrow spike far from
+## zero it silently returns 0, which is why the convergence message is checked
+## rather than the value trusted.
 bc_quadrature <- function(mu, s) {
   vapply(seq_along(mu), function(i) {
-    num <- stats::integrate(
+    r <- try(stats::integrate(
       function(u) exp(-u) * stats::dnorm(u, mu[i], s[i]),
       lower = 0, upper = Inf, rel.tol = 1e-11
-    )$value
-    num / stats::pnorm(mu[i] / s[i])
+    ), silent = TRUE)
+    if (inherits(r, "try-error") || !identical(r$message, "OK")) {
+      return(NA_real_)
+    }
+    r$value / stats::pnorm(mu[i] / s[i])
   }, numeric(1))
 }
 
-## Observations where that quadrature is trustworthy.
-a68_reliable <- function(post, n = 5L) {
-  mu <- as.numeric(post$mu_star)
-  s <- as.numeric(post$sigma_star)
-  ok <- which(is.finite(mu / s) & mu / s > -5 & s > 1e-6)
-  utils::head(ok, n)
-}
+test_that("the te_hat fallback is Battese-Coelli, not exp(-JLMS)", {
+  ## A posterior chosen so the quadrature is reliable and the two estimators
+  ## are far apart. efficiency_ci() needs nothing else from the object, so no
+  ## optimizer is involved and the expected values are the same everywhere.
+  mu <- c(-1.0, -0.4, 0.0, 0.3, 0.8, 1.5, 2.0)
+  s <- c(0.5, 0.7, 0.4, 0.9, 0.6, 1.0, 0.8)
+  obj <- structure(
+    list(model_name = "NHN",
+         u_posterior = list(mu_star = mu, sigma_star = s)),
+    class = "sfareg"
+  )
+  te <- efficiency_ci(obj)$te_hat
 
-a68_fits <- function() {
+  ## Against the definition.
+  want <- bc_quadrature(mu, s)
+  expect_false(anyNA(want))
+  expect_equal(te, want, tolerance = 1e-10)
+
+  ## And not the other estimator. Jensen fixes the direction: exp(-E[u]) is
+  ## below E[exp(-u)], so the old fallback was biased DOWN at every point.
+  jlms <- exp(-sfa:::.jlms_u(mu, s))
+  expect_true(all(jlms < te))
+  expect_gt(min(te - jlms), 1e-2)
+
+  ## A probability per observation, and not a one-column matrix -- mu_star
+  ## arrives as a matrix from some models and would otherwise change the
+  ## column's type.
+  expect_length(te, length(mu))
+  expect_false(is.matrix(te))
+  expect_true(all(te >= 0 & te <= 1))
+})
+
+test_that("what efficiency_ci reports does not depend on exp_u_hat surviving", {
+  skip_on_cran()
+  ## The no-drift guarantee, on real fits, for every model with a
+  ## truncated-normal posterior. Exact, because the fit built that field from
+  ## this same posterior -- so this holds wherever the optimizer landed, which
+  ## is what makes it safe to assert on every platform.
   d <- cs_small(N = 150)
-  ## NHN_Z stops at a saddle on this fixture -- A63, not A68. The fallback has
-  ## to behave whatever the optimizer did, so the fit is kept and the warning
-  ## silenced here rather than the model dropped.
-  suppressWarnings(list(
+  ## NHN_Z stops at a saddle on this fixture (A63, not this gap). The fallback
+  ## has to behave whatever the optimizer did, so the fit is kept.
+  fits <- suppressWarnings(list(
     NHN = sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = d),
     NHN_Z = sfm(y_pcs_z ~ x1 + x2 | z, model_name = "NHN_Z", data = d),
     NE = sfm(y_pcs ~ x1 + x2, model_name = "NE", data = d),
     NTN = sfm(y_pcs_tn ~ x1 + x2, model_name = "NTN", data = d)
   ))
-}
-
-test_that("the te_hat fallback reports Battese-Coelli, not exp(-JLMS)", {
-  skip_on_cran()
-  fits <- a68_fits()
-  checked <- character(0)
   for (nm in names(fits)) {
-    post <- fits[[nm]]$u_posterior
-    ## A fit saved before $exp_u_hat existed, or stripped of it.
-    stripped <- fits[[nm]]
+    fit <- fits[[nm]]
+    stripped <- fit
     stripped$exp_u_hat <- NULL
-    ci <- efficiency_ci(stripped)
+    te <- efficiency_ci(stripped)$te_hat
 
-    ## Shape and range hold for every model, reference or no reference.
-    expect_length(ci$te_hat, length(as.numeric(post$mu_star)))
-    expect_false(is.matrix(ci$te_hat), info = nm)
-    expect_true(all(ci$te_hat >= 0 & ci$te_hat <= 1), info = nm)
-
-    i <- a68_reliable(post)
-    if (length(i) < 2L) next
-    expect_equal(ci$te_hat[i],
-                 bc_quadrature(as.numeric(post$mu_star)[i],
-                               as.numeric(post$sigma_star)[i]),
-                 tolerance = 1e-8, info = nm)
-    checked <- c(checked, nm)
+    expect_equal(te, efficiency_ci(fit)$te_hat, tolerance = 1e-12, info = nm)
+    expect_length(te, length(as.numeric(fit$u_posterior$mu_star)))
+    expect_false(is.matrix(te), info = nm)
+    expect_true(all(te >= 0 & te <= 1), info = nm)
+    ## The stored field is genuinely present, so the comparison above is not a
+    ## vacuous NULL-against-NULL.
+    expect_false(is.null(fit$exp_u_hat), info = nm)
   }
-  ## Guard against the reference quietly going unused: say which models the
-  ## definition was actually checked against.
-  expect_setequal(checked, c("NHN", "NE", "NTN"))
-})
-
-test_that("the fallback and the stored field cannot drift apart", {
-  skip_on_cran()
-  ## The no-drift guarantee the function's own comment claims: what
-  ## efficiency_ci() reports must not depend on whether exp_u_hat survived.
-  ## Exact rather than approximate, because the fit built that field from this
-  ## same posterior -- and this is the one block NHN_Z is covered by.
-  fits <- a68_fits()
-  for (nm in names(fits)) {
-    stripped <- fits[[nm]]
-    stripped$exp_u_hat <- NULL
-    expect_equal(efficiency_ci(stripped)$te_hat,
-                 efficiency_ci(fits[[nm]])$te_hat,
-                 tolerance = 1e-12, info = nm)
-  }
-})
-
-test_that("the fixture separates the two estimators, so the check discriminates", {
-  skip_on_cran()
-  ## Without this the blocks above would pass on the old code wherever the fit
-  ## landed somewhere the two estimators coincide -- which they do as
-  ## sigma_star -> 0, NHN_Z's collapse here being exactly such a place. Pin
-  ## that NHN is not such a place rather than assuming it.
-  fit <- a68_fits()$NHN
-  post <- fit$u_posterior
-  jlms <- exp(-sfa:::.jlms_u(post$mu_star, post$sigma_star))
-  bc <- as.numeric(fit$exp_u_hat)
-  gap <- max(abs(bc - jlms))
-  skip_if_not(gap > 1e-3,
-              sprintf("fit landed where the two estimators agree (gap %.2g)", gap))
-
-  stripped <- fit
-  stripped$exp_u_hat <- NULL
-  te <- efficiency_ci(stripped)$te_hat
-  ## Jensen: exp(-E[u]) <= E[exp(-u)], so the old fallback was biased DOWN.
-  expect_true(all(jlms <= bc + 1e-12))
-  expect_gt(max(abs(te - jlms)), 1e-3)
-  expect_equal(te, bc, tolerance = 1e-12)
 })
