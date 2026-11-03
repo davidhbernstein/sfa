@@ -463,3 +463,22 @@ test_that("a parameter on its bound does not cost the standard errors", {
       info = paste(cfg, collapse = "/"))
   }
 })
+
+test_that("a missing standard error is reported, not a crash on an undefined name (A72)", {
+  skip_on_cran()
+  ## The report's label named a `model_name` that copsfm() never defines, so a
+  ## fit with any missing standard error died at the warning. Forcing the
+  ## report makes this independent of where the optimizer lands.
+  d <- cop_gen(11, 400, rho = 0.3)
+  local_mocked_bindings(
+    .se_missing_report = function(se, nms, hessian = NULL, label = "") {
+      list(message = paste0(label, "forced report"))
+    }
+  )
+  expect_warning(
+    f <- copsfm(y ~ x1 + x2, data = d, copula = "fgm"),
+    "copsfm(copula = \"fgm\"): forced report", fixed = TRUE
+  )
+  expect_s3_class(f, "sfareg")
+  expect_identical(f$se_unresolved$message, "copsfm(copula = \"fgm\"): forced report")
+})
