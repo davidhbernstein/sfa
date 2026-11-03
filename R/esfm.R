@@ -75,6 +75,9 @@ esfm <- function(formula, data, dist = c("halfnormal", "exponential"),
                  inefdec = TRUE, start = NULL) {
   dist <- match.arg(dist)
   cl <- match.call()
+  if (length(inefdec) != 1L || !is.logical(inefdec) || is.na(inefdec)) {
+    stop("esfm(): `inefdec` must be TRUE or FALSE.", call. = FALSE)
+  }
   mf <- stats::model.frame(formula, data = as.data.frame(data))
   Y <- as.numeric(stats::model.response(mf))
   X <- stats::model.matrix(formula, data = as.data.frame(data))

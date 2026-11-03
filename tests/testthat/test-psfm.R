@@ -223,3 +223,18 @@ test_that("an unbalanced panel falls back from fiml, but only when implicit", {
     "requires a BALANCED panel"
   )
 })
+
+test_that("TRE_Z and FD read an omitted variance segment as `| 1` (A71)", {
+  skip_on_cran()
+  d <- panel_small(t = 6, N = 50)
+  specs <- list(
+    list("TRE_Z", y_tre ~ x1 + x2, y_tre ~ x1 + x2 | 1),
+    list("FD",    y_fd  ~ x_fd,    y_fd  ~ x_fd | 1)
+  )
+  for (s in specs) {
+    bare  <- suppressWarnings(psfm(s[[2]], model_name = s[[1]], data = d, individual = "name"))
+    piped <- suppressWarnings(psfm(s[[3]], model_name = s[[1]], data = d, individual = "name"))
+    expect_identical(bare$out, piped$out, info = s[[1]])
+    expect_identical(as.numeric(logLik(bare)), as.numeric(logLik(piped)), info = s[[1]])
+  }
+})

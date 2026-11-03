@@ -52,6 +52,18 @@ psfm <- function(formula,
   ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+
+  .validate_sfa_call(formula, data, "psfm",
+    maxit = list(
+      maxit.bobyqa = maxit.bobyqa, maxit.nlminb = maxit.nlminb,
+      maxit.psoptim = maxit.psoptim, maxit.optim = maxit.optim
+    ),
+    flags = list(
+      optHessian = optHessian, PSopt = PSopt,
+      inefdec = inefdec, verbose = verbose
+    )
+  )
+
   collinear_action <- match.arg(collinear_action)
   ## Draw controls for the simulated-ML models, validated as sfm() does.
   sim_type <- match.arg(sim_type)

@@ -2,6 +2,23 @@
 
 ## Bug fixes
 
+* **A `copsfm()` fit with a standard error it could not compute crashed
+  instead of warning.** The report added by A65 labelled its warning with
+  `model_name`, which `copsfm()` never defines, so the fit stopped with
+  `object 'model_name' not found` and was discarded -- the outcome A65 was
+  written to remove -- or, with a `model_name` in the caller's workspace,
+  printed that instead. The label now names the copula. `R CMD check` had
+  reported it all along as a "no visible binding" NOTE (A72).
+
+* **`psfm()`'s default model crashed on a formula with no `|` segment.**
+  `psfm(y ~ x, individual = "id")` -- `model_name = "TRE_Z"`, the default --
+  and `model_name = "FD"` both stopped with the internal error
+  `object 'z_vars' not found`, because they read the variance-determinant
+  segment unconditionally while `data_proc()` set it only when a pipe was
+  present. An omitted segment now means `| 1`, the package's documented
+  convention and what `GTRE_Z` already did, and the fit is identical to the
+  one with `| 1` written out (A71).
+
 * **`efficiency_ci()` reported a different efficiency estimator, under the same
   column name, for a fit that had lost `$exp_u_hat`.** The stored field is the
   Battese-Coelli score `E[exp(-u) | e]`; the fallback used when it was absent
@@ -39,6 +56,18 @@
   delegates, and the character branch it carried for "`psfm()`'s cost function
   string" moved into the resolver -- no entry point has ever stored a character
   `inefdec`, so that branch is reachable only by setting the field by hand.
+
+* **`psfm()` and `esfm()` fitted a cost frontier when `inefdec` was anything
+  other than `TRUE`.** Orientation is resolved with `isTRUE(inefdec)`, which
+  maps `NA`, `1` and `"yes"` to `FALSE` without complaint, so
+  `psfm(..., inefdec = "yes")` -- written by someone who means production --
+  estimated the opposite model and recorded `$inefdec = FALSE` on the fit as
+  though it had been asked for. `sfm()`, `zsfm()`, `lcsfm()` and `ttsfm()`
+  already refused such values through their shared argument check; `psfm()`
+  was the one fitter that never called it, so its `formula`, `data`,
+  `maxit.*`, `optHessian`, `PSopt` and `verbose` arguments went unchecked too.
+  It now runs the same check, and `esfm()` checks `inefdec` as `copsfm()` does.
+  Both refuse anything but a single `TRUE` or `FALSE`.
 
 * **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()` and `psfm()`
   reported a `NaN` standard error with no signal at all, and discarded a
