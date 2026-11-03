@@ -2,6 +2,14 @@
 
 ## Bug fixes
 
+* **A `copsfm()` fit with a standard error it could not compute crashed
+  instead of warning.** The report added by A65 labelled its warning with
+  `model_name`, which `copsfm()` never defines, so the fit stopped with
+  `object 'model_name' not found` and was discarded -- the outcome A65 was
+  written to remove -- or, with a `model_name` in the caller's workspace,
+  printed that instead. The label now names the copula. `R CMD check` had
+  reported it all along as a "no visible binding" NOTE (A72).
+
 * **`psfm()`'s default model crashed on a formula with no `|` segment.**
   `psfm(y ~ x, individual = "id")` -- `model_name = "TRE_Z"`, the default --
   and `model_name = "FD"` both stopped with the internal error
