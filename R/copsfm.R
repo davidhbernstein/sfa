@@ -529,7 +529,7 @@ copsfm <- function(formula,
   ## carry a missing estimation-scale standard error straight through (A65).
   .sm <- if (optHessian == TRUE) {
     .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
-      paste0("copsfm(model_name = \"", model_name, "\"): ")
+      paste0("copsfm(copula = \"", copula, "\"): ")
     )
   } else {
     NULL

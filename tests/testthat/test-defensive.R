@@ -65,6 +65,43 @@ test_that("exported fitters reject malformed arguments with a named message", {
                "`inefdec` must be TRUE or FALSE")
 })
 
+test_that("every fitter refuses an orientation that is not TRUE or FALSE (A70)", {
+  ## isTRUE() maps every non-TRUE value to FALSE, so before this check psfm()
+  ## and esfm() fitted a COST frontier for inefdec = "yes" and recorded it on
+  ## the fit as though it had been asked for.
+  d <- cs_small(N = 60)
+  p <- data.frame(id = rep(1:12, each = 5), x1 = d$x1, y = d$y_pcs)
+  fits <- list(
+    sfm   = function(v) sfm(y_pcs ~ x1 + x2, data = d, model_name = "NHN", inefdec = v),
+    zsfm  = function(v) zsfm(y_pcs ~ x1 + x2, data = d, inefdec = v),
+    lcsfm = function(v) lcsfm(y_pcs ~ x1 + x2, data = d, inefdec = v),
+    ttsfm = function(v) ttsfm(y_pcs ~ x1 + x2, data = d, inefdec = v),
+    psfm  = function(v) psfm(y ~ x1, data = p, individual = "id",
+                             model_name = "TRE", inefdec = v),
+    esfm  = function(v) esfm(y_pcs ~ x1 + x2, data = d, inefdec = v)
+  )
+  for (fn in names(fits)) {
+    for (v in list(NA, "yes", 1, c(TRUE, TRUE))) {
+      expect_error(fits[[fn]](v), "`inefdec` must be TRUE or FALSE",
+                   info = paste(fn, deparse(v)))
+    }
+  }
+})
+
+test_that("psfm() validates its arguments as the other fitters do (A70)", {
+  d <- cs_small(N = 60)
+  p <- data.frame(id = rep(1:12, each = 5), x1 = d$x1, y = d$y_pcs)
+  expect_error(psfm("y ~ x1", data = p, individual = "id"),
+               "`formula` must be a formula")
+  expect_error(psfm(y ~ x1, individual = "id"), "`data` must be supplied")
+  expect_error(psfm(y ~ x1, data = as.matrix(p), individual = "id"),
+               "`data` must be a data.frame")
+  expect_error(psfm(y ~ x1, data = p, individual = "id", maxit.optim = -1),
+               "`maxit.optim` must be a single positive number")
+  expect_error(psfm(y ~ x1, data = p, individual = "id", PSopt = "no"),
+               "`PSopt` must be TRUE or FALSE")
+})
+
 test_that("validation accepts tibble-like and pdata.frame-like inputs", {
   ## inherits(data, "data.frame") rather than an identity check on class(),
   ## so subclasses keep working.

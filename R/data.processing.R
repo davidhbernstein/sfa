@@ -96,6 +96,12 @@ data_proc <- function(formula, data, model_name, individual = NULL, inefdec) {
   if (model_name == "GTRE_Z") {
     formula <- .format_formula(formula)
   }
+  ## TRE_Z and FD read one variance segment; an omitted one means `| 1`.
+  if (model_name %in% c("TRE_Z", "FD") && length(Formula::Formula(formula))[2] < 2) {
+    formula_env <- environment(formula)
+    formula <- as.formula(paste(paste(format(formula), collapse = ""), "| 1"))
+    environment(formula) <- formula_env
+  }
 
   data_z <- formula_z <- z_vars <- intercept_z <- z_vars_vec <- z_z_vec <- n_z_vars <- formula_zp <- data_zp <- zp_vars <-
     intercept_zp <- zp_vars_vec <- n_zp_vars <- zp_zp_vec <- fancy_vars_zp <- NULL
