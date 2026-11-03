@@ -2,6 +2,15 @@
 
 ## Bug fixes
 
+* **`psfm()`'s default model crashed on a formula with no `|` segment.**
+  `psfm(y ~ x, individual = "id")` -- `model_name = "TRE_Z"`, the default --
+  and `model_name = "FD"` both stopped with the internal error
+  `object 'z_vars' not found`, because they read the variance-determinant
+  segment unconditionally while `data_proc()` set it only when a pipe was
+  present. An omitted segment now means `| 1`, the package's documented
+  convention and what `GTRE_Z` already did, and the fit is identical to the
+  one with `| 1` written out (A71).
+
 * **A fit made inside a wrapper function could no longer say whether it was a
   production or a cost frontier.** Cost-vs-production orientation was
   recoverable only by re-evaluating the `inefdec` expression recorded in the
