@@ -25,6 +25,18 @@
   string" moved into the resolver -- no entry point has ever stored a character
   `inefdec`, so that branch is reachable only by setting the field by hand.
 
+* **`psfm()` and `esfm()` fitted a cost frontier when `inefdec` was anything
+  other than `TRUE`.** Orientation is resolved with `isTRUE(inefdec)`, which
+  maps `NA`, `1` and `"yes"` to `FALSE` without complaint, so
+  `psfm(..., inefdec = "yes")` -- written by someone who means production --
+  estimated the opposite model and recorded `$inefdec = FALSE` on the fit as
+  though it had been asked for. `sfm()`, `zsfm()`, `lcsfm()` and `ttsfm()`
+  already refused such values through their shared argument check; `psfm()`
+  was the one fitter that never called it, so its `formula`, `data`,
+  `maxit.*`, `optHessian`, `PSopt` and `verbose` arguments went unchecked too.
+  It now runs the same check, and `esfm()` checks `inefdec` as `copsfm()` does.
+  Both refuse anything but a single `TRUE` or `FALSE`.
+
 * **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()` and `psfm()`
   reported a `NaN` standard error with no signal at all, and discarded a
   finished fit when the Hessian was singular.** The first five took their
