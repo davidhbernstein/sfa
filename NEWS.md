@@ -34,6 +34,24 @@
   not -- `u_hat` is resolved before the length check runs -- but the estimator
   substitution was real.
 
+* **`efficiency_ci()` accepted a stored predictor that did not belong to the
+  observations it was reported against.** The guard added for issue #2 checked
+  only that `$u_hat` and `$exp_u_hat` had one value per observation, which a
+  vector of the right length and the wrong order satisfies. Such an object was
+  accepted silently, and on a 60-observation NHN fit with `$exp_u_hat`
+  reversed, the reported point estimate fell outside its own confidence
+  interval in 7 of 60 rows with nothing objecting. Both fields are fixed
+  functions of the `$u_posterior` the fit also carries, so each is now
+  recomputed from it and compared; a discrepancy is refused by name, reporting
+  how far apart they are. Swept over 72 fits (three sample sizes, three seeds,
+  `NHN`/`NHN_Z`/`NE`/`NTN`, both orientations) before relying on the identity:
+  the worst discrepancy on a genuine fit is 7.8e-16 for `$exp_u_hat` and
+  exactly zero for `$u_hat`, against a guard tolerance of 1e-8. A fit that does
+  not carry a field is unaffected -- the value is rebuilt from the posterior as
+  before. Issue #64 asked for this as a recomputation of the stored values
+  instead; that was not done, because recomputing would change which estimator
+  the function reports.
+
 * **A fit made inside a wrapper function could no longer say whether it was a
   production or a cost frontier.** Cost-vs-production orientation was
   recoverable only by re-evaluating the `inefdec` expression recorded in the
