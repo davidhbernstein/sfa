@@ -394,6 +394,17 @@
 
 ## New features
 
+* **`copsfm()` gains Laplace noise, `vdist = "laplace"`**, with any of its
+  copulas and either inefficiency marginal. The noise density is
+  `exp(-|v| / delta_v) / (2 delta_v)`. Its scale is reported as `delta_v`
+  because it is not the standard deviation, which is `sqrt(2) delta_v`.
+  `skewness_decomp()` reads these fits too. The density has a kink at
+  `v = 0`, and on fixed nodes that cost the quadrature three orders of
+  accuracy: a per-observation error in `log f` of up to 8e-3 at the default
+  128 nodes, against 1e-13 for normal noise. So each observation's integral is
+  split at the kink, and each piece gets half the nodes. That restores machine
+  precision (2e-15 against `integrate()`) at the same cost (M3).
+
 * **`simulation_se()` now reports the log-likelihood of every refit.**
   Attribute `loglik` holds them, named by seed, and `loglik_sd` their standard
   deviation. Each refit maximizes a different simulated likelihood, so the
