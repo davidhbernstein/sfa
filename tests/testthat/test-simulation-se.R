@@ -18,6 +18,13 @@ test_that("simulation noise is small for the slopes and larger for the scales", 
   expect_equal(attr(r, "seed_arg"), "sim_seed")
   expect_gte(attr(r, "n_refits"), 2L)
 
+  ## One log-likelihood per successful refit, named by the seed that made it.
+  ll <- attr(r, "loglik")
+  expect_length(ll, attr(r, "n_refits"))
+  expect_true(all(is.finite(ll)))
+  expect_false(is.null(names(ll)))
+  expect_equal(attr(r, "loglik_sd"), stats::sd(ll))
+
   ## Independently reproduces a documented property of these estimators: too
   ## few draws move everything EXCEPT the frontier slopes. So the slopes should
   ## carry markedly less simulation noise, relative to their sampling error,

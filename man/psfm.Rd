@@ -63,8 +63,12 @@
   other value is refused with an error rather than quietly optimized without
   them.}
   \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
-  \item{rand.psoptim}{Integer. Seed for replication of psoptim.  Default to \code{NULL}.}
-  \item{rand.gtre}{Integer. Seed for replication of the gtre model.  Default to \code{NULL}.}
+  \item{rand.psoptim}{Integer. Seed for the particle-swarm stage, so that a fit with \code{PSopt = TRUE} can be reproduced. It has no effect unless \code{PSopt = TRUE}. Varying it with \code{PSopt = TRUE} is how to check sensitivity to the starting point; see \code{rand.gtre}. Default \code{NULL}.}
+  \item{rand.gtre}{Integer. Randomizes the simulation draws of the simulated-ML models listed under \code{halton_num}, by a uniform shift of the sequence (see \code{sim_type}). Fixing it makes a fit reproducible. Default \code{NULL}.
+
+  \bold{Changing it changes the likelihood being maximized, not the starting point.} With the default \code{PSopt = FALSE} the starting values are deterministic, so refits under different \code{rand.gtre} begin from the same place and optimize different simulated likelihoods. Their log-likelihoods are therefore \emph{not comparable}, and the refit with the highest one is not a better solution: it is the one whose simulation error happened to be most favourable. Measured on a 56-firm, 24-period GTRE panel at the default number of draws, changing only \code{rand.gtre} moved the simulated log-likelihood at one \emph{fixed} parameter vector over a range of 26 units, and four of six refits exceeded the exact maximum given by \code{estimator = "fiml"}; with \code{halton_num = 1000} the range fell to 3.
+
+  To measure this variation, use \code{\link{simulation_se}}, which refits under independent values of \code{rand.gtre} and reports both the parameter and the log-likelihood spread. To reduce it, raise \code{halton_num}. To check sensitivity to the \emph{starting point} instead, set \code{PSopt = TRUE} and vary \code{rand.psoptim}, or supply \code{start_val}. On a balanced panel, \code{model_name = "GTRE"} with \code{estimator = "fiml"} (the default) involves no simulation at all.}
   \item{OPG_calc}{Logical. Should the outer product of gradients be calculated for inference.  Default to \code{FALSE}.}
   \item{estimator}{How to estimate the four-component GTRE model, in the same spirit as \code{\link{sfm}}'s \code{estimator}: one model, several routes to it. Applies to \code{model_name = "GTRE"} only, and is ignored with a warning elsewhere.
 \describe{

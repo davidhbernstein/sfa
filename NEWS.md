@@ -361,6 +361,26 @@
 
 ## New features
 
+* **`simulation_se()` now reports the log-likelihood of every refit.**
+  Attribute `loglik` holds them, named by seed, and `loglik_sd` their standard
+  deviation. Each refit maximizes a different simulated likelihood, so the
+  spread measures simulation noise; the largest value is not a better solution
+  (A73).
+
+* **`psfm()`'s `rand.gtre` is now documented as what it is.** Its help said
+  only "seed for replication", which invited using it as a multi-start. It
+  randomizes the draws, so it changes the likelihood being maximized, and the
+  starting point stays where it was. Refits under different values are
+  therefore not comparable by their log-likelihood. Measured on a 56-firm,
+  24-period GTRE panel at the default number of draws, `rand.gtre` alone moved
+  the simulated log-likelihood at one fixed parameter vector over a range of 26
+  units, and four of six refits exceeded the exact `estimator = "fiml"`
+  maximum. With `halton_num = 1000` the range fell to 3. The help now points to
+  `simulation_se()` to measure the variation, `halton_num` to reduce it, and
+  `PSopt = TRUE` with `rand.psoptim` (which has no effect otherwise) to test
+  the starting point. Prompted by a co-author's robustness check that ranked
+  `rand.gtre` refits by log-likelihood (A73).
+
 * **`marginal_effects()` now covers the truncated normal.** It previously
   handled the families whose `E[u]` is proportional to the scale -- the
   half-normal and the exponential -- where the effect collapses to
