@@ -50,7 +50,15 @@ place.
 A data frame with one row per parameter: \code{estimate}, \code{sampling_se}
 (from the Hessian), \code{simulation_se} (across refits) and their
 \code{ratio}. Attributes \code{n_refits} and \code{seed_arg} record how many
-refits succeeded and which argument was varied.
+refits succeeded and which argument was varied. Attribute \code{loglik} holds
+each successful refit's log-likelihood, named by its seed, and
+\code{loglik_sd} their standard deviation (\code{NA} for a fit with no
+\code{logLik()}).
+
+The refits' log-likelihoods are not comparable with one another or with
+\code{logLik(object)}: each refit maximizes a different simulated likelihood,
+so their spread measures simulation noise, and the largest one is not a better
+solution. A spread of several units is a reason to raise the number of draws.
 }
 \seealso{\code{\link{sfa_diagnostics}} for convergence diagnostics on a single fit.}
 \examples{

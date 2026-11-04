@@ -64,6 +64,7 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
   base <- object$coefficients
   nm <- names(base)
   M <- matrix(NA_real_, K, length(base), dimnames = list(NULL, nm))
+  ll <- rep(NA_real_, K)
 
   for (k in seq_len(K)) {
     cl <- object$call
@@ -73,6 +74,9 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
     )
     if (is.null(fit) || is.null(fit$coefficients)) next
     if (length(fit$coefficients) == length(base)) M[k, ] <- fit$coefficients
+    ll[k] <- tryCatch(suppressWarnings(as.numeric(stats::logLik(fit))),
+      error = function(e) NA_real_
+    )
     if (!quiet) message("simulation_se: refit ", k, " of ", K)
   }
 
@@ -85,6 +89,7 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
     )
   }
   M <- M[ok, , drop = FALSE]
+  ll <- stats::setNames(ll[ok], seeds[ok])
 
   sim <- apply(M, 2L, stats::sd)
   samp <- object$std.errors
@@ -105,5 +110,9 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
   )
   attr(out, "n_refits") <- nrow(M)
   attr(out, "seed_arg") <- arg
+  ## Each refit maximizes a different simulated likelihood, so these values
+  ## measure simulation noise; they do not rank the refits.
+  attr(out, "loglik") <- ll
+  attr(out, "loglik_sd") <- if (sum(is.finite(ll)) >= 2L) stats::sd(ll, na.rm = TRUE) else NA_real_
   out
 }
