@@ -19,6 +19,21 @@
   convention and what `GTRE_Z` already did, and the fit is identical to the
   one with `| 1` written out (A71).
 
+* **`efficiency_ci()` reported a different efficiency estimator, under the same
+  column name, for a fit that had lost `$exp_u_hat`.** The stored field is the
+  Battese-Coelli score `E[exp(-u) | e]`; the fallback used when it was absent
+  computed `exp(-u_hat)` from the JLMS predictor, which is `exp(-E[u | e])`.
+  Jensen's inequality separates the two, so the `te_hat` column silently
+  reported efficiencies biased DOWN -- by up to 1.8e-2 on a 150-observation
+  NHN fixture -- with nothing to distinguish them from the ones the normal path
+  returns. The fallback now rebuilds the Battese-Coelli score from
+  `$u_posterior`, which is the expression the fit itself used, so it is exact
+  rather than approximate and what `efficiency_ci()` reports no longer depends
+  on whether `$exp_u_hat` survived. Found while triaging issue #64, whose
+  claim about these four lines was that they left a vector-length gap; they do
+  not -- `u_hat` is resolved before the length check runs -- but the estimator
+  substitution was real.
+
 * **`efficiency_ci()` accepted a stored predictor that did not belong to the
   observations it was reported against.** The guard added for issue #2 checked
   only that `$u_hat` and `$exp_u_hat` had one value per observation, which a

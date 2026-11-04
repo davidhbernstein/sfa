@@ -24,8 +24,9 @@ efficiency_ci <- function(object, level = 0.95, type = c("both", "u", "te")) {
 
   ci <- .horrace_schmidt_ci(post$mu_star, post$sigma_star, level = level)
 
-  ## The point predictors are taken from the fit rather than recomputed, so
-  ## what this function reports and what print()/summary() report cannot drift.
+  ## Taken from the fit where it carries them, so this and print()/summary()
+  ## cannot drift. NHN and NHN_Z never store u_hat, so that one is usually
+  ## rebuilt -- from the same posterior, so it is the same estimator.
   u_hat <- object$u_hat
   if (is.null(u_hat)) {
     u_hat <- .jlms_u(post$mu_star, post$sigma_star)
@@ -74,7 +75,16 @@ efficiency_ci <- function(object, level = 0.95, type = c("both", "u", "te")) {
   if (type %in% c("both", "te")) {
     ## Monotone decreasing transform, so the bounds swap.
     out$te_lower <- exp(-ci$upper)
-    out$te_hat <- if (is.null(te_hat)) exp(-as.numeric(u_hat)) else as.numeric(te_hat)
+    ## A fit stripped of exp_u_hat still carries the posterior that field was
+    ## built from, so rebuild the same Battese-Coelli score rather than
+    ## reporting exp(-JLMS), which is a different estimator (A68).
+    out$te_hat <- if (is.null(te_hat)) {
+      ## as.numeric(): mu_star arrives as a one-column matrix from some
+      ## models, and a matrix column would change this field's type.
+      as.numeric(.te_battese_coelli(post$mu_star, post$sigma_star))
+    } else {
+      as.numeric(te_hat)
+    }
     out$te_upper <- exp(-ci$lower)
   }
 
