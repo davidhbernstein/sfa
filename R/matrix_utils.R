@@ -2494,6 +2494,157 @@
   }
 }
 
+## Gauss-Legendre nodes per panel for the NLN/NW quadrature (issue #65).
+.NSML_GL_NODES <- 8L
+
+.nsml_pdens <- function(model_name, sigma_u, shape) {
+  if (model_name == "NLN") {
+    function(u) stats::plnorm(u, meanlog = shape, sdlog = sigma_u)
+  } else {
+    function(u) stats::pweibull(u, shape = shape, scale = sigma_u)
+  }
+}
+
+## Helper: the NLN/NW composed density by composite Gauss-Legendre (issue #65).
+## Returns per-node log terms, whose row log-sum-exp is log f, and the u they
+## sit at, so the density and the efficiency predictor share one set of nodes.
+.nsml_quad_parts <- function(e, sigma_v, model_name, sigma_u, shape,
+                             m = .NSML_GL_NODES) {
+  e <- as.numeric(e)
+  n <- length(e)
+  ld <- .nsml_ldens(model_name, sigma_u, shape)
+  qf <- .nsml_qdens(model_name, sigma_u, shape)
+  pf <- .nsml_pdens(model_name, sigma_u, shape)
+  gl <- .gauss_legendre_01(as.integer(m))
+  sv <- sigma_v
+
+  ## log integrand in t = log u, Jacobian included
+  lg <- function(t, ee) {
+    u <- exp(t)
+    v <- dnorm(ee + u, 0, sv, log = TRUE) + ld(u) + t
+    v[is.na(v)] <- -Inf
+    v
+  }
+
+  ## Breakpoints that follow the inefficiency density (its quantiles) and the
+  ## noise kernel (around its peak u* and, for e > 0, its decay from u = 0).
+  pq <- c(10^-(12:2), .03, .05, .1, .15, .3, .5,
+          .7, .85, .95, .99, 1 - 1e-3, 1 - 1e-6, 1 - 1e-9, 1 - 1e-12)
+  med <- qf(0.5)
+  off <- c(-8, -6, -4, -3, -2, -1.5, -1, -.75, -.5, -.25, 0,
+           .25, .5, .75, 1, 1.5, 2, 3, 4, 6, 8)
+  ustar <- pmax(0, -e)
+  B0 <- cbind(
+    matrix(qf(pq), n, length(pq), byrow = TRUE),
+    outer(ustar, rep(1, length(off))) + outer(rep(1, n), off * sv),
+    outer(rep(1, n), sv * 2^-(0:14)),
+    outer(sv^2 / pmax(e, sv), c(.25, .5, 1, 2, 4, 8, 16, 32, 64)) * (e > 0)
+  )
+  B0[!is.finite(B0) | B0 <= 0] <- NA
+
+  ## Breakpoints that follow the product: its mode in t, found by golden
+  ## section from the best breakpoint, and its curvature scale there.
+  T0 <- log(B0)
+  T0[is.na(T0)] <- -Inf
+  V0 <- matrix(lg(as.vector(T0), rep(e, ncol(T0))), n)
+  ord <- matrix(order(row(T0), T0), n, byrow = TRUE)
+  Ts <- matrix(T0[ord], n)
+  Vs <- matrix(V0[ord], n)
+  jm <- max.col(Vs, ties.method = "first")
+  tj <- Ts[cbind(seq_len(n), jm)]
+  lo <- Ts[cbind(seq_len(n), pmax(jm - 1L, 1L))]
+  hi <- Ts[cbind(seq_len(n), pmin(jm + 1L, ncol(Ts)))]
+  lo[!is.finite(lo) | lo >= tj] <- tj[!is.finite(lo) | lo >= tj] - 5
+  hi[!is.finite(hi) | hi <= tj] <- tj[!is.finite(hi) | hi <= tj] + 5
+  gr <- (sqrt(5) - 1) / 2
+  x1 <- hi - gr * (hi - lo)
+  x2 <- lo + gr * (hi - lo)
+  f1 <- lg(x1, e)
+  f2 <- lg(x2, e)
+  for (it in seq_len(40L)) {
+    lft <- which(f1 >= f2)
+    rgt <- which(f1 < f2)
+    hi[lft] <- x2[lft]
+    x2[lft] <- x1[lft]
+    f2[lft] <- f1[lft]
+    x1[lft] <- hi[lft] - gr * (hi[lft] - lo[lft])
+    f1[lft] <- lg(x1[lft], e[lft])
+    lo[rgt] <- x1[rgt]
+    x1[rgt] <- x2[rgt]
+    f1[rgt] <- f2[rgt]
+    x2[rgt] <- lo[rgt] + gr * (hi[rgt] - lo[rgt])
+    f2[rgt] <- lg(x2[rgt], e[rgt])
+  }
+  t0 <- (lo + hi) / 2
+  h <- 1e-3
+  c2 <- (lg(t0 + h, e) - 2 * lg(t0, e) + lg(t0 - h, e)) / h^2
+  s <- 1 / sqrt(pmax(-c2, 1e-12))
+  s[!is.finite(s)] <- 1
+  s <- pmin(pmax(s, 1e-10), 5)
+  cm <- c(-12, -8, -6, -4, -3, -2, -1.5, -1, -.5, 0, .5, 1, 1.5, 2, 3, 4, 6, 8, 12)
+  Bm <- exp(outer(t0, rep(1, length(cm))) + outer(s, cm))
+  Bm[!is.finite(t0), ] <- NA
+
+  B <- cbind(B0, Bm, 0)
+  B[!is.finite(B) | B < 0] <- 0
+  B <- matrix(B[order(row(B), B)], n, byrow = TRUE)
+  A <- B[, -ncol(B), drop = FALSE]
+  Bb <- B[, -1L, drop = FALSE]
+  P <- ncol(A)
+
+  ## Each panel in p = F(u) where the inefficiency density is the sharp
+  ## factor, otherwise in t = log u. See notes/code_history for why.
+  inwin <- Bb > pmax(0, ustar - 8 * sv) & A < ustar + 8 * sv
+  inmode <- is.finite(t0) & Bb > exp(t0 - 12 * s) & A < exp(t0 + 12 * s)
+  wide <- Bb > A
+  pa_all <- pf(A)
+  hp_all <- pf(Bb) - pa_all
+  pspace <- (Bb <= med & !inwin & !inmode) | A <= 0
+  pspace[pspace & A > 0 & !(hp_all > 0)] <- FALSE
+
+  ip <- which(pspace & wide)
+  it <- which(!pspace & wide)
+  pa <- pa_all[ip]
+  hp <- hp_all[ip]
+  ta <- log(A[it])
+  ht <- log(Bb[it]) - ta
+  rows <- row(A)
+  e_p <- e[rows[ip]]
+  e_t <- e[rows[it]]
+
+  U <- matrix(0, n, P * m)
+  L <- matrix(-Inf, n, P * m)
+  for (g in seq_len(m)) {
+    at <- (g - 1L) * n * P
+    lw <- log(gl$weights[g])
+    up <- qf(pa + hp * gl$nodes[g])
+    U[at + ip] <- up
+    L[at + ip] <- log(hp) + lw + dnorm(e_p + up, 0, sv, log = TRUE)
+    ut <- exp(ta + ht * gl$nodes[g])
+    U[at + it] <- ut
+    L[at + it] <- log(ht) + lw + dnorm(e_t + ut, 0, sv, log = TRUE) +
+      ld(ut) + log(ut)
+  }
+  L[!is.finite(L)] <- -Inf
+  U[!is.finite(U)] <- 0
+  list(u = U, lterm = L)
+}
+
+.log_d_nsml <- function(e, sigma_v, model_name, sigma_u, shape) {
+  .log_row_sum_exp(.nsml_quad_parts(e, sigma_v, model_name, sigma_u, shape)$lterm)
+}
+
+## E[exp(-u)|e] and E[u|e] over the same nodes and weights the density used.
+.nsml_eff <- function(e, sigma_v, model_name, sigma_u, shape) {
+  p <- .nsml_quad_parts(e, sigma_v, model_name, sigma_u, shape)
+  W <- exp(p$lterm - .log_row_sum_exp(p$lterm))
+  W[!is.finite(W)] <- 0
+  list(
+    exp_u_hat = pmin(pmax(rowSums(W * exp(-p$u)), 0), 1),
+    u_hat = pmax(rowSums(W * p$u), 0)
+  )
+}
+
 ## Helper: is a fitted one-sided scale sitting on the zero boundary because the
 ## residuals are skewed the wrong way?
 ##

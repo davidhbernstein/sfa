@@ -21,7 +21,9 @@
   fn <- fn[length(fn)]
   m <- object$model_name
   switch(fn,
-    sfm = if (m %in% c("NLN", "NW")) "sim_seed" else NULL,
+    sfm = if (m %in% c("NLN", "NW") && !identical(object$integration, "quadrature")) {
+      "sim_seed"
+    },
     psfm = if (m %in% c("GTRE", "TRE", "TRE_Z", "GTRE_Z")) "rand.gtre" else NULL,
     selsfm = "seed",
     NULL
@@ -45,8 +47,8 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
     stop("simulation_se(): model_name \"",
       if (is.null(object$model_name)) "unknown" else object$model_name,
       "\" is not estimated by simulation, so it has no simulation variance. ",
-      "This diagnostic applies to sfm(\"NLN\"/\"NW\"), psfm(\"GTRE\"/\"TRE\") ",
-      "and selsfm().",
+      "This diagnostic applies to sfm(\"NLN\"/\"NW\") with ",
+      "integration = \"simulate\", psfm(\"GTRE\"/\"TRE\") and selsfm().",
       call. = FALSE
     )
   }
@@ -69,6 +71,8 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
   for (k in seq_len(K)) {
     cl <- object$call
     cl[[arg]] <- seeds[k]
+    ## A fit saved before sfm() gained `integration` was simulated; refit it so.
+    if (identical(arg, "sim_seed")) cl$integration <- "simulate"
     fit <- tryCatch(suppressWarnings(eval(cl, envir = envir)),
       error = function(e) NULL
     )

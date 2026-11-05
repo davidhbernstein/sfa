@@ -2,6 +2,28 @@
 
 ## Bug fixes
 
+* **`sfm()`'s `"NW"` and `"NLN"` estimates depended on the number of
+  simulation draws. They are now computed by quadrature, and they change.**
+  At the default `Nsim` (200 for n up to 4444), the simulated
+  log-likelihood was off by 0.3 to 0.5 at n = 500, at the true parameters as
+  well as at the optimum. That is the size of the differences that decide
+  where the optimum sits, so `sigu` and the shape parameter moved with
+  `Nsim`: in one sample, `sigu` went 0.24, 0.12, 0.0009 at 200, 800 and
+  3200 draws. Both models now integrate the inefficiency out by
+  deterministic composite Gauss-Legendre quadrature, accurate to about
+  1e-12 in each observation's log-density against adaptive integration,
+  including a Weibull shape below 1. The fitted log-likelihood is the exact
+  one, and the efficiency predictor uses the same nodes. **Estimates of
+  `sigu`, `k` and `mu` from earlier versions will differ,** and can differ
+  substantially where the likelihood is flat. The new values are the
+  maximum likelihood estimates the simulated ones were approximating.
+  The simulated estimator remains as `integration = "simulate"`, with
+  `Nsim` and the `sim_*` arguments unchanged, so earlier results can be
+  reproduced. Under the default, setting `Nsim` warns that it is ignored,
+  and `simulation_se()` refuses the fit, since there is no simulation
+  variance to measure. Each likelihood evaluation costs several times a
+  200-draw simulated one (#65).
+
 * **`fitted()`, `residuals()`, `predict()` and `efficiency()` failed on a fit
   whose data had gone out of scope.** They found the data by re-evaluating
   the call, so a formula built at top level and a fit made inside a function,

@@ -12,8 +12,12 @@ simulation_se(object, K = 10, seeds = NULL, quiet = FALSE,
 }
 \arguments{
 \item{object}{An \code{"sfareg"} fit from a simulated-ML model:
-  \code{sfm} with \code{"NLN"} or \code{"NW"}, \code{psfm} with \code{"GTRE"},
-  \code{"TRE"}, \code{"TRE_Z"} or \code{"GTRE_Z"}, or \code{selsfm}.}
+  \code{sfm} with \code{"NLN"} or \code{"NW"} and
+  \code{integration = "simulate"}, \code{psfm} with \code{"GTRE"},
+  \code{"TRE"}, \code{"TRE_Z"} or \code{"GTRE_Z"}, or \code{selsfm}. An
+  \code{"NLN"} or \code{"NW"} fit by the default quadrature has no simulation
+  variance and is refused. One saved before \code{integration} existed was
+  simulated, and is refitted with \code{integration = "simulate"}.}
 \item{K}{Number of refits, at least 2.}
 \item{seeds}{Optional integer vector of randomization seeds; its length
   overrides \code{K}.}
@@ -67,7 +71,8 @@ solution. A spread of several units is a reason to raise the number of draws.
 ## cost is K + 1 of them. K = 3 is the smallest that still shows the spread.
 d <- data_gen_cs(N = 200, rand = 1, sig_u = 1, sig_v = 0.3, cons = 0.5,
                  beta1 = 0.5, beta2 = 0.5, a = 1, mu = 0.5)
-fit <- sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 200)
+fit <- sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+           integration = "simulate", Nsim = 200)
 simulation_se(fit, K = 3, quiet = TRUE)
 }
 }
