@@ -30,7 +30,11 @@
   if (identical(udist, "exponential")) -su * log1p(-a) else su * stats::qnorm((1 + a) / 2)
 }
 .sd_qv <- function(b, sv, av, vdist) {
-  if (identical(vdist, "normal")) sv * stats::qnorm(b) else .gl_q(b, av, sv)
+  switch(vdist,
+    normal = sv * stats::qnorm(b),
+    laplace = ifelse(b < 0.5, sv * log(2 * b), -sv * log(2 * (1 - b))),
+    .gl_q(b, av, sv)
+  )
 }
 
 ## Marginal central moments. The third-moment COEFFICIENTS already live in
@@ -42,15 +46,17 @@
   )
 }
 .sd_v_moments <- function(sv, av, vdist) {
-  m3 <- if (identical(vdist, "normal")) 0 else {
+  m3 <- if (vdist %in% c("normal", "laplace")) 0 else {
     sv^3 * (psigamma(av, 2L) - psigamma(1, 2L))
   }
   ## NOT .cop_v_v2(), which is the ORDINARY logistic constant pi^2/3 and holds
   ## only at alpha_v = 1. The generalized logistic's variance moves with the
   ## shape: delta^2 [psi'(alpha) + psi'(1)].
-  vr <- if (identical(vdist, "normal")) sv^2 else {
+  vr <- switch(vdist,
+    normal = sv^2,
+    laplace = 2 * sv^2,
     sv^2 * (trigamma(av) + trigamma(1))
-  }
+  )
   list(mean = 0, var = vr, m3 = m3)
 }
 

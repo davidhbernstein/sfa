@@ -262,11 +262,19 @@
 }
 
 .cop_v_ld <- function(v, sv, av, vdist) {
-  if (identical(vdist, "normal")) stats::dnorm(v, 0, sv, log = TRUE) else .gl_ld(v, av, sv)
+  switch(vdist,
+    normal = stats::dnorm(v, 0, sv, log = TRUE),
+    laplace = -log(2 * sv) - abs(v) / sv,
+    .gl_ld(v, av, sv)
+  )
 }
 
 .cop_v_p <- function(v, sv, av, vdist) {
-  if (identical(vdist, "normal")) stats::pnorm(v / sv) else exp(.gl_lp(v, av, sv))
+  switch(vdist,
+    normal = stats::pnorm(v / sv),
+    laplace = ifelse(v < 0, 0.5 * exp(-abs(v) / sv), 1 - 0.5 * exp(-abs(v) / sv)),
+    exp(.gl_lp(v, av, sv))
+  )
 }
 
 ## Moments the starting values need: the coefficient of sigma_u^3 in the third
@@ -275,7 +283,7 @@
 .cop_u_k3 <- function(udist) if (identical(udist, "exponential")) -2 else sqrt(2 / pi) * (1 - 4 / pi)
 .cop_u_v2 <- function(udist) if (identical(udist, "exponential")) 1 else 1 - 2 / pi
 .cop_u_m1 <- function(udist) if (identical(udist, "exponential")) 1 else sqrt(2 / pi)
-.cop_v_v2 <- function(vdist) if (identical(vdist, "normal")) 1 else pi^2 / 3
+.cop_v_v2 <- function(vdist) switch(vdist, normal = 1, laplace = 2, pi^2 / 3)
 
 copsfm <- function(formula,
                    data,
@@ -286,7 +294,7 @@ copsfm <- function(formula,
                               "independent"),
                    inefdec = TRUE,
                    udist = c("hnormal", "exponential"),
-                   vdist = c("normal", "logistic", "glogistic"),
+                   vdist = c("normal", "logistic", "glogistic", "laplace"),
                    n_nodes = 128,
                    maxit.bobyqa = 10000,
                    maxit.psoptim = 1000,
@@ -359,6 +367,34 @@ copsfm <- function(formula,
   uu <- tt / (1 - tt)
   jac <- 1 / (1 - tt)^2
 
+  ## Nodes and log weights per observation. Laplace noise has a kink at v = 0,
+  ## i.e. at u = -eps, which costs fixed nodes three orders of accuracy (M3), so
+  ## its integral is split there and each smooth piece gets half the nodes --
+  ## 64 per piece already reaches machine precision.
+  if (identical(vdist, "laplace")) {
+    gl <- .gauss_legendre_01(as.integer(ceiling(n_nodes / 2)))
+    tt <- gl$nodes; wt <- gl$weights
+    uu <- tt / (1 - tt); jac <- 1 / (1 - tt)^2
+  }
+  .u_grid <- function(eps, su) {
+    lw <- log(wt) + log(jac)
+    if (!identical(vdist, "laplace")) {
+      return(list(
+        U = matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE),
+        LW = matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE)
+      ))
+    }
+    ## Where eps >= 0 there is no kink and the split is at sigma_u instead, so
+    ## every row gets the first piece's grading: u = k t^2 on (0, k), toward
+    ## u = 0, where the gaussian and clayton copula densities are singular.
+    kk <- ifelse(eps < 0, -eps, su)
+    list(
+      U = cbind(outer(kk, tt^2), outer(kk, uu, "+")),
+      LW = cbind(outer(log(kk), log(2 * tt * wt), "+"),
+        matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE))
+    )
+  }
+
   ## The per-node log joint density, rows observations and columns quadrature
   ## nodes. Shared by the likelihood and by the efficiency predictors, so the
   ## objective and the prediction cannot come to disagree about the model.
@@ -371,7 +407,7 @@ copsfm <- function(formula,
   ## evaluated at the actual v -- so that a positive dependence parameter means
   ## the same thing, association between the real v and the real u, in both
   ## orientations.
-  .node_lg <- function(eps, su, sv, av, cpar, U) {
+  .node_lg <- function(eps, su, sv, av, cpar, U, LW) {
     vv <- S * (eps + U)
     lg <- .cop_v_ld(vv, sv, av, vdist) + .cop_u_ld(U, su, udist)
     if (has_cop && !is.null(cpar)) {
@@ -382,13 +418,13 @@ copsfm <- function(formula,
       if (any(!is.finite(lc))) return(NULL)
       lg <- lg + matrix(lc, nrow = nrow(lg))
     }
-    sweep(lg, 2, log(wt) + log(jac), "+")
+    lg + LW
   }
 
   ## log f_eps(eps_i), the composed density, by quadrature over u.
   .log_dens <- function(eps, su, sv, av, cpar) {
-    U <- matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE)
-    lg <- .node_lg(eps, su, sv, av, cpar, U)
+    g <- .u_grid(eps, su)
+    lg <- .node_lg(eps, su, sv, av, cpar, g$U, g$LW)
     if (is.null(lg)) return(rep(NA_real_, length(eps)))
     .log_row_sum_exp(lg)
   }
@@ -539,8 +575,9 @@ copsfm <- function(formula,
   ## The efficiency predictors, by the same quadrature -- and from the same
   ## closure -- that the likelihood used.
   eps <- S * as.numeric(y - X %*% th[i_b])
-  Um <- matrix(uu, nrow = n, ncol = length(uu), byrow = TRUE)
-  lg <- .node_lg(eps, su, sv, av, cpar, Um)
+  g <- .u_grid(eps, su)
+  Um <- g$U
+  lg <- .node_lg(eps, su, sv, av, cpar, Um, g$LW)
   wts <- exp(lg - .log_row_sum_exp(lg))
   jlms <- as.numeric(rowSums(wts * Um))
   ## Battese-Coelli, E[exp(-u) | eps]. Free here, and it is the quantity the

@@ -482,3 +482,97 @@ test_that("a missing standard error is reported, not a crash on an undefined nam
   expect_s3_class(f, "sfareg")
   expect_identical(f$se_unresolved$message, "copsfm(copula = \"fgm\"): forced report")
 })
+
+## Laplace noise, gap M3.
+rlap <- function(n, b) b * (rexp(n) - rexp(n))
+
+test_that("the Laplace marginal is the Laplace's own density, CDF and quantile", {
+  b <- 0.3
+  expect_equal(integrate(function(v) exp(sfa:::.cop_v_ld(v, b, 1, "laplace")),
+    -Inf, Inf)$value, 1, tolerance = 1e-8)
+  q <- c(-1, -0.2, 0, 0.1, 2)
+  want <- vapply(q, function(x) integrate(function(v)
+    exp(-abs(v) / b) / (2 * b), -Inf, x, rel.tol = 1e-12)$value, 0)
+  expect_equal(sfa:::.cop_v_p(q, b, 1, "laplace"), want, tolerance = 1e-10)
+  p <- c(0.01, 0.3, 0.5, 0.8, 0.99)
+  expect_equal(sfa:::.cop_v_p(sfa:::.sd_qv(p, b, 1, "laplace"), b, 1, "laplace"), p)
+  m <- sfa:::.sd_v_moments(b, 1, "laplace")
+  expect_equal(c(m$var, m$m3), c(2 * b^2, 0))
+})
+
+test_that("the Laplace composed density is exact, kink and all (M3)", {
+  ## The density has a kink at v = 0, i.e. at u = -eps. On fixed nodes that
+  ## cost up to 8e-3 per observation in log f; split there, it is exact. The
+  ## closure is evaluated at fixed parameters, so no fit is needed.
+  set.seed(3)
+  n <- 120; x <- rnorm(n)
+  d <- data.frame(x = x, y = 1 + 0.5 * x + rlap(n, 0.3) - abs(rnorm(n, 0, 0.6)))
+  su <- 0.6; b <- 0.3
+  obj <- function(...) suppressWarnings(copsfm(y ~ x, d, vdist = "laplace",
+    keep_objective = TRUE, maxit.bobyqa = 1, maxit.optim = 1,
+    optHessian = FALSE, ...))$objective
+  e <- as.numeric(d$y - 1 - 0.5 * d$x)
+
+  ## Exponential u has a closed form.
+  ll <- obj(copula = "independent", udist = "exponential")(c(1, 0.5, log(su), log(b)),
+    per_obs = TRUE)
+  want <- log(ifelse(e >= 0, exp(-e / b) / (2 * (b + su)),
+    exp(e / su) / (2 * (b + su)) + (exp(e / su) - exp(e / b)) / (2 * (su - b))))
+  expect_equal(ll, want, tolerance = 1e-12)
+
+  ## With a copula, against integrate(), substituting u = s^2 next to u = 0
+  ## where the gaussian and clayton densities are singular.
+  for (cfg in list(list("independent", NULL), list("gaussian", 0.4),
+                   list("clayton", 0.5), list("fgm", 0.5))) {
+    cop <- cfg[[1]]; cp <- cfg[[2]]
+    g <- function(u, ei) {
+      v <- ei + u
+      lg <- sfa:::.cop_v_ld(v, b, 1, "laplace") + sfa:::.cop_u_ld(u, su, "hnormal")
+      if (!is.null(cp)) {
+        w1 <- pmin(pmax(sfa:::.cop_v_p(v, b, 1, "laplace"), 1e-12), 1 - 1e-12)
+        w2 <- pmin(pmax(sfa:::.cop_u_p(u, su, "hnormal"), 1e-12), 1 - 1e-12)
+        lg <- lg + sfa:::.cop_logc_rot(w1, w2, cp, cop)
+      }
+      exp(lg)
+    }
+    ref <- vapply(e, function(ei) {
+      k <- max(0, -ei)
+      s2 <- function(lo, hi) integrate(function(s) g(s^2, ei) * 2 * s, lo, hi,
+        rel.tol = 1e-13, subdivisions = 2000)$value
+      log(if (k > 0) s2(0, sqrt(k)) + integrate(function(u) g(u, ei), k, Inf,
+        rel.tol = 1e-13, subdivisions = 2000)$value else s2(0, Inf))
+    }, 0)
+    ll <- obj(copula = cop)(c(1, 0.5, log(su), log(b), cp), per_obs = TRUE)
+    expect_lt(max(abs(ll - ref)), 2e-6)
+  }
+})
+
+test_that("copsfm recovers a Laplace-noise frontier, and prefers it to normal noise", {
+  skip_on_cran()
+  set.seed(11)
+  n <- 1000; x <- rnorm(n)
+  d <- data.frame(x = x, y = 1 + 0.5 * x + rlap(n, 0.3) - abs(rnorm(n, 0, 0.6)))
+  f <- copsfm(y ~ x, d, copula = "independent", vdist = "laplace")
+  expect_identical(rownames(f$out), c("(Intercept)", "x", "sigma_u", "delta_v"))
+  expect_identical(f$vdist, "laplace")
+  expect_equal(unname(f$out["x", "par"]), 0.5, tolerance = 0.05)
+  expect_equal(unname(f$out["sigma_u", "par"]), 0.6, tolerance = 0.25)
+  expect_equal(unname(f$out["delta_v", "par"]), 0.3, tolerance = 0.2)
+  expect_true(all(is.finite(f$out[, "st_err"])))
+  expect_true(all(f$exp_u_hat > 0 & f$exp_u_hat <= 1))
+  fn <- copsfm(y ~ x, d, copula = "independent", vdist = "normal")
+  expect_gt(logLik(f), logLik(fn))
+
+  ## A symmetric noise has no third moment, and independence no cross term.
+  sd3 <- skewness_decomp(f)
+  expect_equal(unname(sd3$components[c("noise", "dependence")]), c(0, 0))
+  p <- f$out[, "par"]
+  expect_equal(sd3$variance,
+    unname(2 * p["delta_v"]^2 + (1 - 2 / pi) * p["sigma_u"]^2))
+
+  ## A cost frontier is fitted with the noise reflected, not the density.
+  dc <- transform(d, y = 1 + 0.5 * x + rlap(n, 0.3) + abs(rnorm(n, 0, 0.6)))
+  fc <- copsfm(y ~ x, dc, copula = "independent", vdist = "laplace", inefdec = FALSE)
+  expect_equal(unname(fc$out["x", "par"]), 0.5, tolerance = 0.05)
+  expect_equal(unname(fc$out["sigma_u", "par"]), 0.6, tolerance = 0.25)
+})
