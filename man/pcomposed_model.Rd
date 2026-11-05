@@ -19,8 +19,8 @@ fit's own composed-error residuals.}
 \item{lower.tail, log.p}{As elsewhere in R.}
 \item{n_nodes}{Quadrature nodes over the inefficiency term.}
 \item{object}{An \code{"sfareg"} fit from \code{\link{sfm}}.}
-\item{data}{The data the model was fitted to. \code{sfm()} does not retain it,
-so it is needed whenever \code{q} is not supplied.}
+\item{data}{The data the model was fitted to, used whenever \code{q} is not
+supplied. Defaults to the data stored on the fit.}
 \item{...}{Passed to \code{pcomposed_model}.}
 }
 \value{A numeric vector of probabilities (or their logs).}

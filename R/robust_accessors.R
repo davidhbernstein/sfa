@@ -60,7 +60,8 @@
     stop("The fit carries no call; cannot rebuild residuals.", call. = FALSE)
   }
   env <- environment(object$formula) %||% parent.frame()
-  dat <- tryCatch(eval(cl$data, envir = env), error = function(e) NULL)
+  dat <- object[["data", exact = TRUE]]
+  if (is.null(dat)) dat <- tryCatch(eval(cl$data, envir = env), error = function(e) NULL)
   if (is.null(dat)) dat <- tryCatch(eval(cl$data, envir = parent.frame()),
     error = function(e) NULL)
   if (is.null(dat)) {

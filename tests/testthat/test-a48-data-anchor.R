@@ -49,8 +49,13 @@ for (m in names(.a48_fits)) {
     decoy <- .a48_data(999)
     expect_identical(dim(decoy), dim(e$a48_d))
     expect_false(isTRUE(all.equal(decoy$x1, e$a48_d$x1)))
+    real <- stats::fitted(e$fit)
     e$a48_d <- decoy
     expect_false(.sfa_data_check(e$fit, decoy)$ok)
+    ## The fit carries its own data (A45), so the decoy is never consulted.
+    expect_equal(stats::fitted(e$fit), real)
+    ## A fit without it, as saved before A45, still refuses the decoy.
+    e$fit$data <- NULL
     expect_error(stats::fitted(e$fit), "not the data this model was fitted to")
   })
 }

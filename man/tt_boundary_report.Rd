@@ -3,12 +3,12 @@
 \alias{print.sfa_tt_boundary}
 \title{Is a collapsed two-tier noise scale the maximum, or did the optimizer stop short?}
 \usage{
-tt_boundary_report(object, data, sigma_v_starts = c(0.05, 0.3, 1),
+tt_boundary_report(object, data = NULL, sigma_v_starts = c(0.05, 0.3, 1),
                    tol = 1e-3, tol_loglik = 1e-4, ...)
 }
 \arguments{
 \item{object}{A \code{\link{ttsfm}} fit with \code{model_name = "TTHN"} or \code{"TTNE"}.}
-\item{data}{The data the model was fitted to. \code{ttsfm()} does not retain it and every refit here needs it.}
+\item{data}{The data the model was fitted to. Every refit here needs it; by default, the data stored on the fit.}
 \item{sigma_v_starts}{Positive starting values for \eqn{\sigma_v}. One refit is run from each, with every other parameter started at the fitted values.}
 \item{tol}{Below this, the returned \eqn{\sigma_v} counts as collapsed.}
 \item{tol_loglik}{How much higher a restart's log-likelihood has to be before it counts as higher at all. Restarts landing on the same optimum differ in the last few digits; without this they would be reported as an improvement of zero log units.}

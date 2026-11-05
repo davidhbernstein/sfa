@@ -8,8 +8,8 @@ gof_test(object, data = NULL, test = c("ks", "chisq"),
 }
 \arguments{
 \item{object}{An \code{"sfareg"} fit from \code{\link{sfm}}.}
-\item{data}{The data the model was fitted to. \code{sfm()} does not retain it,
-so it must be supplied or be findable from the fit's \code{call}.}
+\item{data}{The data the model was fitted to. Defaults to the data stored on
+the fit, else whatever the fit's \code{call} names.}
 \item{test}{\code{"ks"}, \code{"chisq"}, or both.}
 \item{null}{\code{"bootstrap"} for the parametric bootstrap of Wang, Amsler
 and Schmidt, or \code{"asymptotic"}.}

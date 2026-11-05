@@ -190,9 +190,8 @@ pcomposed_model <- function(q, model_name, par, inefdec = TRUE,
 #' @param object An `"sfareg"` fit from [sfm()].
 #' @param q Quantiles. Defaults to the fit's own composed-error residuals,
 #'   which requires `data`.
-#' @param data The data frame the model was fitted to. `sfm()` does not retain
-#'   it, so it must be supplied (or be findable from the fit's `call`) whenever
-#'   `q` is not given.
+#' @param data The data frame the model was fitted to, needed whenever `q` is
+#'   not given. Defaults to the data stored on the fit, else the fit's `call`.
 #' @param ... Passed to [pcomposed_model()].
 #' @return A numeric vector of probabilities.
 #' @export
@@ -209,14 +208,15 @@ composed_cdf <- function(object, q = NULL, data = NULL, ...) {
 }
 
 ## The fitted composed error y - x'beta with the ML (not OLS) coefficients, production
-## orientation. sfm() does not keep `data`, so it is recovered from the call if not given.
+## orientation. Uses the fit's stored `data`, else the call's, if not given.
 .sfa_eps_hat <- function(object, data = NULL, env = parent.frame()) {
+  if (is.null(data)) data <- object[["data", exact = TRUE]]
   if (is.null(data)) {
     data <- tryCatch(eval(object$call$data, envir = env), error = function(e) NULL)
   }
   if (is.null(data)) {
-    stop("This needs the data the model was fitted to, and sfm() does not ",
-      "retain it. Pass `data =` explicitly.",
+    stop("This needs the data the model was fitted to, and it could not be ",
+      "recovered from the fit. Pass `data =` explicitly.",
       call. = FALSE
     )
   }

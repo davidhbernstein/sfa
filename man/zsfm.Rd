@@ -85,6 +85,7 @@ An object of class \code{"sfareg"} containing the following components:
 \item{std.errors}{A vector of standard errors for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{t.values}{A vector of t-values for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{call}{The matched call.}
+\item{data}{The \code{data} argument as supplied, so that \code{fitted()}, \code{residuals()}, \code{predict()} and \code{efficiency(logDepVar = FALSE)} do not have to find it again, which fails once it is out of scope (for example, a fit made inside a function from a formula built outside it). \code{NULL} when no \code{data} was given.}
 \item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}
 \item{nobs}{The number of observations used in the fit.}
 \item{objective}{The likelihood closure, when \code{keep_objective = TRUE}.}

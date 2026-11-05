@@ -334,6 +334,7 @@ An object of class \code{"sfareg"}, with \code{copula}, \code{copula_par}
 used; \code{efficiency} is \code{exp(-jlms)}, which is what this function has
 always returned under that name and is \emph{not} the Battese--Coelli
 predictor.
+\item{data}{The \code{data} argument as supplied, so that \code{fitted()}, \code{residuals()}, \code{predict()} and \code{efficiency(logDepVar = FALSE)} do not have to find it again, which fails once it is out of scope (for example, a fit made inside a function from a formula built outside it). \code{NULL} when no \code{data} was given.}
 }
 \references{
 Smith, M. D. (2008). Stochastic frontier models with dependent error

@@ -322,8 +322,8 @@ nobs.sfareg <- function(object, ...) {
   if (is.numeric(object$u_posterior$mu_star)) {
     return(length(object$u_posterior$mu_star))
   }
-  ## sfm()/zsfm()/ttsfm() do not store the data on the fitted object, so fall
-  ## back to re-evaluating the `data` argument of the recorded call.
+  ## A fit without stored data (one saved before gap A45) falls back to
+  ## re-evaluating the `data` argument of the recorded call.
   dcall <- object$call$data
   if (is.null(dcall)) {
     return(NA_integer_)
@@ -460,6 +460,15 @@ nobs.sfareg <- function(object, ...) {
 
 ## Recover the data a fit was built from: explicit newdata wins, then the copy
 ## some models store on the object, then a validated search of the call.
+## Keep the caller's data on the fit, so the methods never have to find it
+## again (gap A45). A branch that already stores its own `data` keeps it.
+.sfa_keep_data <- function(results, data) {
+  if (is.null(results[["data", exact = TRUE]]) && !is.null(data)) {
+    results$data <- data
+  }
+  results
+}
+
 .sfa_data <- function(object, newdata = NULL) {
   if (!is.null(newdata)) {
     return(as.data.frame(newdata))
