@@ -177,7 +177,9 @@ test_that("tt_boundary_report compares likelihoods and calls it nothing more", {
   ## and the frontier beats the plain linear model by a wide margin
   expect_gt(r$lm_gap, 0)
 
-  expect_error(tt_boundary_report(f), "data")
+  g <- f
+  g$data <- NULL
+  expect_error(tt_boundary_report(g), "data")
   expect_error(tt_boundary_report(lm(y_ttne ~ x1, d), data = d), "ttsfm")
   expect_error(tt_boundary_report(f, data = d, sigma_v_starts = -1), "positive")
 })

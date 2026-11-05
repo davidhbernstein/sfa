@@ -21,6 +21,7 @@ lcsfm <- function(formula,
   ## call/model_name resolution ahead of .check_model_formula_pipes() -- see
   ## sfm.R's identical fix for why.
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
 
   if (length(n_class) != 1L || !is.finite(n_class) ||
@@ -265,7 +266,7 @@ lcsfm <- function(formula,
     ## two coincide exactly; with penalty_c > 0 the scores are those of the
     ## unpenalised likelihood, so the OPG is not the penalised estimator's.
     if (isTRUE(keep_objective)) results$objective <- like.fn
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
   if (model_name %in% c("LCM", "LCM_Z")) {
@@ -485,7 +486,7 @@ lcsfm <- function(formula,
     ## two coincide exactly; with penalty_c > 0 the scores are those of the
     ## unpenalised likelihood, so the OPG is not the penalised estimator's.
     if (isTRUE(keep_objective)) results$objective <- like.fn
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
 

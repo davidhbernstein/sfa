@@ -242,6 +242,7 @@ ttsfm <- function(formula,
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   ## TTNLS is nonlinear least squares, not maximum likelihood, so it has no
   ## score. Say so rather than silently returning a fit whose score-based
@@ -638,7 +639,7 @@ ttsfm <- function(formula,
     ## of the transform to fall out of step.
     results$par_scale <- RP$jac
     if (isTRUE(keep_objective)) results$objective <- fn
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   } else if (model_name == "TTHN") {
     ## Normal - Half Normal - Half Normal two-tier stochastic frontier.
     ## `per_obs = TRUE` returns the per-observation log-likelihood
@@ -972,7 +973,7 @@ ttsfm <- function(formula,
     ## of the transform to fall out of step.
     results$par_scale <- RP$jac
     if (isTRUE(keep_objective)) results$objective <- fn
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   } else if (model_name == "TTNLS") {
     ## Two-tier stochastic frontier via nonlinear least squares.
     ## The `per_obs` formal is here only so all three of ttsfm()'s closures
@@ -1180,7 +1181,7 @@ ttsfm <- function(formula,
     results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(as.numeric(Y))
     results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for ttsfm() but has no implementation branch. ",

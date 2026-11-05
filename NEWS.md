@@ -2,6 +2,16 @@
 
 ## Bug fixes
 
+* **`fitted()`, `residuals()`, `predict()` and `efficiency()` failed on a fit
+  whose data had gone out of scope.** They found the data by re-evaluating
+  the call, so a formula built at top level and a fit made inside a function,
+  on data local to it, gave "Cannot recover the data" from all four.
+  `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()`, `copsfm()`, `ivsfm()` and
+  `selsfm()` now keep the `data` argument on the fit, as `psfm()` already
+  did; `gof_test()`, `composed_cdf()`, `lcsfm_homogeneity()`, the robust
+  accessors and `tt_boundary_report()` use it too, so the last no longer
+  needs `data` passed (A45).
+
 * **A `copsfm()` fit with a standard error it could not compute crashed
   instead of warning.** The report added by A65 labelled its warning with
   `model_name`, which `copsfm()` never defines, so the fit stopped with

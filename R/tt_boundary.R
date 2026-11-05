@@ -2,7 +2,7 @@
 ## short? Gap A20. A likelihood comparison across starts, NOT a likelihood-ratio test:
 ## no p-value is reported. See notes/code_history/tt_boundary.md.
 
-tt_boundary_report <- function(object, data,
+tt_boundary_report <- function(object, data = NULL,
                                sigma_v_starts = c(0.05, 0.3, 1),
                                tol = 1e-3, tol_loglik = 1e-4, ...) {
   if (!inherits(object, "sfareg") ||
@@ -14,8 +14,9 @@ tt_boundary_report <- function(object, data,
       call. = FALSE
     )
   }
-  if (missing(data) || is.null(data)) {
-    stop("`data` must be supplied: ttsfm() does not retain the data it was ",
+  if (is.null(data)) data <- object[["data", exact = TRUE]]
+  if (is.null(data)) {
+    stop("`data` must be supplied: this fit does not carry the data it was ",
       "fitted to, and every refit here needs it.",
       call. = FALSE
     )

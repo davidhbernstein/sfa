@@ -85,8 +85,10 @@ test_that("a same-named decoy never displaces the fit's own data", {
 test_that("an unrecoverable fit still errors clearly rather than succeeding", {
   ## Nothing named `d` anywhere, and the formula's environment emptied, so
   ## there is genuinely nothing to find. The fix must not turn this clear
-  ## message into a silent success against some other frame.
+  ## message into a silent success against some other frame. The stored data
+  ## is dropped too, as on a fit saved before gap A45.
   fit <- .a47_local_fit()
+  fit$data <- NULL
   environment(fit$formula) <- new.env(parent = emptyenv())
 
   had_d <- exists("d", envir = globalenv(), inherits = FALSE)

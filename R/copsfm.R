@@ -300,6 +300,7 @@ copsfm <- function(formula,
                    rand.psoptim = NULL) {
   .check_optim_method(Method)
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   copula <- match.arg(copula)
   udist <- match.arg(udist)
   vdist <- match.arg(vdist)
@@ -577,5 +578,5 @@ copsfm <- function(formula,
     if (has_cop) 1 else NULL
   )
   if (isTRUE(keep_objective)) results$objective <- like.fn
-  results
+  .sfa_keep_data(results, data_supplied)
 }

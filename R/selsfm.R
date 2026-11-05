@@ -24,6 +24,7 @@ selsfm <- function(selection,
                    rand.psoptim = NULL) {
   .check_optim_method(Method)
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- match.arg(model_name)
   sim_type <- match.arg(sim_type)
   Start.Time <- Sys.time()
@@ -369,5 +370,5 @@ selsfm <- function(selection,
   ## likelihood is a sum over the selected observations only, so that is the n
   ## that BIC() must divide by; without this nobs.sfareg() falls through to
   ## re-evaluating the call's `data` and reports the whole sample.
-  results
+  .sfa_keep_data(results, data_supplied)
 }

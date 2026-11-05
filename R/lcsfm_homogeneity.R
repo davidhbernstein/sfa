@@ -127,7 +127,8 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
 
   frm <- object$formula
   if (is.null(frm)) frm <- object$call$formula
-  dat <- tryCatch(eval(object$call$data, envir = envir), error = function(e) NULL)
+  dat <- object[["data", exact = TRUE]]
+  if (is.null(dat)) dat <- tryCatch(eval(object$call$data, envir = envir), error = function(e) NULL)
   if (!is.data.frame(dat)) {
     stop("lcsfm_homogeneity(): the data behind this fit could not be ",
       "recovered from its call. Pass `envir`.",

@@ -181,6 +181,7 @@ are the technology-0 frontier (\code{t0.}), the technology-1 frontier
 \code{nobs} counts every row used, \code{n_selected} the rows with
 technology 1, and \code{n_nodes} the quadrature nodes.
 \item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}
+\item{data}{The \code{data} argument as supplied, so that \code{fitted()}, \code{residuals()}, \code{predict()} and \code{efficiency(logDepVar = FALSE)} do not have to find it again, which fails once it is out of scope (for example, a fit made inside a function from a formula built outside it). \code{NULL} when no \code{data} was given.}
 }
 \references{
 Kumbhakar, S.C., Tsionas, E.G. and Sipilainen, T. (2009). Joint estimation of

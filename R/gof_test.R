@@ -23,7 +23,7 @@
 #' Goodness-of-fit test for the assumed inefficiency distribution
 #'
 #' @param object An `"sfareg"` fit from [sfm()].
-#' @param data The data the model was fitted to (`sfm()` does not retain it).
+#' @param data The data the model was fitted to; defaults to the fit's stored data.
 #' @param test `"ks"`, `"chisq"`, or both.
 #' @param null How to get the null distribution: `"bootstrap"` (the parametric
 #'   bootstrap of Wang, Amsler and Schmidt) or `"asymptotic"`.
@@ -43,14 +43,15 @@ gof_test <- function(object, data = NULL, test = c("ks", "chisq"),
   mn <- object$model_name
   par <- object$out[, "par"]
   inefdec <- .sfa_inefdec(object)
+  if (is.null(data)) data <- object[["data", exact = TRUE]]
   if (is.null(data)) {
     data <- tryCatch(eval(object$call$data, envir = parent.frame()),
       error = function(e) NULL
     )
   }
   if (is.null(data)) {
-    stop("gof_test() needs the data the model was fitted to, and sfm() does ",
-      "not retain it. Pass `data =`.",
+    stop("gof_test() needs the data the model was fitted to, and it could not ",
+      "be recovered from the fit. Pass `data =`.",
       call. = FALSE
     )
   }

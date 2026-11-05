@@ -22,6 +22,7 @@ ivsfm <- function(formula,
                   rand.psoptim = NULL) {
   .check_optim_method(Method)
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   ## C2SLS is 2SLS with a corrected intercept, not maximum likelihood, so it
   ## has no score. Say so rather than returning a fit whose score-based tools
@@ -222,7 +223,7 @@ ivsfm <- function(formula,
       "coefficients", "std.errors", "t.values", "call"
     )
     results$inefdec <- isTRUE(inefdec)
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
   ## ---- the LIML / control-function likelihood ----------------------------
@@ -546,5 +547,5 @@ ivsfm <- function(formula,
     results$par_scale <- Jm
   }
   if (isTRUE(keep_objective)) results$objective <- like.fn
-  results
+  .sfa_keep_data(results, data_supplied)
 }

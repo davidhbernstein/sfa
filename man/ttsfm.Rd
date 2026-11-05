@@ -89,6 +89,7 @@ Where \eqn{\sigma_u} or \eqn{\sigma_w} carries determinants there is no single s
 \item{t.values}{A vector of t-values for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{metrics}{A list of information-deficiency measures (M1, M2, M5, M6, M7, M10; see Polachek and Yoon) evaluated at the final parameter estimates. \code{NULL} if the underlying calculation failed, and all \code{NA} for \code{"TTNLS"}; see \sQuote{Details}.}
 \item{call}{The matched call.}
+\item{data}{The \code{data} argument as supplied, so that \code{fitted()}, \code{residuals()}, \code{predict()} and \code{efficiency(logDepVar = FALSE)} do not have to find it again, which fails once it is out of scope (for example, a fit made inside a function from a formula built outside it). \code{NULL} when no \code{data} was given.}
 \item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}
 \item{nobs}{The number of observations used in the fit.}
 \item{objective}{The likelihood closure, when \code{keep_objective = TRUE} (\code{"TTNE"} and \code{"TTHN"} only).}

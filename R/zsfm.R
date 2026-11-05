@@ -20,6 +20,7 @@ zsfm <- function(formula,
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
 
   .validate_sfa_call(formula, data, "zsfm",
@@ -383,7 +384,7 @@ zsfm <- function(formula,
       ## sfa_diagnostics() can difference it after the fact.
       if (isTRUE(keep_objective)) results$objective <- like.fn
     }
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for zsfm() but has no implementation branch. ",

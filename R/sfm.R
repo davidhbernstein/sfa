@@ -47,6 +47,7 @@ sfm <- function(formula,
                 rand.cols = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes().
   call <- match.call()
+  data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
   robust <- match.arg(robust)
   estimator <- match.arg(estimator)
@@ -443,7 +444,7 @@ sfm <- function(formula,
       results$s_spec <- .blk(Zs, off + seq_len(ncol(Zs)))
     }
     if (isTRUE(keep_objective)) results$objective <- HF$objective
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
   ## Corrected ordinary least squares, in either of its two moment forms.
@@ -629,7 +630,7 @@ sfm <- function(formula,
     )
     results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(Yc)
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
   ## Moment-constrained maximum likelihood (Zhao and Parmeter 2022).
@@ -702,7 +703,7 @@ sfm <- function(formula,
     )
     results$inefdec <- isTRUE(inefdec)
     results$nobs <- length(Yc)
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   }
 
   ## Fixed low-discrepancy draws for the simulated-ML models (NLN, NW).
@@ -1961,7 +1962,7 @@ sfm <- function(formula,
         )
       }
     }
-    return(results)
+    return(.sfa_keep_data(results, data_supplied))
   } else {
     stop(paste0(
       "model_name '", model_name, "' is a recognized choice for sfm() but has no implementation branch. ",
