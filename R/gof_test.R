@@ -117,7 +117,8 @@ gof_test <- function(object, data = NULL, test = c("ks", "chisq"),
     set.seed(seed)
   }
   fx <- stats::formula(Formula::Formula(object$formula), lhs = 1, rhs = 1)
-  yname <- all.vars(fx)[1]
+  boot_formula <- .plain_response(object$formula)
+  yname <- .response_name(boot_formula)
   X <- stats::model.matrix(fx, data = data)
   bn <- intersect(colnames(X), names(par))
   fitted_part <- as.numeric(X[, bn, drop = FALSE] %*% par[bn])
@@ -127,7 +128,7 @@ gof_test <- function(object, data = NULL, test = c("ks", "chisq"),
   for (b in seq_len(B)) {
     db <- data
     db[[yname]] <- fitted_part + sgn * .composed_rgen(n, mn, par)
-    fb <- tryCatch(suppressWarnings(sfm(object$formula,
+    fb <- tryCatch(suppressWarnings(sfm(boot_formula,
       model_name = mn, data = db, inefdec = inefdec
     )), error = function(e) NULL)
     if (is.null(fb)) next

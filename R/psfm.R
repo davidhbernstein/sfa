@@ -217,7 +217,7 @@ psfm <- function(formula,
         if (length(drop_terms)) {
           keep <- setdiff(attr(stats::terms(fx_probe), "term.labels"), drop_terms)
           fx_probe <- stats::reformulate(if (length(keep)) keep else "1",
-            response = all.vars(fx_probe)[1]
+            response = fx_probe[[2L]]
           )
           formula <- fx_probe
           collinear_chk <- tryCatch(.check_collinearity(fx_probe, data, individual),
@@ -247,6 +247,7 @@ psfm <- function(formula,
   if (1 == 1) {
     formula <- DR1$formula
     data_orig <- DR1$data_orig
+    data <- data_orig ## carries a transformed response as its own column
     form_parts <- DR1$form_parts
     formula_x <- DR1$formula_x
     y_var <- DR1$y_var

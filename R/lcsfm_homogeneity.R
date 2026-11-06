@@ -149,13 +149,13 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
   ## code -- a bootstrap whose replicates are computed differently from the
   ## observed statistic tests nothing.
   .mn <- object$model_name
-  .stat_on <- function(d) {
+  .stat_on <- function(d, f = frm) {
     fJ <- tryCatch(suppressWarnings(
-      lcsfm(frm, model_name = .mn, data = d, n_class = J,
+      lcsfm(f, model_name = .mn, data = d, n_class = J,
         inefdec = inefdec, penalty_c = c)
     ), error = function(e) NULL)
     f1 <- tryCatch(suppressWarnings(
-      sfm(frm, model_name = "NHN", data = d, inefdec = inefdec)
+      sfm(f, model_name = "NHN", data = d, inefdec = inefdec)
     ), error = function(e) NULL)
     if (is.null(fJ) || is.null(f1)) return(list(stat = NA_real_))
     list(stat = 2 * (-fJ$opt$value - (-f1$opt$value)),
@@ -210,7 +210,8 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
     X <- stats::model.matrix(stats::as.formula(frm), data = mf)
     S <- if (isTRUE(inefdec)) 1 else -1
     n <- nrow(X)
-    yname <- all.vars(stats::as.formula(frm))[1L]
+    boot_frm <- .plain_response(stats::as.formula(frm))
+    yname <- .response_name(boot_frm)
 
     bs <- rep(NA_real_, B)
     for (b in seq_len(B)) {
@@ -218,7 +219,7 @@ lcsfm_homogeneity <- function(object, null = c("bootstrap", "chisq01"),
       db[[yname]] <- as.numeric(X %*% sc$beta) +
         stats::rnorm(n, 0, sc$sigma_v) -
         S * abs(stats::rnorm(n, 0, sc$sigma_u))
-      bs[b] <- .stat_on(db)$stat
+      bs[b] <- .stat_on(db, boot_frm)$stat
       if (!quiet && b %% 25 == 0) {
         message("lcsfm_homogeneity: bootstrap ", b, " of ", B)
       }
