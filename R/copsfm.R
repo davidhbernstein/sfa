@@ -353,47 +353,39 @@ copsfm <- function(formula,
   S <- if (isTRUE(inefdec)) 1 else -1
   cs <- if (has_cop) .cop_spec(copula) else NULL
 
-  ## Gauss-Legendre nodes on (0, 1), mapped to u in (0, Inf) by u = t/(1-t).
-  ## The map is chosen so the integrand's mass -- which sits at moderate u --
-  ## lands in the middle of the node range rather than in a tail.
-  ##
-  ## 128 nodes, not 64. Measured against the closed-form normal/half-normal
-  ## density at independence, the maximum absolute error in log f is 1.3e-2 at
-  ## 32 nodes, 2.5e-5 at 64 and 8.2e-14 at 128. 64 looks adequate and is not:
-  ## an error of 1e-5 per observation is an error of 0.02 in a log-likelihood
-  ## over 2000 points, which is the scale at which modes are being compared.
-  gl <- .gauss_legendre_01(as.integer(n_nodes))
-  tt <- gl$nodes
-  wt <- gl$weights
-  uu <- tt / (1 - tt)
-  jac <- 1 / (1 - tt)^2
-
-  ## Nodes and log weights per observation. Laplace noise has a kink at v = 0,
-  ## i.e. at u = -eps, which costs fixed nodes three orders of accuracy (M3), so
-  ## its integral is split there and each smooth piece gets half the nodes --
-  ## 64 per piece already reaches machine precision.
-  if (identical(vdist, "laplace")) {
-    gl <- .gauss_legendre_01(as.integer(ceiling(n_nodes / 2)))
-    tt <- gl$nodes; wt <- gl$weights
-    uu <- tt / (1 - tt); jac <- 1 / (1 - tt)^2
+  ## Nodes and log weights per observation. The integral over u is taken in
+  ## z = logit(F_U(u)), by the trapezoid rule (A74). A fixed map in u put too
+  ## few nodes where the mass is in the left tail of eps: a copula with tail
+  ## dependence puts a spike near u = 0 at a scale set by the noise's tail
+  ## probability (u ~ 1e-6 at eps = -4), and the v = 0 peak moves out to
+  ## u = -eps. In z the spike is a bump of width about one wherever it sits,
+  ## the peak is a smooth bump, and the integrand decays exponentially at both
+  ## ends, which is where the trapezoid rule converges geometrically. The grid
+  ## runs from F_U = 1e-14 to past the v = 0 peak of each row.
+  ## notes/code_history/copsfm.md.
+  .u_logq <- function(u, su) {
+    if (identical(udist, "exponential")) -u / su else log(2) + stats::pnorm(-u / su, log.p = TRUE)
   }
-  .u_grid <- function(eps, su) {
-    lw <- log(wt) + log(jac)
-    if (!identical(vdist, "laplace")) {
-      return(list(
-        U = matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE),
-        LW = matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE)
-      ))
-    }
-    ## Where eps >= 0 there is no kink and the split is at sigma_u instead, so
-    ## every row gets the first piece's grading: u = k t^2 on (0, k), toward
-    ## u = 0, where the gaussian and clayton copula densities are singular.
-    kk <- ifelse(eps < 0, -eps, su)
-    list(
-      U = cbind(outer(kk, tt^2), outer(kk, uu, "+")),
-      LW = cbind(outer(log(kk), log(2 * tt * wt), "+"),
-        matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE))
-    )
+  .u_from_z <- function(lp, lq, su) {
+    if (identical(udist, "exponential")) return(-su * lq)
+    p <- exp(lp)
+    ## qnorm() near 1/2 loses the digits of a tiny p; the series does not.
+    ifelse(p < 1e-4, su * sqrt(pi / 2) * p * (1 + pi * p^2 / 24),
+      -su * stats::qnorm(lq - log(2), log.p = TRUE))
+  }
+  .u_grid <- function(eps, su, sv, av) {
+    w <- 8 * sv * sqrt(.cop_v_v2(vdist))
+    ub <- pmax(-eps, 0) + w
+    lqb <- .u_logq(ub, su)
+    zhi <- pmax(log(-expm1(lqb)) - lqb, 8) + 4
+    zlo <- -32
+    h <- (zhi - zlo) / (n_nodes - 1)
+    Z <- zlo + outer(h, seq.int(0, n_nodes - 1))
+    lp <- stats::plogis(Z, log.p = TRUE)
+    lq <- stats::plogis(-Z, log.p = TRUE)
+    U <- .u_from_z(lp, lq, su)
+    U[] <- U
+    list(U = U, LW = log(h) + lp + lq - .cop_u_ld(U, su, udist))
   }
 
   ## The per-node log joint density, rows observations and columns quadrature
@@ -424,7 +416,7 @@ copsfm <- function(formula,
 
   ## log f_eps(eps_i), the composed density, by quadrature over u.
   .log_dens <- function(eps, su, sv, av, cpar) {
-    g <- .u_grid(eps, su)
+    g <- .u_grid(eps, su, sv, av)
     lg <- .node_lg(eps, su, sv, av, cpar, g$U, g$LW)
     if (is.null(lg)) return(rep(NA_real_, length(eps)))
     .log_row_sum_exp(lg)
@@ -576,7 +568,7 @@ copsfm <- function(formula,
   ## The efficiency predictors, by the same quadrature -- and from the same
   ## closure -- that the likelihood used.
   eps <- S * as.numeric(y - X %*% th[i_b])
-  g <- .u_grid(eps, su)
+  g <- .u_grid(eps, su, sv, av)
   Um <- g$U
   lg <- .node_lg(eps, su, sv, av, cpar, Um, g$LW)
   wts <- exp(lg - .log_row_sum_exp(lg))
