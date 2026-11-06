@@ -1157,7 +1157,7 @@
   formula_z <- if (n_parts >= 2) formula(f, lhs = 1, rhs = 2) else NULL
   formula_zp <- if (n_parts >= 3) formula(f, lhs = 1, rhs = 3) else NULL
 
-  y_var <- all.vars(formula_x)[1]
+  y_var <- .response_name(formula_x)
 
   list(
     n_parts    = n_parts,
@@ -1166,6 +1166,34 @@
     formula_z  = formula_z,
     formula_zp = formula_zp
   )
+}
+
+
+## The response as written: a column name, or the deparsed left-hand side
+## when it is transformed (log(q) ~ ... gives "log(q)", not "q").
+.response_name <- function(formula) {
+  lhs <- formula[[2L]]
+  if (is.name(lhs)) as.character(lhs) else paste(deparse(lhs, width.cutoff = 500L), collapse = "")
+}
+
+## Evaluate a transformed response once and carry it as a column named by
+## .response_name(), so code that looks the response up by name finds it.
+.add_response_column <- function(formula, data, y_var = .response_name(formula)) {
+  if (y_var %in% names(data)) {
+    return(data)
+  }
+  data[[y_var]] <- eval(formula[[2L]], as.data.frame(data), environment(formula))
+  data
+}
+
+## For bootstraps that write simulated responses into the data: the draws are
+## already on the fitted scale, so a transformed left-hand side becomes a
+## plain placeholder column rather than being transformed a second time.
+.plain_response <- function(formula) {
+  if (!is.name(formula[[2L]])) {
+    formula[[2L]] <- as.name(".sfa_y")
+  }
+  formula
 }
 
 
@@ -2983,8 +3011,9 @@
   if (is.null(idx) || nrow(idx) != nrow(df) || ncol(idx) < 2L) {
     return(NULL)
   }
-  yname <- all.vars(formula_x)[1]
-  if (!yname %in% names(df)) {
+  yname <- .response_name(formula_x)
+  df <- tryCatch(.add_response_column(formula_x, df, yname), error = function(e) NULL)
+  if (is.null(df)) {
     return(NULL)
   }
   vars_needed <- intersect(all.vars(formula_x), names(df))

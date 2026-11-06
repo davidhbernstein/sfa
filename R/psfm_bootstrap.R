@@ -140,11 +140,11 @@ psfm_bootstrap <- function(psfm_object,
   timez <- as.integer(table(factor(ids, levels = uniq_ids))) ## preserves uniq_ids order
   n_obs <- nrow(data)
 
-  form <- Formula::as.Formula(psfm_object$formula)
+  form <- Formula::as.Formula(.plain_response(psfm_object$formula))
   n_rhs <- length(form)[2]
 
   ## Response variable name.
-  y_name <- all.vars(formula(form, lhs = 1, rhs = 0))[1]
+  y_name <- .response_name(formula(form, lhs = 1, rhs = 0))
 
   ## H is only returned by GTRE/GTRE_Z -- see header note.
   H_available <- model_name %in% c("GTRE", "GTRE_FML", "GTRE_Z")
