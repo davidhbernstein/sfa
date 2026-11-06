@@ -55,7 +55,7 @@
   \item{start_val}{starting value (optional)}
   \item{gamma}{Logical. Report the variance parameters in the \eqn{\gamma = \sigma_u^2/(\sigma_u^2 + \sigma_v^2)} parameterization instead of the default. Defaults to \code{FALSE}.}
   \item{PSopt}{use psoptim optimization routine (T or F)}
-  \item{optHessian}{Logical. Should a numerically differentiated Hessian matrix be returned while using the optim routine? (for optim routine)}
+  \item{optHessian}{Logical. Finish with \code{optim()} and a numerically differentiated Hessian? Standard errors and t-values require \code{TRUE}, the default. With \code{FALSE} the final \code{optim} stage is not run at all, so the estimates reported are the preceding stage's and can differ from the default fit's wherever that stage had not already converged. \code{"PL80"}, \code{"BC92"}, \code{"K1990"} and \code{"K1990modified"} are the exception: their final stage runs either way, so \code{FALSE} costs only the Hessian.}
   \item{inefdec}{Production or cost function}
   \item{Method}{Method passed to \code{optim} for the final stage. Must be
   \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower

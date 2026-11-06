@@ -1,5 +1,21 @@
 # sfa 1.2.1
 
+## Documentation
+
+* **`optHessian = FALSE` does not merely skip the Hessian: it skips the final
+  `optim` stage.** The estimates reported are then the preceding stage's, so a
+  fit made with `optHessian = FALSE` can differ from the default fit wherever
+  that stage had not already converged. On `USUtilities`,
+  `psfm(model_name = "GTRE", estimator = "fiml")` reports a log-likelihood of
+  575.90560 against the default's 575.90587, with an intercept of 5.78878
+  against 5.78205; on `panel89`, `sfm(model_name = "NHN")` is unaffected to
+  twelve digits, because bobyqa had already converged there. The argument is
+  documented to this effect in `sfm()`, `psfm()`, `zsfm()`, `lcsfm()`,
+  `ttsfm()`, `selsfm()` and `ivsfm()`. `psfm()`'s `"PL80"`, `"BC92"`, `"K1990"`
+  and `"K1990modified"` are the exception and are documented as such: their
+  final stage runs either way, so `FALSE` costs them only the Hessian. No
+  behaviour changed.
+
 ## Bug fixes
 
 * **`sfm()`'s `"NHN_Z"` and `"NE_Z"` could stop far short of the maximum,

@@ -27,7 +27,7 @@ keep_objective = FALSE, rand.psoptim = NULL)}
 \item{REPORT, trace, pgtol, upper}{Accepted but not used by \code{ttsfm()}: the optimizer's own tracing is controlled by \code{verbose}, and its bounds are set internally.}
 \item{start_val}{\code{FALSE} (the default) to build starting values from the data, or a numeric vector giving them directly, in the optimizer's parameter order.}
 \item{PSopt}{Logical. Run the particle-swarm stage (\code{pso::psoptim}) between \code{bobyqa} and \code{optim}. \code{FALSE} by default. The swarm is the only stochastic step in \code{ttsfm()}: with the default, a fit is fully deterministic given the data and does not depend on the session's random-number state. See \code{rand.psoptim}.}
-\item{optHessian}{Logical. Finish with \code{optim()} and a numerically differentiated Hessian? Standard errors and t-values require \code{TRUE}, the default.}
+\item{optHessian}{Logical. Finish with \code{optim()} and a numerically differentiated Hessian? Standard errors and t-values require \code{TRUE}, the default. With \code{FALSE} the final \code{optim} stage is not run at all, so the estimates reported are the preceding stage's and can differ from the default fit's wherever that stage had not already converged.}
 \item{inefdec}{Has no effect in \code{ttsfm()}: the composed error is \eqn{v - u + w} whichever value is given, and \code{TRUE} and \code{FALSE} return identical fits. Read \code{sigma_u} as the component that lowers \eqn{y} and \code{sigma_w} as the one that raises it.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower

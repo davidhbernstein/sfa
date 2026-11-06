@@ -65,7 +65,7 @@ selsfm(selection, frontier, data, model_name = c("greene", "kts"),
   of the \code{"kts"} parameters listed under \sQuote{Value} but with the four
   scales given as logs.}
 \item{PSopt}{Run the particle-swarm stage between BOBYQA and \code{optim}.}
-\item{optHessian}{Compute the Hessian, and with it the standard errors.}
+\item{optHessian}{Compute the Hessian, and with it the standard errors. With \code{FALSE} the final \code{optim} stage is not run at all, so the estimates reported are the preceding stage's and can differ from the default fit's wherever that stage had not already converged.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
 and upper bounds this package uses to keep scale parameters positive, and any
