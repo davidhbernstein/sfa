@@ -120,7 +120,8 @@ test_that(".parse_pipe_formula() splits the parts and names the response", {
 
   p3 <- .parse_pipe_formula(log(out) ~ x1 | z1 + z2 | w)
   expect_identical(p3$n_parts, 3L)
-  expect_identical(p3$y_var, "out")
+  ## The response is named as written, not by its first variable (#78).
+  expect_identical(p3$y_var, "log(out)")
   expect_identical(all.vars(p3$formula_z), c("out", "z1", "z2"))
   expect_identical(all.vars(p3$formula_zp), c("out", "w"))
 })
