@@ -411,7 +411,7 @@ Omitted segments default to `1`, i.e. homoskedastic.
 
 ## Model selection and diagnostics
 
-The package offers seventeen cross-sectional inefficiency distributions. These are
+The package offers fifteen cross-sectional noise-inefficiency distribution pairs. These are
 the tools for choosing among them, and for asking whether the choice is
 defensible at all.
 

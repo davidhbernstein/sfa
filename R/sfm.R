@@ -308,6 +308,20 @@ sfm <- function(formula,
   if (!is.null(start_from)) {
     start_v <- .start_from(start_v, out, start_from, model_name)
   }
+  ## NHN_Z/NE_Z: moment starts for the scales, on the link the likelihood
+  ## uses, as .sfm_het_fit() does (see notes/code_history/sfm.md, NHN_Z start).
+  if (model_name %in% c("NHN_Z", "NE_Z") && !is.numeric(start_val) &&
+    is.null(start_from)) {
+    .mom <- .het_start_moments(inefdec_n * as.numeric(epsilon_hat),
+      if (model_name == "NHN_Z") "halfnormal" else "exponential"
+    )
+    .iz <- length(start_v) - n_z_vars + seq_len(n_z_vars)
+    .jz <- match("(Intercept)", z_vars, nomatch = 1L)
+    start_v[1] <- .mom$sigma_v
+    start_v[.iz] <- 0
+    start_v[.iz[.jz]] <- if (identical(z_link, "sd")) log(.mom$sigma_u) else log(.mom$sigma_u^2)
+    if (!is.na(beta_0_st)) start_v[2] <- start_v[2] + inefdec_n * .mom$E_u
+  }
 
   ## The shape block is APPENDED, after the frontier coefficients, so the
   ## existing index arithmetic (betas at 4:(k+3)) is untouched. lower.start()
@@ -763,6 +777,10 @@ sfm <- function(formula,
     ## contributions instead of the negative sum. That is what estfun.sfareg()
     ## differences to build the score matrix that `sandwich` needs; the
     ## optimizers call this with one argument and are unaffected.
+    ## The z design is built once, not on every likelihood evaluation.
+    .Zz <- if (model_name %in% c("NE_Z", "NHN_Z")) {
+      as.matrix(data.frame(subset(data, select = z_vars)))
+    }
     like.fn <- function(x, per_obs = FALSE) {
       ## The offset is the number of non-beta parameters that precede the
       ## frontier coefficients.
@@ -779,7 +797,7 @@ sfm <- function(formula,
       }
 
       if (model_name %in% c("NE_Z", "NHN_Z")) {
-        data_z_vars <- as.matrix(data.frame(subset(data, select = z_vars)))
+        data_z_vars <- .Zz
         x_x_vec <- x[2:as.numeric(n_x_vars + 1)]
         z_z_vec <- x[as.numeric(n_x_vars + 2):as.numeric(length(start_v))]
       }
@@ -1108,6 +1126,34 @@ sfm <- function(formula,
     }
 
     Start.Time <- start.time()
+
+    ## NHN_Z/NE_Z: an uncentred z leaves a ridge between the delta intercept
+    ## and slope that the bounded scaffold does not climb. Seed it from the
+    ## unbounded log-scale fit of the same model (notes/code_history/sfm.md).
+    if (model_name %in% c("NHN_Z", "NE_Z") && robust == "mle" &&
+      !is.numeric(start_val) && is.null(start_from)) {
+      .one <- matrix(1, nrow = length(as.numeric(Y)), 1L,
+        dimnames = list(NULL, "(Intercept)")
+      )
+      .hf <- tryCatch(.sfm_het_fit(
+        family = if (model_name == "NHN_Z") "halfnormal" else "exponential",
+        Y = Y, X = as.matrix(data_i_vars), Zu = .Zz, Zv = .one, Zmu = .one,
+        inefdec_n = inefdec_n, z_sigma = .z_sigma, z_link = z_link,
+        x_names = x_vars_vec, maxit.nlminb = maxit.nlminb,
+        maxit.optim = maxit.optim, optHessian = FALSE, wts = .wts
+      ), error = function(e) NULL)
+      if (!is.null(.hf)) {
+        .p <- unname(.hf$opt$par)
+        .nb <- ncol(as.matrix(data_i_vars))
+        .cand <- c(.z_sigma(.p[.nb + 1]), .p[seq_len(.nb)], .p[.nb + 1 + seq_len(n_z_vars)])
+        .fc <- tryCatch(like.fn(.cand), error = function(e) NA_real_)
+        if (length(.cand) == length(start_v) && is.finite(.fc) && .fc < like.fn(start_v)) {
+          start_v <- .cand
+        }
+      }
+      if (identical(use.nlminb, "auto")) use.nlminb <- TRUE
+      if (identical(use.bobyqa, "auto")) use.bobyqa <- FALSE
+    }
 
     ## Stage 1: nlminb.
     .nlminb_safe <- c("NHN", "NE", "NTN", "NU")

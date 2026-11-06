@@ -2,13 +2,16 @@
 \alias{inefficiency_test}
 \title{Test whether there is any technical inefficiency}
 \usage{
-inefficiency_test(object, test = c("lr_1sided", "lr", "wald", "m3t"),
+inefficiency_test(object, test = "lr_1sided",
                   level = 0.05)
 }
 \arguments{
 \item{object}{An \code{"sfareg"} fit from \code{\link{sfm}}, with
 \code{model_name = "NHN"} or \code{"NTN"}.}
-\item{test}{Which statistics to compute; any subset, all by default.}
+\item{test}{Which statistics to compute: any subset of \code{"lr_1sided"},
+\code{"lr"}, \code{"wald"} and \code{"m3t"}. The default is the one-sided LR
+test alone, which is Coelli's recommendation; the naive LR and Wald tests are
+mis-sized (see Details) and are computed only when asked for.}
 \item{level}{Significance level used for the \code{reject} column.}
 }
 \value{
@@ -56,7 +59,7 @@ For \code{model_name = "NTN"} the null restricts both \eqn{\gamma} and
 
 The \code{"m3t"} statistic is the same one \code{\link{skewness_test}}
 reports as \code{test = "coelli"}; it is repeated here so the four tests can
-be compared in a single table.
+be compared in a single table by naming all four in \code{test}.
 }
 \references{
 Coelli, T. (1995). Estimators and hypothesis tests for a stochastic frontier
@@ -73,4 +76,6 @@ d <- data_gen_cs(N = 300, rand = 7, sig_u = 1, sig_v = 0.5, cons = 0.5,
                  beta1 = 0.5, beta2 = 0.5, a = 5, mu = 0.1)
 f <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = as.data.frame(d))
 inefficiency_test(f)
+## all four, for comparison; the Wald row is oversized
+inefficiency_test(f, test = c("lr_1sided", "lr", "wald", "m3t"))
 }

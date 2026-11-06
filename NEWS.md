@@ -2,6 +2,38 @@
 
 ## Bug fixes
 
+* **`sfm()`'s `"NHN_Z"` and `"NE_Z"` could stop far short of the maximum,
+  and were slow doing it. Their estimates change.** Both started from a
+  flat sigma_v = 0.1 and delta = 0.1, and an uncentred `z` puts a ridge between
+  the intercept and slope of delta. bobyqa spent its full 10,000
+  evaluations on that ridge, and the stationarity polish then ran on
+  numerical gradients. On `panel89`, `y ~ q1 + ... + w4 | z` took over 100 s
+  and ended at log-likelihood 773.2, below the 775.6 of the NHN model it
+  nests. It now reaches 879.85 in a few seconds, the same value the `vhet`
+  path finds for this model, with delta = (-5.32, 0.743) where it used to
+  report about (-0.80, -0.13). Both models now start from that
+  unconstrained log-scale fit and polish with nlminb rather than bobyqa; the
+  returned object's layout is unchanged. A `start_val` or `start_from` is
+  used as before, and `use.nlminb`/`use.bobyqa` still override the default.
+
+* **`inefficiency_test()` now computes only the one-sided LR test by
+  default.** The default used to be all four statistics, so a call with no
+  `test` argument reported the Wald test, which at a nominal 5% rejects about
+  20% of the time under the null at every sample size in the package's own
+  size table, alongside the valid ones. The one-sided LR test, Coelli's
+  (1995) recommendation, holds its size and is the more powerful of the two
+  valid tests. The others are still available by name: pass
+  `test = c("lr_1sided", "lr", "wald", "m3t")` for the four-row comparison.
+
+* **The missing-standard-error warning from `zsfm()`, `lcsfm()` and the other
+  non-two-tier entry points pointed to `tt_boundary_report()`,** which refits
+  `ttsfm()` models only. Only `ttsfm()` fits now mention it; the others point
+  to `sfa_diagnostics()`, which reads the Hessian of any `"sfareg"` fit.
+
+* **DESCRIPTION and the README counted seventeen cross-sectional distribution
+  pairs.** The seventeen `model_name` values are fifteen pairs plus the two
+  heteroskedastic variants `NHN_Z` and `NE_Z`; both now say fifteen.
+
 * **`sfm()`'s `"NW"` and `"NLN"` estimates depended on the number of
   simulation draws. They are now computed by quadrature, and they change.**
   At the default `Nsim` (200 for n up to 4444), the simulated

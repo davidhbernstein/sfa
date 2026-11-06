@@ -147,6 +147,13 @@
       "those entries."
     )
   }
+  ## tt_boundary_report() refits two-tier fits only; elsewhere point to
+  ## sfa_diagnostics(), which reads the Hessian of any sfareg fit.
+  boundary_hint <- if (startsWith(label, "ttsfm(")) {
+    "For a scale that has collapsed onto its lower bound see tt_boundary_report(). "
+  } else {
+    "sfa_diagnostics() shows which parameters the Hessian fails to identify. "
+  }
   info$message <- paste0(
     label, "no standard error could be computed for ",
     paste(info$parameters, collapse = ", "), " (", info$n_missing, " of ",
@@ -155,9 +162,8 @@
     "where the Hessian in the full parameter space need not be positive ",
     "definite; the two readings differ and are not distinguished by this ",
     "check. The standard errors that ARE reported are conditional on this ",
-    "point. For a scale that has collapsed onto its lower bound see ",
-    "tt_boundary_report(); for a covariance that needs no Hessian, refit with ",
-    "keep_objective = TRUE and use vcov(type = \"bhhh\"). Inspect ",
+    "point. ", boundary_hint, "For a covariance that needs no Hessian, refit ",
+    "with keep_objective = TRUE and use vcov(type = \"bhhh\"). Inspect ",
     "$se_unresolved."
   )
   info

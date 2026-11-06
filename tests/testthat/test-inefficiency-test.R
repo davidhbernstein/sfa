@@ -37,7 +37,7 @@ test_that("the one-sided LR p-value is exactly half the naive one", {
 test_that("inefficiency_test() returns a well-formed table and rejects on strong data", {
   skip_on_cran()
   f <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = .ct_data(600, 11, sig_u = 2, sig_v = 0.5))
-  tt <- inefficiency_test(f)
+  tt <- inefficiency_test(f, test = c("lr_1sided", "lr", "wald", "m3t"))
   expect_s3_class(tt, "data.frame")
   expect_equal(nrow(tt), 4L)
   expect_named(tt, c("test", "statistic", "null", "p.value", "reject"))
@@ -46,6 +46,14 @@ test_that("inefficiency_test() returns a well-formed table and rejects on strong
   expect_true(tt$reject[tt$test == "LR (one-sided)"])
   expect_true(is.finite(attr(tt, "logLik_H1")))
   expect_true(attr(tt, "logLik_H1") >= attr(tt, "logLik_H0") - 1e-6)
+})
+
+test_that("the default is the one-sided LR test alone, not the oversized Wald", {
+  skip_on_cran()
+  f <- sfm(y_pcs ~ x1 + x2, model_name = "NHN", data = .ct_data(300, 7))
+  tt <- inefficiency_test(f)
+  expect_equal(tt$test, "LR (one-sided)")
+  expect_error(inefficiency_test(f, test = "nope"))
 })
 
 test_that("inefficiency_test() refuses models Coelli's mixture is not stated for", {
