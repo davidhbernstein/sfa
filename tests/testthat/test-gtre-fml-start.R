@@ -96,3 +96,46 @@ test_that("psfm() exposes maxit.nlminb and passes it through", {
   src <- deparse(body(psfm))
   expect_false(any(grepl("maxit\\.nlminb\\s*=\\s*[0-9]", src)))
 })
+
+gtre_interior_panel <- function(rand) {
+  as.data.frame(data_gen_p(t = 5, N = 60, rand = rand, sig_u = 0.5, sig_v = 0.3,
+                           sig_r = 0.3, sig_h = 0.8, cons = 0.5,
+                           beta1 = 0.5, beta2 = 0.5, eta = 0.1))
+}
+
+test_that("GTRE_FML checks stationarity and polishes a point short of the maximum", {
+  ## L-BFGS-B stopped 0.0046 short on USUtilities under Windows R 4.6.1, but
+  ## not under macOS R 4.5.2, so the reported estimates depended on the machine.
+  skip_on_cran()
+  f <- suppressWarnings(psfm(y_gtre ~ x1 + x2, model_name = "GTRE_FML",
+                             data = gtre_interior_panel(1), individual = "name",
+                             keep_objective = TRUE))
+  st <- f$stationarity
+  expect_type(st, "list")
+  final_dec <- if (isTRUE(st$polished)) st$decrement_after else st$decrement
+  expect_lt(abs(final_dec), 1e-4)
+
+  ## Move the scales off the optimum and check the polish climbs back.
+  lower <- c(rep(-Inf, 3), rep(sfa:::.SFA_CONSTANTS$MIN_POSITIVE, 4))
+  bad <- f$opt
+  np <- length(bad$par)
+  bad$par[(np - 3):np] <- bad$par[(np - 3):np] * 1.05
+  bad$value <- f$objective(bad$par)
+  bad$hessian <- stats::optimHess(bad$par, f$objective)
+  sp <- sfa:::.stationarity_polish(f$objective, bad, lower)
+  expect_true(sp$info$polished)
+  expect_lt(sp$opt$value, bad$value)
+  expect_equal(sp$opt$value, f$opt$value, tolerance = 1e-6)
+})
+
+test_that("GTRE_FML does not polish across a collapsed scale", {
+  ## rand = 4 puts sigma_r on its bound. A polish there gained 5e-5 and swapped
+  ## the NA standard errors for ones differenced across the domain penalty.
+  skip_on_cran()
+  f <- suppressWarnings(psfm(y_gtre ~ x1 + x2, model_name = "GTRE_FML",
+                             data = gtre_interior_panel(4), individual = "name"))
+  ## Where sigr lands, and so whether its SE is NA, differs by platform (exactly
+  ## on the bound on Windows, 1.5e-6 on macOS); the skip holds in both.
+  expect_true(f$sigr_at_bound)
+  expect_null(f$stationarity)
+})

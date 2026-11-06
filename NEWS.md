@@ -2,6 +2,21 @@
 
 ## Bug fixes
 
+* **`psfm(model_name = "GTRE")` (the default `estimator = "fiml"`) could stop
+  just short of the maximum, so its estimates depended on the machine.** The
+  final L-BFGS-B stage ends on a flat ridge between the persistent scales. On
+  `USUtilities` (`lq ~ lK + lL + lF`), Windows R 4.6.1 stopped at
+  log-likelihood 575.9013 with an intercept of 5.812, while macOS R 4.5.2
+  reached 575.9059 and 5.782. The fit now runs the same Newton-decrement
+  check and `nlminb()` polish as `sfm()`, and the Windows fit reaches 575.9059
+  too.
+  The check is recorded in the new `$stationarity` component. It is skipped
+  when a scale has collapsed onto its bound, which the existing boundary flags
+  report, because a Hessian differenced there gives standard errors that do
+  not exist. A fit that
+  was already at the maximum costs one extra gradient; one that was not
+  takes about twice as long.
+
 * **`sfm()`'s `"NHN_Z"` and `"NE_Z"` could stop far short of the maximum,
   and were slow doing it. Their estimates change.** Both started from a
   flat sigma_v = 0.1 and delta = 0.1, and an uncentred `z` puts a ridge between
