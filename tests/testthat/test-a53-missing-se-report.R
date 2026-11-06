@@ -39,7 +39,19 @@ test_that("the message does not decide between the two readings", {
   expect_match(r$message, "EITHER a point that is not a maximum OR a boundary",
     fixed = TRUE
   )
-  expect_match(r$message, "tt_boundary_report()", fixed = TRUE)
+})
+
+test_that("only two-tier fits are pointed to tt_boundary_report()", {
+  h <- mk_h(c(10, -1))
+  tt <- sfa:::.se_missing_report(c(1, NaN), c("a", "b"), h,
+    "ttsfm(model_name = \"TTHN\"): ")
+  expect_match(tt$message, "tt_boundary_report()", fixed = TRUE)
+  for (lab in c("zsfm(model_name = \"ZISF\"): ",
+                "lcsfm(model_name = \"LCM\"): ", "")) {
+    r <- sfa:::.se_missing_report(c(1, NaN), c("a", "b"), h, lab)
+    expect_false(grepl("tt_boundary_report", r$message, fixed = TRUE))
+    expect_match(r$message, "sfa_diagnostics()", fixed = TRUE)
+  }
 })
 
 test_that("an unreadable Hessian is reported as unavailable, not as indefinite", {
