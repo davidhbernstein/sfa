@@ -100,14 +100,16 @@ test_that("a seed makes the draws reproducible and restores the RNG stream", {
 test_that("sfm exposes the options and its default is unchanged", {
   skip_on_cran()
   d <- cs_small(N = 250)
-  base <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d))
+  base <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d,
+                               integration = "simulate"))
   same <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d,
+                               integration = "simulate",
                                sim_type = "halton", antithetics = FALSE))
   expect_equal(coef(base), coef(same), tolerance = 1e-10)
 
   ## A different scheme must actually change the fit, or the argument is inert.
   alt <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d,
-                              sim_type = "sobol", sim_scrambling = 1L, sim_seed = 5))
+                              integration = "simulate", sim_type = "sobol", sim_scrambling = 1L, sim_seed = 5))
   expect_false(isTRUE(all.equal(unname(coef(base)), unname(coef(alt)))))
   expect_true(all(is.finite(coef(alt))))
 })
@@ -332,8 +334,10 @@ test_that("NW and NLN share one draw rule, and NW's is far below its old one", {
   ## NW's rule before the change of variable was max(400, ceiling(8*sqrt(n))).
   skip_on_cran()
   d <- cs_small(N = 400)
-  fw <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d))
-  fl <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d))
+  fw <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+                             integration = "simulate"))
+  fl <- suppressWarnings(sfm(y_pcs_ln ~ x1 + x2, model_name = "NLN", data = d,
+                             integration = "simulate"))
   expect_true(all(is.finite(coef(fw))))
   expect_true(all(is.finite(coef(fl))))
   ## Efficiency predictions stay in range under the substitution.

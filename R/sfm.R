@@ -44,7 +44,8 @@ sfm <- function(formula,
                 keep_objective = FALSE,
                 estimator = c("mle", "cols", "mols", "acols", "cmle"),
                 cols_boot = 0,
-                rand.cols = NULL) {
+                rand.cols = NULL,
+                integration = c("quadrature", "simulate")) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes().
   call <- match.call()
   data_supplied <- if (!missing(data)) data
@@ -197,6 +198,7 @@ sfm <- function(formula,
     data <- .het_prefilter(data, list(vhet, uhet, muhet))
   }
   sim_type <- match.arg(sim_type)
+  integration <- match.arg(integration)
   if (is.null(sim_burn)) sim_burn <- .SFA_CONSTANTS$HALTON_DISCARD
   if (!is.numeric(sim_burn) || length(sim_burn) != 1L || sim_burn < 0) {
     stop("`sim_burn` must be a single non-negative number.", call. = FALSE)
@@ -706,9 +708,19 @@ sfm <- function(formula,
     return(.sfa_keep_data(results, data_supplied))
   }
 
-  ## Fixed low-discrepancy draws for the simulated-ML models (NLN, NW).
+  ## NLN and NW integrate u out by quadrature unless asked to simulate.
+  if (model_name %in% c("NLN", "NW") && integration == "quadrature" &&
+    !identical(Nsim, "auto")) {
+    warning("sfm(model_name = \"", model_name, "\"): `Nsim` is ignored, ",
+      "because the likelihood is computed by quadrature. Pass ",
+      "integration = \"simulate\" to use simulated ML.",
+      call. = FALSE
+    )
+  }
+
+  ## Fixed low-discrepancy draws for simulated ML (NLN, NW).
   FiMat <- NULL
-  if (model_name %in% c("NLN", "NW")) {
+  if (model_name %in% c("NLN", "NW") && integration == "simulate") {
     n_obs <- length(as.numeric(Y))
 
     ## How many simulation draws: the count must grow with n, or the
@@ -899,7 +911,6 @@ sfm <- function(formula,
       }
 
       if (model_name %in% c("NLN", "NW")) {
-        ## Simulated ML.
         sigv <- x[1]
         sigu <- x[2]
         shp <- x[3] ## meanlog (NLN) or shape k (NW)
@@ -909,17 +920,22 @@ sfm <- function(formula,
           sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
           return(1e12)
         }
-        ## Multiple importance sampling over both proposals: drawing only the
-        ## noise fails where the inefficiency density is the narrow one, and
-        ## drawing only the inefficiency fails where the noise is.
-        mis <- .sml_mis(eps, sigv, FiMat,
-          ldens = .nsml_ldens(model_name, sigu, shp),
-          qdens = .nsml_qdens(model_name, sigu, shp)
-        )
-        if (!mis$ok) {
-          return(1e12)
+        if (integration == "quadrature") {
+          like <- .log_d_nsml(eps, sigv, model_name, sigu, shp)
+          like[!is.finite(like)] <- -1e6
+        } else {
+          ## Multiple importance sampling over both proposals: drawing only the
+          ## noise fails where the inefficiency density is the narrow one, and
+          ## drawing only the inefficiency fails where the noise is.
+          mis <- .sml_mis(eps, sigv, FiMat,
+            ldens = .nsml_ldens(model_name, sigu, shp),
+            qdens = .nsml_qdens(model_name, sigu, shp)
+          )
+          if (!mis$ok) {
+            return(1e12)
+          }
+          like <- pmax(mis$ldens, log(.Machine$double.xmin))
         }
-        like <- pmax(mis$ldens, log(.Machine$double.xmin))
       }
 
       if (model_name == "NR") {
@@ -1561,19 +1577,25 @@ sfm <- function(formula,
     }
 
     if (model_name %in% c("NLN", "NW")) {
-      ## Simulated Bayes rule over the same fixed draws used in the likelihood.
+      ## Bayes rule over the same nodes or draws the likelihood used, so
+      ## predictor and density agree.
       beta <- opt$par[-c(1:3)]
       sig_v <- opt$par[1]
       sig_u <- opt$par[2]
       shp <- opt$par[3]
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
-      ## Same weights the likelihood used, so predictor and density agree.
-      mis <- .sml_mis(eps_hat, sig_v, FiMat,
-        ldens = .nsml_ldens(model_name, sig_u, shp),
-        qdens = .nsml_qdens(model_name, sig_u, shp)
-      )
-      exp_u_hat <- pmin(pmax(.sml_mis_mean(mis, exp(-mis$u)), 0), 1)
-      u_hat <- pmax(.sml_mis_mean(mis, mis$u), 0)
+      if (integration == "quadrature") {
+        .eff <- .nsml_eff(eps_hat, sig_v, model_name, sig_u, shp)
+        exp_u_hat <- .eff$exp_u_hat
+        u_hat <- .eff$u_hat
+      } else {
+        mis <- .sml_mis(eps_hat, sig_v, FiMat,
+          ldens = .nsml_ldens(model_name, sig_u, shp),
+          qdens = .nsml_qdens(model_name, sig_u, shp)
+        )
+        exp_u_hat <- pmin(pmax(.sml_mis_mean(mis, exp(-mis$u)), 0), 1)
+        u_hat <- pmax(.sml_mis_mean(mis, mis$u), 0)
+      }
     }
 
     if (model_name == "NR") {
@@ -1807,6 +1829,11 @@ sfm <- function(formula,
     ## checking for its existence.
     if (model_name == "NTN") {
       results$ntn_sigma_v_at_bound <- ntn_sigma_v_at_bound
+    }
+
+    ## NLN and NW record how u was integrated out, which simulation_se() reads.
+    if (model_name %in% c("NLN", "NW")) {
+      results$integration <- integration
     }
 
     ## tHN additionally reports the boundary flag and the multi-start diagnostic.

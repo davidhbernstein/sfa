@@ -9,7 +9,8 @@ ss_data <- function() {
 test_that("simulation noise is small for the slopes and larger for the scales", {
   skip_on_cran()
   d <- ss_data()
-  f <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 200))
+  f <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+    integration = "simulate", Nsim = 200))
   r <- suppressMessages(simulation_se(f, K = 6))
 
   expect_s3_class(r, "data.frame")
@@ -39,8 +40,10 @@ test_that("more draws mean less simulation noise", {
   ## The property that makes the number meaningful. If it did not fall with
   ## Nsim it would be measuring something else.
   d <- ss_data()
-  lo <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 200))
-  hi <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 800))
+  lo <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+    integration = "simulate", Nsim = 200))
+  hi <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+    integration = "simulate", Nsim = 800))
   a <- suppressMessages(simulation_se(lo, K = 6))
   b <- suppressMessages(simulation_se(hi, K = 6))
   expect_lt(median(b$simulation_se / a$simulation_se), 0.6)
@@ -53,7 +56,22 @@ test_that("it refuses fits that do no simulation", {
   ## would look like a measurement; saying so is the honest answer.
   expect_error(simulation_se(g), "not estimated by simulation")
 
-  f <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d, Nsim = 100))
+  f <- suppressWarnings(sfm(y_pcs_wb ~ x1 + x2, model_name = "NW", data = d,
+    integration = "simulate", Nsim = 100))
   expect_error(simulation_se(f, K = 1), "at least two refits")
   expect_error(simulation_se(list()), "must be an \"sfareg\" fit")
+})
+
+test_that("a quadrature fit has no simulation variance; a pre-quadrature fit is refit by simulation", {
+  ## .sim_seed_arg() decides from the fit alone, so no refit is needed here.
+  fake <- structure(list(model_name = "NW", call = quote(sfm(y ~ x, model_name = "NW"))),
+    class = "sfareg")
+  fake$integration <- "quadrature"
+  expect_null(sfa:::.sim_seed_arg(fake))
+  expect_error(simulation_se(fake), "not estimated by simulation")
+  fake$integration <- "simulate"
+  expect_identical(sfa:::.sim_seed_arg(fake), "sim_seed")
+  ## A fit saved before `integration` existed was simulated.
+  fake$integration <- NULL
+  expect_identical(sfa:::.sim_seed_arg(fake), "sim_seed")
 })
