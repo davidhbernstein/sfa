@@ -6,7 +6,7 @@
 ## estimate LOG sigmas and report sigmas, and ivsfm("IVLIML") estimates
 ## reduced-form parameters it never reports -- so a score matrix built at
 ## opt$par is neither on the reported scale nor, in the IVLIML case, of the
-## reported length. Before 1.2.1 vcov() ignored that: it named the
+## reported length. Before 1.3.0 vcov() ignored that: it named the
 ## estimation-scale matrix with the reported names and returned it, so
 ## sqrt(diag(vcov(f))) came back a factor of 1/sigma_u away from the sigma_u
 ## standard error the same fit printed, and IVLIML failed outright in

@@ -74,7 +74,7 @@ test_that("the two-tier likelihood has the right sign", {
   expect_true(is.finite(as.numeric(logLik(fit))))
   ## Positions 4-6 are the scale parameters (positions 1-3 are the frontier
   ## betas -- an earlier version of this test checked those by mistake and so
-  ## asserted nothing). Since 1.2.1 they are reported on their NATURAL scale
+  ## asserted nothing). Since 1.3.0 they are reported on their NATURAL scale
   ## and named, so no exponentiating: read them by name and check them
   ## directly, which is a stronger assertion than the old one.
   expect_identical(names(fit$coefficients)[4:6],
