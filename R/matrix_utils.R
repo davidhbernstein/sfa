@@ -2939,6 +2939,69 @@
 ##
 ## The tell is that sigma_r comes back inflated whenever this happens: 0.30-0.34
 ## against a true 0.20 in every collapsed replication observed.
+## sigma_v on its lower bound in a cross-sectional fit: the deterministic
+## frontier corner. Same 1e-3 rule as NTN's. notes/code_history/sfm.md (A63).
+.sigma_v_corner <- function(sig_v, sig_u) {
+  isTRUE(sig_v / sqrt(sig_u^2 + sig_v^2) < 1e-3)
+}
+
+## NR: the likelihood with sigma_v fixed near zero, maximized over sigma_u and
+## beta from a start with every residual on or below the frontier (A27).
+.nr_corner_probe <- function(like.fn, par, X, Y, inefdec_n) {
+  sv0 <- 1e-6 * par[2]
+  b <- par[-(1:2)]
+  j <- which(apply(X, 2, function(x) all(x == x[1])))[1]
+  if (!is.na(j)) {
+    e <- inefdec_n * (as.numeric(Y) - as.numeric(X %*% b))
+    b[j] <- b[j] + inefdec_n * max(e)
+  }
+  o <- tryCatch(
+    stats::nlminb(c(par[2], b), function(th) like.fn(c(sv0, th)),
+      lower = c(1e-8, rep(-Inf, length(b)))
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(o) || !is.finite(o$objective)) return(NULL)
+  list(par = c(sv0, o$par), value = o$objective)
+}
+
+## NTN: profile lambda upward from the fit, each rung seeded from the last.
+## With lambda free the optimizer walks back to the interior (A59).
+.ntn_lambda_ladder <- function(like.fn, par, mults = 10^seq(1, 11, by = 2)) {
+  q <- par[-1]
+  best <- NULL
+  for (lam in par[1] * mults) {
+    g <- function(th) like.fn(c(lam, th))
+    for (k in 1:3) {
+      o <- tryCatch(
+        stats::nlminb(q, g, lower = c(1e-8, rep(-Inf, length(q) - 1))),
+        error = function(e) NULL
+      )
+      if (is.null(o) || !is.finite(o$objective)) break
+      q <- o$par
+    }
+    if (is.null(o) || !is.finite(o$objective)) break
+    if (is.null(best) || o$objective < best$value) {
+      best <- list(par = c(lam, o$par), value = o$objective)
+    }
+  }
+  best
+}
+
+.warn_sigma_v_corner <- function(model_name, sig_v) {
+  warning("sfm(model_name = \"", model_name, "\"): sigma_v has collapsed to ",
+    "its lower bound (", signif(sig_v, 3), "), so the fit is a deterministic ",
+    "frontier: it attributes all variation to inefficiency and none to noise. ",
+    "The optimizer found no interior point with a higher likelihood, so on ",
+    "this sample the boundary is the maximum likelihood estimate rather than ",
+    "a numerical failure. No standard error exists at that point, so every ",
+    "standard error is NA. Read it as \"no noise component identified in ",
+    "these data\", compare against a model that constrains the noise, and ",
+    "inspect $sigma_v_at_bound. See ?sfm.",
+    call. = FALSE
+  )
+}
+
 .panel_scale_at_bound <- function(scale_hat, ref, rel_tol = 1e-2) {
   if (!is.finite(scale_hat) || !is.finite(ref) || ref <= 0) {
     return(NA)

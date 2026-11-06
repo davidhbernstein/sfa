@@ -2,6 +2,35 @@
 
 ## Bug fixes
 
+* **`sfm()` reported fits on the `sigma_v -> 0` corner as ordinary fits,
+  or stopped short of that corner, for `"NR"`, `"NTN"` and `"NHN_Z"`.** On
+  some samples the likelihood is highest where the noise vanishes and the
+  frontier is deterministic. Three things went wrong there, none with a
+  warning:
+  - `"NR"` and `"NHN_Z"` fits that reached the corner reported standard
+    errors, or `NA` without saying why. On a 200-sample design (`sigma_u = 1`,
+    `sigma_v = 0.1`, n = 500) 62 `"NR"` fits ended on the corner unflagged.
+    On `NHN_Z` with an uncentred `z`, standard errors near `1e-7` on the
+    frontier coefficients, with t-values near `3e6`, came back for 7 of 31
+    fits.
+  - `"NR"` fits could stop at an interior point below the corner's
+    likelihood: 5 of those 200, by up to 0.16.
+  - `"NTN"` stopped at an interior `lambda` of 2 to 4 with a full set of
+    standard errors on 3 to 5 of 12 samples per design, up to 2.26 below the
+    `lambda -> Inf` supremum. Restarting with `lambda` free does not leave
+    that point.
+
+  `sfm()` now checks the corner itself: `"NR"` by maximizing with `sigma_v`
+  fixed near zero, `"NTN"` by a ladder of fixed `lambda` values climbing
+  from the fit. It moves to the corner only when the package's own
+  likelihood there is higher by more than 1e-4, so no fit ends lower than
+  before. Every corner it reached on the designs above matches the exact
+  `sigma_v = 0` likelihood to 2e-5. A corner fit now carries `NA` standard
+  errors, a warning, and `$sigma_v_at_bound = TRUE` (`$ntn_sigma_v_at_bound`
+  for `"NTN"`, as before). **`"NR"` and `"NTN"` estimates change on the
+  samples where the corner is higher.** Interior fits are unchanged. `NE_Z`
+  never reached the corner in the same sweep (A27, A59, A63).
+
 * **`sfm()`'s `"NHN_Z"` and `"NE_Z"` could stop far short of the maximum,
   and were slow doing it. Their estimates change.** Both started from a
   flat sigma_v = 0.1 and delta = 0.1, and an uncentred `z` puts a ridge between

@@ -16,9 +16,11 @@
 
 test_that("NTN flags and warns when sigma_v collapses, and only then", {
   skip_on_cran()
-  ## rand 2, 4, 5, 11 and 12 reach the boundary on this DGP; 1, 3, 6-10 do not.
-  boundary <- c(2L, 4L, 5L, 11L, 12L)
-  interior <- c(1L, 3L, 6L, 7L, 8L, 9L, 10L)
+  ## rand 2, 4, 5, 11 and 12 reach the boundary on this DGP by themselves;
+  ## 3, 7 and 9 stopped at an interior point below it until the lambda ladder
+  ## (A59) found the boundary higher. 1, 6, 8 and 10 have interior maxima.
+  boundary <- c(2L, 3L, 4L, 5L, 7L, 9L, 11L, 12L)
+  interior <- c(1L, 6L, 8L, 10L)
 
   ratio_of <- function(f) {
     p <- f$out[, "par"]
