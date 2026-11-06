@@ -2065,8 +2065,12 @@ psfm <- function(formula,
     ## a re-differenced Hessian would report SEs that do not exist.
     stationarity <- NULL
     .scales <- opt$par[(length(opt$par) - 3L):length(opt$par)]
+    ## Layout (sigr, sigv, sigh, sigu); the 1% rule is the one the reported flags use.
+    .ref <- sqrt(.scales[4]^2 + .scales[2]^2)
     .scale_at_bound <- any(.scales - .SFA_CONSTANTS$MIN_POSITIVE <=
-      1e-4 * abs(.scales) + 1e-4 * (abs(.scales) < sqrt(.Machine$double.eps / 7e-7)))
+      1e-4 * abs(.scales) + 1e-4 * (abs(.scales) < sqrt(.Machine$double.eps / 7e-7))) ||
+      isTRUE(.panel_scale_at_bound(.scales[3], .ref)) ||
+      isTRUE(.panel_scale_at_bound(.scales[1], .ref))
     if (optHessian == TRUE && !.scale_at_bound && !is.null(opt$hessian) &&
       all(is.finite(opt$hessian))) {
       .sp <- .stationarity_polish(like.fml, opt, lower_f)
