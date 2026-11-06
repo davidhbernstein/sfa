@@ -53,17 +53,17 @@
 #' Test whether there is any technical inefficiency
 #'
 #' @param object An `"sfareg"` fit from [sfm()].
-#' @param test Which statistics to compute.
+#' @param test Which statistics to compute; the one-sided LR test by default.
 #' @param level Significance level used for the `reject` column.
 #' @return A data frame, one row per test.
 #' @export
 inefficiency_test <- function(object,
-                              test = c("lr_1sided", "lr", "wald", "m3t"),
+                              test = "lr_1sided",
                               level = 0.05) {
   if (!inherits(object, "sfareg")) {
     stop("`object` must be an \"sfareg\" fit.", call. = FALSE)
   }
-  test <- match.arg(test, several.ok = TRUE)
+  test <- match.arg(test, c("lr_1sided", "lr", "wald", "m3t"), several.ok = TRUE)
   mn <- object$model_name
   if (!identical(mn, "NHN") && !identical(mn, "NTN")) {
     stop("inefficiency_test(): Coelli (1995) is derived for the half-normal ",
