@@ -7,7 +7,7 @@
 ## down: if a farmer misjudges a seasonal shock and mis-allocates inputs in
 ## response, the shock and the inefficiency are the same event seen twice.
 ##
-## The package's own taxonomy already states the general form (JSS paper, Eq 6):
+## The package's own taxonomy already states the general form (companion paper, Eq 6):
 ##
 ##   f_{V,U}(v, u) = f_V(v) f_U(u) c(F_V(v), F_U(u); rho)
 ##
