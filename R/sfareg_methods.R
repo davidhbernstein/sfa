@@ -604,11 +604,12 @@ fitted.sfareg <- function(object, ...) .sfa_xb(object)$xb
 
 residuals.sfareg <- function(object, ...) {
   z <- .sfa_xb(object)
-  yv <- all.vars(z$formula)[1]
-  if (!(yv %in% names(z$data))) {
+  yv <- .response_name(z$formula)
+  y <- tryCatch(.add_response_column(z$formula, z$data, yv)[[yv]], error = function(e) NULL)
+  if (is.null(y)) {
     stop("Response '", yv, "' not found in the fit's data; cannot form residuals.",
       call. = FALSE
     )
   }
-  as.numeric(z$data[[yv]]) - z$xb
+  as.numeric(y) - z$xb
 }

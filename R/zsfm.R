@@ -37,6 +37,7 @@ zsfm <- function(formula,
   DR1 <- data_proc(formula, data, model_name, individual = NULL, inefdec)
 
   data_orig <- DR1$data_orig
+  data <- data_orig ## carries a transformed response as its own column
   form_parts <- DR1$form_parts
   formula_x <- DR1$formula_x
   y_var <- DR1$y_var

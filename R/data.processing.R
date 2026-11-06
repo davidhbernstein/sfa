@@ -106,7 +106,6 @@ data_proc <- function(formula, data, model_name, individual = NULL, inefdec) {
   data_z <- formula_z <- z_vars <- intercept_z <- z_vars_vec <- z_z_vec <- n_z_vars <- formula_zp <- data_zp <- zp_vars <-
     intercept_zp <- zp_vars_vec <- n_zp_vars <- zp_zp_vec <- fancy_vars_zp <- NULL
   n_z_vars <- NA ## maybe make condition here making this default to null
-  data_orig <- data
 
   ## Formula parsing via .parse_pipe_formula() (matrix_utils.R), which uses
   ## Formula::Formula().
@@ -123,6 +122,9 @@ data_proc <- function(formula, data, model_name, individual = NULL, inefdec) {
     y_var <- parsed_f$y_var
     form_parts <- list("~", y_var, rep(NA_character_, parsed_f$n_parts))
   }
+
+  data <- .add_response_column(formula_x, data, y_var)
+  data_orig <- data
 
   if (parsed_f$n_parts >= 2) {
     formula_z <- parsed_f$formula_z

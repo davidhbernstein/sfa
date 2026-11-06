@@ -24,6 +24,17 @@
   variance to measure. Each likelihood evaluation costs several times a
   200-draw simulated one (#65).
 
+* **A transformed response was fitted untransformed.** `log(q) ~ log(K)`
+  fitted `q` in levels on `log(K)`, with coefficients around 1e7 and no
+  warning, in `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()` and `psfm()`: the
+  response was named `all.vars(formula)[1]`, the raw column, while the
+  regressors went through `model.frame()`. The left-hand side is now evaluated
+  as written, and a fit with `log()` in the formula is identical to one on
+  pre-logged columns. `residuals()` and the parametric bootstraps in
+  `gof_test()`, `lcsfm_homogeneity()` and `psfm_bootstrap()` read or wrote
+  the response by the same name and are fixed with it. `copsfm()`, `npsfm()`,
+  `selsfm()` and `ivsfm()` were not affected (#78).
+
 * **`fitted()`, `residuals()`, `predict()` and `efficiency()` failed on a fit
   whose data had gone out of scope.** They found the data by re-evaluating
   the call, so a formula built at top level and a fit made inside a function,
