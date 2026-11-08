@@ -661,12 +661,11 @@ psfm <- function(formula,
       c("lambda", "sigma", "sigr", colnames(data_x))
     }
 
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
-      ## singular but non-zero Hessian made solve() error outright and discard
-      ## a finished PANEL fit -- the most expensive kind here (A65).
+      ## A singular but non-zero Hessian made solve() error and discard a
+      ## finished panel fit; the tryCatch keeps the fit (A65).
       tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
         error = function(e) rep(NA_real_, length(opt$par))
       )
@@ -1836,12 +1835,11 @@ psfm <- function(formula,
       st_err <- rep(NA, length(opt$par))
     }
 
-    st_err <- if (isTRUE(any(opt$hessian == 0) | optHessian == FALSE)) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
-      ## singular but non-zero Hessian made solve() error outright and discard
-      ## a finished PANEL fit -- the most expensive kind here (A65).
+      ## A singular but non-zero Hessian made solve() error and discard a
+      ## finished panel fit; the tryCatch keeps the fit (A65).
       tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
         error = function(e) rep(NA_real_, length(opt$par))
       )
@@ -2087,7 +2085,7 @@ psfm <- function(formula,
       opt <- opt00
     }
 
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
       tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
@@ -2302,12 +2300,11 @@ psfm <- function(formula,
     inner <- (lamb * eps_hat) / sig
     exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
 
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
-      ## any(hessian == 0) tests for a zero ENTRY, not for singularity, so a
-      ## singular but non-zero Hessian made solve() error outright and discard
-      ## a finished PANEL fit -- the most expensive kind here (A65).
+      ## A singular but non-zero Hessian made solve() error and discard a
+      ## finished panel fit; the tryCatch keeps the fit (A65).
       tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
         error = function(e) rep(NA_real_, length(opt$par))
       )
@@ -2497,7 +2494,7 @@ psfm <- function(formula,
     )
 
     ## solve() on a singular Hessian errors outright.
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
       tryCatch(suppressWarnings(.sfa_se_from_var(diag(solve(opt$hessian)))),
@@ -2737,7 +2734,7 @@ psfm <- function(formula,
     exp_u_hat <- pmax(exp_u_hat, 0)
     exp_u_hat <- pmin(exp_u_hat, 1)
 
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))
     } else {
       ## qr.solve, not solve, which is why A64's sweep and A65's first pass
@@ -2790,7 +2787,7 @@ psfm <- function(formula,
     }
     gs_se <- function(fit) {
       p <- fit$par[1:2]
-      if (isTRUE(any(fit$hessian == 0))) {
+      if (.hessian_unusable(fit$hessian)) {
         return(c(NA_real_, NA_real_))
       }
       jac <- tryCatch(numDeriv::jacobian(reparam_gs, p), error = function(e) NULL)
@@ -3066,7 +3063,7 @@ psfm <- function(formula,
     ## Var(sigma_v) on the intercept and Var(beta) on sigmaSq.
     jac_rep <- tryCatch(numDeriv::jacobian(reparam, par_hat), error = function(e) NULL)
 
-    st_err <- if (isTRUE(any(opt$hessian == 0)) | optHessian == FALSE) {
+    st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(par_names))
     } else {
       vc <- tryCatch(solve(opt$hessian), error = function(e) NULL)
