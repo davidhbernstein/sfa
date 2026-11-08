@@ -344,6 +344,7 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 
 \bold{For GTRE_FML model:}
 \item{start_search}{A list recording the starting-value search: \code{n_tried}, the log-likelihood at each candidate (\code{loglik}), and which was \code{chosen} (\code{"random-effects"} or \code{"two-step"}). \code{NULL} when \code{start_val} was supplied.}
+\item{stationarity}{List, present when \code{optHessian = TRUE} and none of the four scales is on its lower bound (a collapsed scale is reported by \code{sigh_at_bound}/\code{sigr_at_bound} instead): the Newton-decrement check described under \code{stationarity} in \code{\link{sfm}}. When the decrement exceeds \code{1e-4}, the fit is polished with \code{nlminb()}, the four scales on the log scale, and the result is kept only if the log-likelihood rises; \code{polished}, \code{gain} and \code{decrement_after} record what happened.}
 \item{U}{Predicted transient (time-varying) technical efficiency for each observation.}
 \item{H}{Predicted persistent (time-invariant) technical efficiency for each individual, named by individual.}
 
