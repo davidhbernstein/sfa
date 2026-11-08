@@ -157,7 +157,7 @@ lcsfm <- function(formula,
 
     like.fn <- function(x, per_obs = FALSE) {
       like <- .log_row_sum_exp(.cn_logpi(x) + .cn_logf(x))
-      like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      like[!is.finite(like)] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
       if (isTRUE(per_obs)) return(like)
       -(sum(like[is.finite(like)]) + .cn_penalty(x))
     }
@@ -340,7 +340,7 @@ lcsfm <- function(formula,
 
     like.fn <- function(x, per_obs = FALSE) {
       like <- .log_row_sum_exp(.lcm_logpi(x) + .lcm_logf(x))
-      like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      like[!is.finite(like)] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
       if (isTRUE(per_obs)) return(like)
       -(sum(like[is.finite(like)]) + .lcm_penalty(x))
     }

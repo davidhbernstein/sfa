@@ -279,6 +279,11 @@ wrong result came without an error or a warning.
   `optim()`'s own estimator, or `optim()`'s Hessian itself when the points
   coincide. The same rule covers the final-stage substitution in every model.
 
+* **`sfm()` lost every standard error when a parameter sat on its lower
+  bound**, as `"NG"` and `"NNAK"` fits often do: the Hessian stepped into the
+  out-of-range penalty. That parameter now has no standard error, the others
+  are conditional on it, and `$se_at_bound` names it. Estimates are unchanged.
+
 * **A badly scaled Hessian no longer stops `vcov()` or the `sandwich`
   methods.** The Hessian is equilibrated before inversion. When no inverse
   exists, the error names the parameter responsible.

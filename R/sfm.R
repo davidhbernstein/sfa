@@ -1096,7 +1096,7 @@ sfm <- function(formula,
       ## the comparison yields NA and the subscript is then NA too.
       ## !is.finite() covers NA, NaN, Inf and -Inf together, and for a `like`
       ## that was already finite everywhere it changes nothing.
-      like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      like[!is.finite(like)] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
 
       ## Robust divergence estimation (MLqE/Psi/MDPD): swap the standard MLE
       ## objective for the robust one, at these SAME current parameter values.
@@ -1444,13 +1444,21 @@ sfm <- function(formula,
       stationarity <- .sp$info
     }
 
-    ## A Hessian that cannot be inverted.
+    ## A Hessian that cannot be inverted. A coordinate within optim()'s
+    ## differencing step of its bound was differenced across the domain
+    ## penalty: no SE for it, the rest conditional on it (A56).
+    .se_bound <- rep(FALSE, length(opt$par))
     if (optHessian == TRUE) {
       st_err <- if (isTRUE(as.numeric(sum(colMeans(opt$hessian))) == 0)) {
         rep(NA, length(opt$par))
       } else {
-        vc <- tryCatch(suppressWarnings(solve(opt$hessian)), error = function(e) NULL)
-        if (is.null(vc)) rep(NA, length(opt$par)) else suppressWarnings(.sfa_se_from_var(diag(vc)))
+        .se_bound <- .hessian_stencil_at_bound(opt$par, lower_bob)
+        .free <- which(!.se_bound)
+        se <- rep(NA_real_, length(opt$par))
+        vc <- tryCatch(suppressWarnings(solve(opt$hessian[.free, .free, drop = FALSE])),
+          error = function(e) NULL)
+        if (!is.null(vc)) se[.free] <- suppressWarnings(.sfa_se_from_var(diag(vc)))
+        se
       }
     }
 
@@ -2067,13 +2075,23 @@ sfm <- function(formula,
       !isTRUE(results$sigma_u_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound) &&
       !isTRUE(results$sigma_v_at_bound) && !isTRUE(results$thn_sigma_u_at_bound) &&
       !.corner_adopted) {
-      .sm <- .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+      .se_chk <- out["st_err", ]
+      .se_chk[.se_bound] <- 0
+      .sm <- .se_missing_report(.se_chk, colnames(out), opt$hessian,
         paste0("sfm(model_name = \"", model_name, "\"): ")
       )
       if (!is.null(.sm)) {
         warning(.sm$message, call. = FALSE)
         results$se_unresolved <- .sm
       }
+    }
+    if (optHessian == TRUE && robust == "mle" && any(.se_bound) && !.corner_adopted &&
+      !isTRUE(results$sigma_v_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound)) {
+      results$se_at_bound <- colnames(out)[.se_bound]
+      warning("sfm(model_name = \"", model_name, "\"): ",
+        paste(results$se_at_bound, collapse = ", "), " lies on its lower bound, ",
+        "so it has no standard error. The other standard errors are conditional ",
+        "on it. Inspect $se_at_bound.", call. = FALSE)
     }
 
     ## The variance-determinant block, kept so marginal_effects() can report d

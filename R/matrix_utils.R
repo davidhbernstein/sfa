@@ -110,6 +110,13 @@
   is.null(h) || !is.matrix(h) || !all(is.finite(h)) || all(h == 0)
 }
 
+## Coordinates within optim()'s Hessian stencil of a finite lower bound:
+## optimHess() steps ndeps = 1e-3 twice, so its differences reach 2e-3 below.
+.hessian_stencil_at_bound <- function(par, lower, ndeps = 1e-3) {
+  if (length(lower) != length(par)) return(rep(FALSE, length(par)))
+  is.finite(lower) & (par - lower) <= 2 * ndeps
+}
+
 ## Why a reported standard error is missing, in the fit's own names. An
 ## indefinite Hessian puts negative entries on the inverse diagonal (A53).
 .se_missing_report <- function(se, nms, hessian = NULL, label = "") {

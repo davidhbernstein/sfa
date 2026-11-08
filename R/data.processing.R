@@ -11,6 +11,8 @@
   ## precision; below it the tilt form is the accurate one.
   NE_TILT_SWITCH = 30,
   MIN_POSITIVE   = .Machine$double.eps,
+  ## Total objective penalty for a draw the likelihood cannot evaluate (A56).
+  NONFINITE_PENALTY = 1e12,
   LOG_SQRT_2PI   = 0.918938533204672741780329736406,
   MAX_VALUE      = .Machine$double.xmax,
   ## Safe upper bound for arguments passed to exp() -- exp(700) ~= 1.01e304,
