@@ -143,6 +143,27 @@ opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.boby
   return(results)
 }
 
+## Two points closer than this (per coordinate, relative to max(1, |x|)) share
+## a Hessian: 1e-8 is 1e-5 of optim()'s default ndeps step (A53).
+.SFA_HESS_TIE_TOL <- 1e-8
+
+## The Hessian for a point substituted for optim()'s, from the estimator
+## optim(hessian = TRUE) itself uses, so standard errors do not depend on which
+## stage won; at a tie, optim()'s own Hessian is carried across. A53, see
+## notes/code_history/opts.md. `control` must match the final optim() call's.
+.sfa_substitute_hessian <- function(fn, par, ref = NULL, control = list()) {
+  rp <- ref$par
+  rh <- ref$hessian
+  np <- length(par)
+  if (!is.null(rp) && length(rp) == np && all(is.finite(rp)) &&
+    is.matrix(rh) && all(dim(rh) == np) && all(is.finite(rh)) &&
+    all(abs(par - rp) <= .SFA_HESS_TIE_TOL * pmax(1, abs(rp)))) {
+    return(rh)
+  }
+  h <- tryCatch(stats::optimHess(par, fn, control = control), error = function(e) NULL)
+  if (is.null(h) || !all(is.finite(h))) NULL else h
+}
+
 ## Stage 3 is a refinement pass over a point stages 1-2 already produced, so a
 ## failure here should cost the polish, not the fit. See
 ## notes/code_history/opts.md for the two failures this guards.
@@ -246,7 +267,7 @@ opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF
       opt$value > start_feval + 1e-10 &&
       .sfa_point_credible(fn, start_v, start_feval, lower.optim, upper.optim)) {
       h <- if (isTRUE(optHessian)) {
-        tryCatch(numDeriv::hessian(fn, start_v), error = function(e) NULL)
+        .sfa_substitute_hessian(fn, start_v, ref = opt)
       } else {
         NULL
       }
