@@ -1,1657 +1,398 @@
-# sfa 1.2.1
+# sfa 1.3.0
 
-## Bug fixes
+This release adds new estimators and fixes defects in released code. Most of
+those defects gave a wrong or irreproducible result without any error or
+warning, and several fixes change estimates. Fits made under 1.2.0 should be
+compared only after reading **Breaking changes** and **Changes that alter
+results**.
 
-* **`psfm(model_name = "GTRE")` (the default `estimator = "fiml"`) could stop
-  just short of the maximum, so its estimates depended on the machine.** The
-  final L-BFGS-B stage ends on a flat ridge between the persistent scales. On
-  `USUtilities` (`lq ~ lK + lL + lF`), Windows R 4.6.1 stopped at
-  log-likelihood 575.9013 with an intercept of 5.812, while macOS R 4.5.2
-  reached 575.9059 and 5.782. The fit now runs the same Newton-decrement
-  check and `nlminb()` polish as `sfm()`, and the Windows fit reaches 575.9059
-  too.
-  The check is recorded in the new `$stationarity` component. It is skipped
-  when a scale has collapsed onto its bound, which the existing boundary flags
-  report, because a Hessian differenced there gives standard errors that do
-  not exist. A fit that
-  was already at the maximum costs one extra gradient; one that was not
-  takes about twice as long.
+## Breaking changes
 
-* **`sfm()`'s `"NHN_Z"` and `"NE_Z"` could stop far short of the maximum,
-  and were slow doing it. Their estimates change.** Both started from a
-  flat sigma_v = 0.1 and delta = 0.1, and an uncentred `z` puts a ridge between
-  the intercept and slope of delta. bobyqa spent its full 10,000
-  evaluations on that ridge, and the stationarity polish then ran on
-  numerical gradients. On `panel89`, `y ~ q1 + ... + w4 | z` took over 100 s
-  and ended at log-likelihood 773.2, below the 775.6 of the NHN model it
-  nests. It now reaches 879.85 in a few seconds, the same value the `vhet`
-  path finds for this model, with delta = (-5.32, 0.743) where it used to
-  report about (-0.80, -0.13). Both models now start from that
-  unconstrained log-scale fit and polish with nlminb rather than bobyqa; the
-  returned object's layout is unchanged. A `start_val` or `start_from` is
-  used as before, and `use.nlminb`/`use.bobyqa` still override the default.
+* **`ttsfm()` reports `sigma_v`, `sigma_u` and `sigma_w` on their natural
+  scale, under those names.** `$out` and `coef()` used to hold the optimizer's
+  log-scale values, and in the homoskedastic case both one-sided scales were
+  labelled `(Intercept)`. Code that exponentiated these rows must stop doing so.
+  When a scale has determinants, its rows stay link coefficients, now prefixed
+  `Zu.` and `Zw.`.
 
-* **`inefficiency_test()` now computes only the one-sided LR test by
-  default.** The default used to be all four statistics, so a call with no
-  `test` argument reported the Wald test, which at a nominal 5% rejects about
-  20% of the time under the null at every sample size in the package's own
-  size table, alongside the valid ones. The one-sided LR test, Coelli's
-  (1995) recommendation, holds its size and is the more powerful of the two
-  valid tests. The others are still available by name: pass
-  `test = c("lr_1sided", "lr", "wald", "m3t")` for the four-row comparison.
+* **`inefficiency_test()` computes only the one-sided LR test by default**
+  (Coelli 1995). The Wald test used to be reported alongside it, and it rejects
+  about 20% of the time at a nominal 5%. Pass
+  `test = c("lr_1sided", "lr", "wald", "m3t")` for all four.
 
-* **The missing-standard-error warning from `zsfm()`, `lcsfm()` and the other
-  non-two-tier entry points pointed to `tt_boundary_report()`,** which refits
-  `ttsfm()` models only. Only `ttsfm()` fits now mention it; the others point
-  to `sfa_diagnostics()`, which reads the Hessian of any `"sfareg"` fit.
+* **Some invalid arguments are now refused instead of silently
+  reinterpreted:**
+  - `Method` accepts only `"L-BFGS-B"`, in every entry point. With any other
+    method, `optim()` dropped the bounds that keep the scales positive.
+  - `psfm()` and `esfm()` accept only `TRUE` or `FALSE` for `inefdec`. Any other
+    value used to fit a cost frontier.
+  - `ivsfm(model_name = "C2SLS")` refuses `uhet`. It used to ignore it.
 
-* **DESCRIPTION and the README counted seventeen cross-sectional distribution
-  pairs.** The seventeen `model_name` values are fifteen pairs plus the two
-  heteroskedastic variants `NHN_Z` and `NE_Z`; both now say fifteen.
+* **`logLik()` returns `NA` with a warning for robust fits**
+  (`robust = "mlqe"`, `"psi"` or `"mdpd"`). Their objective is a divergence, not
+  a log-likelihood, so `AIC()` and `BIC()` now propagate `NA` instead of a
+  number that cannot be compared with an ML fit. `print()` and `summary()` now
+  name the objective they show.
 
-* **`sfm()`'s `"NW"` and `"NLN"` estimates depended on the number of
-  simulation draws. They are now computed by quadrature, and they change.**
-  At the default `Nsim` (200 for n up to 4444), the simulated
-  log-likelihood was off by 0.3 to 0.5 at n = 500, at the true parameters as
-  well as at the optimum. That is the size of the differences that decide
-  where the optimum sits, so `sigu` and the shape parameter moved with
-  `Nsim`: in one sample, `sigu` went 0.24, 0.12, 0.0009 at 200, 800 and
-  3200 draws. Both models now integrate the inefficiency out by
-  deterministic composite Gauss-Legendre quadrature, accurate to about
-  1e-12 in each observation's log-density against adaptive integration,
-  including a Weibull shape below 1. The fitted log-likelihood is the exact
-  one, and the efficiency predictor uses the same nodes. **Estimates of
-  `sigu`, `k` and `mu` from earlier versions will differ,** and can differ
-  substantially where the likelihood is flat. The new values are the
-  maximum likelihood estimates the simulated ones were approximating.
-  The simulated estimator remains as `integration = "simulate"`, with
-  `Nsim` and the `sim_*` arguments unchanged, so earlier results can be
-  reproduced. Under the default, setting `Nsim` warns that it is ignored,
-  and `simulation_se()` refuses the fit, since there is no simulation
-  variance to measure. Each likelihood evaluation costs several times a
-  200-draw simulated one (#65).
+* **`bread()` is now on the estimation scale, matching `estfun()`.** As a
+  result, `sandwich::sandwich()` and `sandwich::vcovCL()` return a consistent
+  covariance on the estimation scale. For the scale `coef()` reports, use
+  `vcov(type = "sandwich")` or `vcov(type = "clustered")`.
 
-* **A transformed response was fitted untransformed.** `log(q) ~ log(K)`
-  fitted `q` in levels on `log(K)`, with coefficients around 1e7 and no
-  warning, in `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()` and `psfm()`: the
-  response was named `all.vars(formula)[1]`, the raw column, while the
-  regressors went through `model.frame()`. The left-hand side is now evaluated
-  as written, and a fit with `log()` in the formula is identical to one on
-  pre-logged columns. `residuals()` and the parametric bootstraps in
-  `gof_test()`, `lcsfm_homogeneity()` and `psfm_bootstrap()` read or wrote
-  the response by the same name and are fixed with it. `copsfm()`, `npsfm()`,
-  `selsfm()` and `ivsfm()` were not affected (#78).
+* **`data_gen_p()`'s `y_pl_mvtn` column differs from earlier versions for the
+  same seed**, because `tmvtnorm` is no longer used. Every other column is
+  unchanged.
 
-* **`fitted()`, `residuals()`, `predict()` and `efficiency()` failed on a fit
-  whose data had gone out of scope.** They found the data by re-evaluating
-  the call, so a formula built at top level and a fit made inside a function,
-  on data local to it, gave "Cannot recover the data" from all four.
-  `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()`, `copsfm()`, `ivsfm()` and
-  `selsfm()` now keep the `data` argument on the fit, as `psfm()` already
-  did; `gof_test()`, `composed_cdf()`, `lcsfm_homogeneity()`, the robust
-  accessors and `tt_boundary_report()` use it too, so the last no longer
-  needs `data` passed (A45).
+## Changes that alter results
 
-* **A `copsfm()` fit with a standard error it could not compute crashed
-  instead of warning.** The report added by A65 labelled its warning with
-  `model_name`, which `copsfm()` never defines, so the fit stopped with
-  `object 'model_name' not found` and was discarded -- the outcome A65 was
-  written to remove -- or, with a `model_name` in the caller's workspace,
-  printed that instead. The label now names the copula. `R CMD check` had
-  reported it all along as a "no visible binding" NOTE (A72).
+Each fix below changes estimates on at least some data. Before the fix, the
+wrong result came without an error or a warning.
 
-* **`psfm()`'s default model crashed on a formula with no `|` segment.**
-  `psfm(y ~ x, individual = "id")` -- `model_name = "TRE_Z"`, the default --
-  and `model_name = "FD"` both stopped with the internal error
-  `object 'z_vars' not found`, because they read the variance-determinant
-  segment unconditionally while `data_proc()` set it only when a pipe was
-  present. An omitted segment now means `| 1`, the package's documented
-  convention and what `GTRE_Z` already did, and the fit is identical to the
-  one with `| 1` written out (A71).
+### Cost frontiers
 
-* **`efficiency_ci()` reported a different efficiency estimator, under the same
-  column name, for a fit that had lost `$exp_u_hat`.** The stored field is the
-  Battese-Coelli score `E[exp(-u) | e]`; the fallback used when it was absent
-  computed `exp(-u_hat)` from the JLMS predictor, which is `exp(-E[u | e])`.
-  Jensen's inequality separates the two, so the `te_hat` column silently
-  reported efficiencies biased DOWN -- by up to 1.8e-2 on a 150-observation
-  NHN fixture -- with nothing to distinguish them from the ones the normal path
-  returns. The fallback now rebuilds the Battese-Coelli score from
-  `$u_posterior`, which is the expression the fit itself used, so it is exact
-  rather than approximate and what `efficiency_ci()` reports no longer depends
-  on whether `$exp_u_hat` survived. Found while triaging issue #64, whose
-  claim about these four lines was that they left a vector-length gap; they do
-  not -- `u_hat` is resolved before the length check runs -- but the estimator
-  substitution was real.
+* **`copsfm(inefdec = FALSE)` maximised the density of `v - u` instead of
+  `v + u`.** The scales and intercept were wrong: on clean data with a true
+  `sigma_u` of 1, it reported 0.031. Production fits were unaffected. **Re-run
+  any `copsfm()` cost fit made with 1.2.0.**
 
-* **`efficiency_ci()` accepted a stored predictor that did not belong to the
-  observations it was reported against.** The guard added for issue #2 checked
-  only that `$u_hat` and `$exp_u_hat` had one value per observation, which a
-  vector of the right length and the wrong order satisfies. Such an object was
-  accepted silently, and on a 60-observation NHN fit with `$exp_u_hat`
-  reversed, the reported point estimate fell outside its own confidence
-  interval in 7 of 60 rows with nothing objecting. Both fields are fixed
-  functions of the `$u_posterior` the fit also carries, so each is now
-  recomputed from it and compared; a discrepancy is refused by name, reporting
-  how far apart they are. Swept over 72 fits (three sample sizes, three seeds,
-  `NHN`/`NHN_Z`/`NE`/`NTN`, both orientations) before relying on the identity:
-  the worst discrepancy on a genuine fit is 7.8e-16 for `$exp_u_hat` and
-  exactly zero for `$u_hat`, against a guard tolerance of 1e-8. A fit that does
-  not carry a field is unaffected -- the value is rebuilt from the posterior as
-  before. Issue #64 asked for this as a recomputation of the stored values
-  instead; that was not done, because recomputing would change which estimator
-  the function reports.
+* **`sfm(estimator = "cols", inefdec = FALSE)` returned the frontier
+  coefficients with the wrong sign.** **Re-run any COLS cost fit made with
+  1.2.0.**
 
-* **A fit made inside a wrapper function could no longer say whether it was a
-  production or a cost frontier.** Cost-vs-production orientation was
-  recoverable only by re-evaluating the `inefdec` expression recorded in the
-  call, in the environment of the fit's formula. That fails for an ordinary
-  pattern -- the formula built at top level, the fit made inside a helper that
-  passes `inefdec` as a local variable -- because the variable is not reachable
-  from where the formula lives. `.is_cost_fit()` then returned `NA` and
-  `efficiency(logDepVar = FALSE)`, `.sfa_inefdec()`, the composed CDF and
-  `lcsfm_homogeneity()` all refused to run on a finished fit, reporting that
-  they could not tell the orientation. Every entry point that takes `inefdec`
-  now records the resolved value in the fit as `$inefdec`, a scalar logical
-  (37 result assemblies across `sfm()`, `psfm()`, `zsfm()`, `lcsfm()`,
-  `ttsfm()`, `copsfm()`, `selsfm()` and `ivsfm()`; `esfm()` already did), and
-  `.is_cost_fit()` reads that in preference to the call. A fit that carries no
-  such field -- one saved before this change -- still reports `NA` and still
-  errors rather than defaulting to production, which is the guard gap A43 added.
+* **`efficiency(logDepVar = FALSE)` applied the production formula `1 - u/f`
+  to cost frontiers.** It now reports `f / (f + u)` (issue #2).
 
-  Two things found while fixing it. `.sfa_inefdec()` duplicated the resolution
-  rather than delegating, so A43's "one resolver" was really two; it now
-  delegates, and the character branch it carried for "`psfm()`'s cost function
-  string" moved into the resolver -- no entry point has ever stored a character
-  `inefdec`, so that branch is reachable only by setting the field by hand.
+* **Methods could read a cost fit as a production fit.** This happened when
+  `inefdec` was passed as a variable, or when the fit was made inside a
+  function. Orientation is now recorded on the fit as `$inefdec` and read from
+  there. `composed_cdf()`, `lcsfm_homogeneity()`, the robust residuals and
+  `predict(type = "response")` stop if the orientation cannot be determined.
+  They no longer assume one.
 
-* **`psfm()` and `esfm()` fitted a cost frontier when `inefdec` was anything
-  other than `TRUE`.** Orientation is resolved with `isTRUE(inefdec)`, which
-  maps `NA`, `1` and `"yes"` to `FALSE` without complaint, so
-  `psfm(..., inefdec = "yes")` -- written by someone who means production --
-  estimated the opposite model and recorded `$inefdec = FALSE` on the fit as
-  though it had been asked for. `sfm()`, `zsfm()`, `lcsfm()` and `ttsfm()`
-  already refused such values through their shared argument check; `psfm()`
-  was the one fitter that never called it, so its `formula`, `data`,
-  `maxit.*`, `optHessian`, `PSopt` and `verbose` arguments went unchecked too.
-  It now runs the same check, and `esfm()` checks `inefdec` as `copsfm()` does.
-  Both refuse anything but a single `TRUE` or `FALSE`.
+### Every formula-based entry point
 
-* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()` and `psfm()`
-  reported a `NaN` standard error with no signal at all, and discarded a
-  finished fit when the Hessian was singular.** The first five took their
-  standard errors as
-  `suppressWarnings(sqrt(diag(solve(opt$hessian))))`, so on an indefinite
-  Hessian the negative-variance coordinates came back `NaN` while
-  `suppressWarnings()` discarded R's own "NaNs produced" -- the only thing said
-  about it. Nothing set a flag and the convergence code read 0. Measured on
-  `zsfm(model_name = "ZISF")` with `data_gen_cs(N = 25, rand = 8, sig_u = 1,
-  sig_v = .3, cons = .5, beta1 = .5, beta2 = .5, mu = .5, a = 5)`: one negative
-  eigenvalue (`-1474` against a largest of `3.48e6`), two of six standard errors
-  `NaN` -- one of them the slope `x2`, true value 0.5 -- and zero warnings. (On
-  that machine the fit also reports `convergence = 0`, so nothing in the output
-  flags it at all; on all five CI platforms the same fit reports `52`, where the
-  convergence code does carry a signal and only the missing standard errors go
-  unexplained. The standard errors go missing on four of those five platforms
-  either way.) All six now report through the same helper `ttsfm()` uses, naming
-  the parameters and the Hessian's extreme eigenvalues in `$se_unresolved`,
-  which `print()` and `summary()` carry since a warning does not survive
-  `saveRDS()`. Their `sum(colMeans(hessian)) == 0` test caught only an all-zero
-  Hessian, so a singular but non-zero one made `solve()` error outright and
-  threw away a fit that had already run -- minutes of one for the two
-  simulated-ML models; that is now caught.
+* **A transformed response was fitted untransformed.** With
+  `log(q) ~ log(K)`, `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()` and `psfm()`
+  fitted `q` in levels. The left-hand side is now evaluated as written, and the
+  bootstraps in `gof_test()`, `lcsfm_homogeneity()` and `psfm_bootstrap()` are
+  fixed with it (#78).
 
-  `psfm()` carries the same two defects at **seven** sites, covering `GTRE` and
-  `TRE` (which share one), `GTRE_Z`, `TRE_Z`, `GTRE_FML`, `TFE_WMLE`, `TFE` and
-  `FD`. **Four of the seven** left the inverse unguarded, so a singular but
-  non-zero Hessian discarded a finished *panel* fit, the most expensive kind the
-  package produces. Its guard tests `any(hessian == 0)`, which catches a zero
-  *entry* rather than singularity. `FD`'s site spells the same quantity
-  `sqrt(diag(qr.solve(opt$hessian)))`, which is why earlier sweeps for
-  `sqrt(pmax(diag(solve(...)), 0))` and `sqrt(diag(solve(...)))` both missed it.
-  Measured on `psfm(model_name = "GTRE_FML")` with `data_gen_p(t = 5, N = 40,
-  rand = 1, sig_u = 1, sig_v = .3, sig_r = .2, sig_h = .4, cons = .5,
-  beta1 = .5, beta2 = .5, eta = .1)`: three of seven parameters have a negative
-  variance estimate, so they report `NA`, and nothing said why.
+### `sfm()`
 
-* **`ttsfm()` said nothing when it could not compute a standard error, and
-  errored outright when the Hessian was exactly singular.** On a fit whose
-  Hessian is indefinite the negative-variance coordinates lose their standard
-  error, which is correct -- no standard error exists for them there -- but
-  the fit reported `NaN` in those cells and no warning of any kind. Measured on
-  `data_gen_cs(N = 300, rand = 3002, sig_u = .5, sig_v = .2, cons = 5,
-  beta1 = 1.5, beta2 = 2, a = 5, mu = .1)` fitted with `model_name = "TTHN"`:
-  428 seconds, one negative eigenvalue (`-0.00312` against a largest of
-  `30578.7`), two of six standard errors `NaN`, zero warnings. Seed 3049 of the
-  same design gives three of six, also silently.
+* **`"NW"` and `"NLN"` are now fitted by quadrature instead of simulation.**
+  At the default number of draws, the simulated log-likelihood was off by 0.3
+  to 0.5 at n = 500. That was enough for `sigu` and the shape parameter to
+  change with `Nsim`. The new estimates are the exact maximum likelihood
+  estimates. They can differ substantially from the old ones where the
+  likelihood is flat. `integration = "simulate"` restores the old estimator
+  (#65).
 
-  `ttsfm()` now names the parameters whose standard error could not be
-  computed, reports the Hessian's smallest and largest eigenvalue, and says
-  explicitly that an indefinite Hessian here is *either* a point that is not a
-  maximum *or* a boundary solution -- where the Hessian in the full parameter
-  space need not be positive definite -- rather than asserting one reading. The
-  result is recorded in `$se_unresolved` and printed by `print()` and
-  `summary()`, since a warning does not survive `saveRDS()`. `solve()` on a
-  singular Hessian is also caught now: it used to throw away a fit that had
-  already taken minutes.
+* **`"NHN_Z"` and `"NE_Z"` could stop far short of the maximum.** They now
+  start from an unconstrained log-scale fit and polish with `nlminb()`. On
+  `panel89`, the old start ended at a log-likelihood of 773.2 after more than
+  100 s. The new start reaches 879.85 in a few seconds.
 
-* **A negative variance estimate was reported as a standard error of
-  exactly zero, and a t-value of `Inf`.** Standard errors were taken as
-  `sqrt(pmax(diag(V), 0))` at 21 places, so a parameter whose estimated
-  variance came back negative -- which is what an indefinite Hessian gives --
-  was reported as infinitely precise rather than as unidentified. On
-  `psfm(model_name = "GTRE_FML")` with `data_gen_p(t = 5, N = 40, rand = 1)`,
-  three of seven parameters have a negative variance estimate (`x1`
-  -2.83e-06, `sigv` -3.87e-04, `sigh` -3.76e-04) and all three were reported
-  with `st_err` 0 and `t-val` `Inf`, including the slope `x1 = 0.5426`. Such a
-  parameter now reports `NA`, which is what the other entry points already did
-  by taking the square root of the negative value directly. The remaining
-  standard errors on that fit are unchanged, and quantities that are not a
-  parameter's standard error -- the per-firm posterior spread in `sfm()`, where
-  a small negative is quadrature rounding on a genuinely near-zero variance --
-  still report zero.
+* **A fit can no longer be reported as converged at a point that is not a
+  maximum.** Before reporting standard errors, `sfm()` computes the Newton
+  decrement. If it exceeds 1e-4, `sfm()` polishes with `nlminb()`, and warns
+  if the point is still not a maximum. The result is recorded in
+  `$stationarity`.
 
-* **`sfm()` could report a fit as converged, with standard errors, at a point
-  that is not a maximum.** On a flat ridge `optim()` can stop with
-  convergence code 0 short of the maximum. In an RTMB scoping study on
-  `sfm(model_name = "NTN")` (180 fits; `ad_scoping/RESULTS.md` in the
-  development workspace), two fits did this: N = 150 seed 31 and N = 300
-  seed 56 of `y_pcs_tn`. They sat 1.53 and 3.60 log-likelihood units below the
-  supremum, which in both cases is the `sigma_v` collapse. One had an
-  indefinite Hessian.
+* **`"NR"`, `"NTN"` and `"NHN_Z"` handle the `sigma_v -> 0` corner.** On some
+  samples the likelihood is highest where the noise vanishes. `"NR"` and
+  `"NTN"` now probe that corner and move there only when the likelihood is
+  higher by more than 1e-4. A fit on the corner is flagged
+  (`$sigma_v_at_bound`, or `$ntn_sigma_v_at_bound` for `"NTN"`), reports `NA`
+  standard errors and gives a warning. Interior fits are unchanged.
 
-  `sfm()` now computes the Newton decrement at the returned point whenever it
-  is about to report standard errors. It polishes with `nlminb()` when the
-  decrement exceeds `1e-4`; the 167 sound interior fits in that study were all
-  below `7e-9`. The polish works on the log scale for positive parameters, so
-  it can walk a ridge to a scale's infinity, and is kept only if the
-  log-likelihood rises. On seed 31 it reaches the supremum, and the existing
-  `ntn_sigma_v_at_bound` flag and warning then apply. On seed 56 it recovers
-  3.48 of the 3.60 and warns that the point is still not a maximum. Either way
-  the fit no longer looks clean. The result is recorded in `$stationarity`.
-  The NTN `sigma_v` boundary now sets its standard errors to `NA` explicitly,
-  because a polished Hessian can invert numerically there.
+* **`"NTN"` had two more defects.** Near the lower bound of `lambda`, its
+  log-likelihood lost all precision and could exceed OLS's, which is
+  impossible there. It could also end below the `"NHN"` fit it nests, on 200 of
+  2,700 test fits. The likelihood is now computed exactly, and each fit is
+  checked against `mu = 0` (#55).
 
-  The decrement is taken over the parameters clear of a bound. A parameter
-  sitting closer to a bound than the differencing stencil reaches is otherwise
-  differenced across the likelihood's own domain penalty, and the gradient
-  becomes the penalty's: on `sfm(model_name = "NHN_Z")` fitted to the package's
-  own `cs_small(N = 200)` fixture, where `sigma_v` collapses to `1.5e-06`, the
-  reported gradient was `1.8e+18` and the decrement `2.4e+21`. Such a
-  coordinate is now differenced forward, left out of the decrement, and judged
-  by the sign of its one-sided slope, which is recorded in `$stationarity` as
-  `at_bound`, `n_at_bound` and `bound_ok`. On that fit the decrement is `-886`
-  and the bound is where a minimum belongs. A negative decrement is reported as
-  what it is -- the Hessian over the remaining parameters is not positive
-  definite, so the point is a saddle -- rather than as a predicted gain.
+* **The `"NG"` and `"NNAK"` likelihoods were wrong far from the frontier.** The
+  parabolic cylinder function they use was clipped below an argument of -37.4,
+  wrong there by hundreds of log units. The far-tail terms also cancelled, and
+  NG's log-likelihood read exactly 0 near a collapsed scale. All three are now
+  exact. NNAK now uses NG's multistart. NG is checked against the NE model it
+  nests (issue #45), and neither model can end below its own best start (#30).
 
-* **A `sigma_u` collapsed to zero was reported as the correct answer even when
-  the residual skew said inefficiency was present.** `sfm()` sets
-  `$sigma_u_at_bound` whenever the fitted one-sided scale reaches the zero
-  boundary, and the two cases that reach it read in OPPOSITE directions. Under
-  WRONG skew (third central moment `>= 0`) the boundary genuinely is the
-  maximum likelihood estimate -- the Type I failure of Olson, Schmidt and
-  Waldman (1980) -- and should be read as no evidence of inefficiency. Under
-  CORRECT skew the data say inefficiency IS present, so the boundary should not
-  be the answer and the fit is suspect.
+* **`"TSL"` and `"NR"` could report log-likelihoods far above the true
+  maximum** as a scale collapsed (`"TSL"` reported +2.55e40; issue #28). Both
+  are now computed without the cancellation that caused it.
 
-  Only the first case was handled. The fit-time warning was guarded on
-  `wrong_skew && at_bound`, so the second case was flagged and **silent**.
-  Worse, `print()` and `summary()` printed the sentence "Under wrong skewness
-  this is the correct MLE, not a failure (Waldman 1982)" in **both** cases,
-  having only dropped the clause that names the skew -- so the suspect fit was
-  shown the exculpation belonging to the sound one, in the output that survives
-  `saveRDS()` and a fresh session.
+* **The `"NU"`, `"NHN"` and `"NHN_Z"` log-densities were floored at -708.**
+  They are now computed in logs.
 
-  Measured on `sfm(model_name = "NW")`, `y_pcs_w`, `N = 150`: seeds 1, 5 and 7
-  all return `optim()` convergence code 52
-  (`ABNORMAL_TERMINATION_IN_LNSRCH`), no standard errors,
-  `$sigma_u_at_bound = TRUE`, `$wrong_skew = FALSE` and residual third moments
-  of `-1585.5`, `-469.3` and `-4007.9`. Two of the three are not even
-  stationary: moving `sigma_v` alone, with every other parameter held at its
-  fitted value, gains `0.4771` and `0.0452` in log-likelihood. On seed 1 a
-  point `6.5743` better exists at the same `sigma_u`. So a user saw a boundary
-  flag, no standard errors and a printed note calling it correct, on a fit that
-  had not converged and was not a maximum.
+### `psfm()`
 
-  Both reporting paths now branch on the skew. The warning for the suspect case
-  names the residual moment, reports a non-zero convergence code when there is
-  one, says the fit may not be a maximum, and states that the wrong-skew
-  reading does not apply. The sound case keeps the message it had.
+* **`"GTRE"` (default `estimator = "fiml"`) gave platform-dependent
+  estimates.** The final stage could stop just short of the maximum on a flat
+  ridge. On `USUtilities`, Windows stopped at a log-likelihood of 575.9013 and
+  macOS reached 575.9059. The fit now runs the same stationarity check and
+  polish as `sfm()`, and both platforms reach 575.9059.
 
-  `"tHN"` is excluded from the new reading and keeps its own: it already warns
-  that heavy-tailed noise absorbing the whole one-sided component is a known
-  property of the model rather than a numerical failure, and its row names put
-  it through this same generic block, so the two would otherwise contradict
-  each other on one fit.
+* **`"GTRE"` by simulated ML averaged its antithetic draws on the log scale.**
+  That is a geometric mean, so the log-likelihood was biased down: by 0.23 on a
+  60x5 panel at the default number of draws. Raised by Chris Parmeter.
 
-* **`sfm(model_name = "NTN")` reported a log-likelihood above the true one, and
-  above OLS, as `lambda` approached its lower bound.** The truncated-normal
-  density was formed as `log Phi(aa) - log Phi(bb)` with
-  `aa = (mu/lambda - eps*lambda)/sigma` and
-  `bb = (mu/sigma)*sqrt(1 + lambda^-2)`. Both arguments carry the same
-  `mu/lambda`, so with `mu < 0` each term reached about `-1e13` while their
-  difference stayed `O(1)`: the answer was the rounding error of two enormous
-  numbers. On one sample the reported value was `-370.99` where the true value
-  is `-372.73`, which also put it `1.21` ABOVE the OLS log-likelihood -- and
-  near `lambda = 0` the model collapses to a normal regression, so OLS is an
-  upper bound there and cannot be beaten. The error was granular in exactly the
-  way the diagnosis predicts: on one fit it came out as a multiple of the
-  floating-point spacing of `aa^2/2`, 512, once per observation.
+* **`"TRE_Z"` could report a negative `sigma_r`**, on about 7% of samples.
+  `sigma_r` is now held positive from the first optimizer stage.
 
-  `aa^2 - bb^2` is `(-2*mu*eps + eps^2*lambda^2 - mu^2)/sigma^2` analytically,
-  with the `mu^2/lambda^2` cancelling exactly, so the difference is now taken
-  through `.log_phi_tilt()` -- as `"NE"`, `"NGE"` and `"TSL"` already do -- and the
-  quadratic reduces in closed form to `-eps^2*(1 + lambda^2)/(2*sigma^2)`.
+* **`"PL80_MVTN"` could stop short of a maximum, or fail to start.** It now
+  runs a derivative-free stage between two L-BFGS-B runs, as the other models
+  do.
 
-  That path is taken **only** where the cancellation is real, namely both
-  arguments below `-1e3` (the switch `.log_phi_tilt()` itself uses, below which
-  the direct form is accurate to `1e-11`). Everywhere else -- `mu > 0`, or
-  `lambda` away from its bound -- the pre-existing expression is kept
-  **bit for bit**, including its association order. That matters: on the flat
-  `sigma_v` ridge where `lambda -> Inf` is a supremum, `lambda` is not
-  identified, and a last-bit change to the likelihood moved the reported
-  `lambda` by a factor of 20 at an unchanged log-likelihood. 2413 of 2700 fits
-  are now bit-identical to before. Verified two independent
-  ways: against the analytic `lambda -> 0` limit, which the fix now approaches
-  at the expected `O(lambda^2)` rate down to `2e-16` while the old form turned
-  around below `lambda = 1e-4` and reached `0.63`; and, where neither logarithm
-  underflows, against `log(Phi(aa)/Phi(bb))` evaluated in level space.
-  Reported in #55.
+* **`"FD"`, `"TFE"` and `"TFE_WMLE"` were not reproducible.** Their starting
+  values were drawn without a seed, so repeated fits differed by up to 3e-4 in
+  relative terms, and each fit advanced the caller's random-number stream.
+  Both problems are fixed.
 
-* **`sfm(model_name = "NTN")` could return a fit far below the nested `"NHN"`.**
-  At `mu = 0` the truncated-normal likelihood IS the half-normal one with the
-  same `(lambda, sigma)`, and `mu = 0` is *interior* -- `start_cs()` bounds only
-  `lambda` and `sigma` below -- so a maximum below NHN's is a failure rather
-  than a limit that is merely approached. It happened on 200 of 2700 fits, by up
-  to 764. NTN is now checked at the end against a fit made with `mu` held at 0,
-  and polished from it when that point is better, exactly as `"NG"` is checked
-  against shape 1 (#45) and `"NNAK"` against `m = 0.5` (#30) -- a check at the
-  end rather than another start, because as a start it moves fits that were
-  never in trouble. On the same 2700 fits this leaves 13 below NHN, by at most
-  0.39; all 13 sit at `lambda` above 1300, which is the flat `sigma_v` boundary
-  of the A59 case, where a single polish stops short on the ridge. Reported
-  in #55.
+### Other entry points
 
-* **`vcov(type = "sandwich")` and `vcov(type = "clustered")` recommended a fallback
-  that did not work.** When the bread is undefined -- the fit carries no
-  Hessian, or the Hessian is singular -- both paths advised
-  `type = "bhhh"` on the grounds that it needs no Hessian. That is true but not
-  sufficient: BHHH still has to invert the outer product of the scores, and a
-  fit that reaches these errors is frequently flat in a parameter, which makes
-  that singular too. On such a fit the error said `type = "bhhh"` "is defined
-  here" while `vcov(type = "bhhh")` raised "the outer product of gradients is
-  singular", so a user following the advice met a second error.
+* **`ivsfm(model_name = "IVLIML")`, the default estimator, could converge to
+  a corner of its parameter box** at `rho = -0.995`. This happened on 27 of
+  300 draws at `rho = 0.8`. It now starts from the `"IVCF"` solution, and runs
+  about twice as fast.
 
-  The recommendation is now made only when BHHH is actually available, and when
-  it is not the message says so and names the parameter responsible. Found by
-  measuring test coverage: `.sfa_dead_parameters()`, which supplies that name,
-  had **no** test coverage at all -- 57 of 57 expressions never executed -- so
-  the whole diagnostic path for these covariances had never run in the suite.
+* **`zsfm(model_name = "ZISF_Z")` often stopped in a spurious local
+  optimum**, on 7 of 50 test samples. It now starts from several points, as
+  `"ZISF"` does.
 
-* **`sfm(model_name = "NTN")` reported a collapsed noise component by saying
-  nothing at all.** On some samples NTN has no interior maximum in `lambda`:
-  the profile log-likelihood rises monotonically toward a finite limit as
-  `lambda` grows without bound, so the fit correctly runs to `lambda` of order
-  `1e6` and the boundary *is* the maximum likelihood estimate. But the
-  likelihood is flat in `lambda` there, so the Hessian is singular and every
-  standard error comes back `NA`. The user was given `lambda = 972468`, six
-  `NA` standard errors, and no message of any kind.
+* **`ttsfm(model_name = "TTNE")` clipped the exponents in its
+  log-likelihood.** It is now computed exactly.
 
-  `sfm()` now warns and sets `ntn_sigma_v_at_bound` on the fit, saying that the
-  boundary is the estimate rather than a failure, that no finite standard error
-  for `lambda` exists at that point, and that the result should be read as "no
-  noise component identified in these data". This is the same treatment
-  `tHN` has had since 1.2.0 for the mirror case, `sigma_u` collapsing onto
-  zero; the other component was simply never covered.
+* **`ttsfm(model_name = "TTHN")` could replace `optim()`'s result** with
+  another stage's on a tie at rounding level.
 
-  The criterion is `sigma_v/sigma < 1e-3`, the same scale-free ratio
-  `thn_sigma_u_at_bound` uses. Measured over 12 samples it separates the two
-  regimes by five orders of magnitude -- the boundary fits sit at `4.9e-08` to
-  `1.3e-06` and the interior fits at `0.126` to `0.442` -- so the threshold
-  falls in empty space rather than being tuned to the data.
-
-
-* `marginal_effects()` on a truncated-normal fit (`sfm(model_name = "NTN")`
-  with `uhet`/`muhet`) now reports every covariate of the `mu` design. The
-  covariate list was taken from the `sigma_u` design alone, so with
-  `uhet = ~ z1, muhet = ~ z2` the `z2` effect was silently missing, and with
-  `muhet` alone the call stopped claiming every column was constant. The
-  chain rule already handled a covariate in one design only; it was never
-  given the names. `?marginal_effects` also now lists the `"component"`
-  attribute and the `_h` column names returned for `component = "h"`.
-
-* **`sfm(model_name = "NG")` could stop at the OLS point, below the NE
-  solution it nests (issue #45).** NG at shape 1 is NE, so its maximum can
-  never be below NE's. But its starting values only hold E[u] at a moment
-  anchor while sweeping the shape, and on some samples the optimizer stages
-  ended with `sigma_u` on its floor, where the likelihood is OLS's. On the
-  issue's sample NG returned -359.2835 (OLS's value, every firm fully
-  efficient) against NE's -359.2456. NG now also fits its likelihood with the
-  shape held at 1 -- NE's likelihood -- from four splits of the residual
-  variance, and if the finished fit is below that point it is polished from
-  there and the better kept, the same check gap A25 added against the
-  multistart point. On that sample NG now reaches -358.568, confirmed by
-  numerical integration of the normal-gamma density. Over 360 fits (20
-  samples of n = 200, every `data_gen_cs()` column) NG ended more than 1e-3
-  below NE on 4 and now on none; the other 353 fits are bit-for-bit unchanged.
-
-* **`ivsfm(instruments = ~1)` failed with an unrelated error before R 4.4.**
-  With no excluded instruments the instrument matrix was built by
-  `reformulate(character(0))`, which R 4.3 and earlier reject ("'termlabels'
-  must be a character vector of length at least one"). The intended message
-  -- that the order condition needs at least as many excluded instruments as
-  endogenous variables -- was reached only on R 4.4 and later. The package
-  supports R 4.0 and up; the message is now the same on all of them.
-
-* **`ivsfm(model_name = "C2SLS")` silently ignored `uhet`.** C2SLS is 2SLS
-  with a homoskedastic moment correction for `sigma_u` and the intercept, so
-  it has no `delta` to estimate. It accepted `uhet` anyway and returned the
-  homoskedastic fit unchanged -- the same coefficients and the same `jlms` as
-  without it, and no `delta_` rows -- so a user asking for the APS (2017)
-  model got the 2016 one without being told. Supplying `uhet` with
-  `"C2SLS"` is now an error that points to `"IVLIML"` or `"IVCF"`.
-
-* **`ttsfm(model_name = "TTNLS")` reported wrong standard errors for every
-  coefficient.** Its standard errors came from inverting the Hessian of the
-  sum of squares directly. That Hessian is `2 X'X` in the coefficients, so
-  the covariance is `2 s^2` times its inverse, with `s^2` the residual
-  variance. Without that factor the slopes' standard errors did not depend on
-  the noise in the data at all: on 3,000 simulated observations they were
-  about half of OLS's (0.019 where OLS gives 0.039). The Hessian also kept
-  the unidentified `sigma_u` and `sigma_w` directions, along which the
-  intercept trades off one for one, so the intercept's standard error depended
-  only on the sample size (40.8 at n = 300, 12.9 at n = 3,000), whatever the
-  data. Both are fixed. Without determinants TTNLS is OLS, and its
-  coefficients and standard errors now equal `lm()`'s. Where `sigma_u` and
-  `sigma_w` carry determinants the standard errors are conditional on the
-  fitted determinant coefficients.
-
-* **`Method` now rejects any value other than `"L-BFGS-B"` instead of silently
-  optimizing without bounds.** `Method` is passed to `optim()` for the final
-  stage together with the lower and upper bounds that hold the scale parameters
-  positive -- but `optim()` applies bounds for `"L-BFGS-B"` only. With
-  `"BFGS"`, `"CG"`, `"Nelder-Mead"` or `"SANN"`, R warned
-  (`"bounds can only be used with method L-BFGS-B"`) and the stage then ran
-  UNBOUNDED, free to take a standard deviation to or past zero. That was
-  invisible on an interior optimum -- all five methods agree to eight figures on
-  a well-behaved fit, because the bounds never bind there -- and it bit only
-  where a bound was active, which is exactly the boundary-collapse region the
-  scaffold's guards exist for. `sfm()`, `zsfm()`, `lcsfm()`, `psfm()`,
-  `ttsfm()`, `copsfm()`, `ivsfm()` and `selsfm()` now validate `Method` before
-  fitting anything, and `opt.optim()` enforces it as well, since that is the
-  function which passes the bounds.
+* **`psfm_bootstrap(seed_offset = k)` reused all but one seed of the run at
+  `k - 1`.** The default `seed_offset = 0` seeds as before.
 
 ## New features
 
-* **`copsfm()` gains Laplace noise, `vdist = "laplace"`**, with any of its
-  copulas and either inefficiency marginal. The noise density is
-  `exp(-|v| / delta_v) / (2 delta_v)`. Its scale is reported as `delta_v`
-  because it is not the standard deviation, which is `sqrt(2) delta_v`.
-  `skewness_decomp()` reads these fits too. The density has a kink at
-  `v = 0`, and on fixed nodes that cost the quadrature three orders of
-  accuracy: a per-observation error in `log f` of up to 8e-3 at the default
-  128 nodes, against 1e-13 for normal noise. So each observation's integral is
-  split at the kink, and each piece gets half the nodes. That restores machine
-  precision (2e-15 against `integrate()`) at the same cost (M3).
+### Estimators and distributions
 
-* **`simulation_se()` now reports the log-likelihood of every refit.**
-  Attribute `loglik` holds them, named by seed, and `loglik_sd` their standard
-  deviation. Each refit maximizes a different simulated likelihood, so the
-  spread measures simulation noise; the largest value is not a better solution
-  (A73).
+* **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter
+  and Zhao (2023), for `"NHN"` and `"NE"`. It replicates the paper's Monte
+  Carlo results.
 
-* **`psfm()`'s `rand.gtre` is now documented as what it is.** Its help said
-  only "seed for replication", which invited using it as a multi-start. It
-  randomizes the draws, so it changes the likelihood being maximized, and the
-  starting point stays where it was. Refits under different values are
-  therefore not comparable by their log-likelihood. Measured on a 56-firm,
-  24-period GTRE panel at the default number of draws, `rand.gtre` alone moved
-  the simulated log-likelihood at one fixed parameter vector over a range of 26
-  units, and four of six refits exceeded the exact `estimator = "fiml"`
-  maximum. With `halton_num = 1000` the range fell to 3. The help now points to
-  `simulation_se()` to measure the variation, `halton_num` to reduce it, and
-  `PSopt = TRUE` with `rand.psoptim` (which has no effect otherwise) to test
-  the starting point. Prompted by a co-author's robustness check that ranked
-  `rand.gtre` refits by log-likelihood (A73).
+* **`sfm(estimator = "cmle")`** is the moment-constrained maximum likelihood
+  estimator of Zhao and Parmeter (2022), for `"NHN"` and `"NE"`. A fit clamped
+  at the edge of the admissible set is flagged in `$boundary`.
 
-* **`marginal_effects()` now covers the truncated normal.** It previously
-  handled the families whose `E[u]` is proportional to the scale -- the
-  half-normal and the exponential -- where the effect collapses to
-  `half * delta_k * E[u]`. `model_name = "NTN"` fitted with `uhet`/`muhet` is
-  not one of those: the pre-truncation mean enters `E[u]` beside the scale, so
-  the effect is the chain rule through both designs. With `a = mu/sigma_u` and
-  `lambda(a) = phi(a)/Phi(a)`, `dE[u]/dmu = 1 - lambda(lambda + a)` and
-  `dE[u]/dsigma_u = lambda + a lambda(lambda + a)`; `mu` carries an identity
-  link, so `delta_mu` is not a semi-elasticity the way the scale coefficients
-  are. A covariate in one design but not the other contributes only through
-  that one. Every derivative is checked against `numDeriv` in the tests rather
-  than against a second hand derivation.
+* **`skewness_decomp()`** implements the decomposition of Bonanno, De Giovanni
+  and Domma (2017). It splits the composed error's third moment into the parts
+  due to `u`, to `v` and to their dependence, and also reports Zenga's measure.
+  The new help page `?sfa-wrongskew` covers it, `acols`, `cmle` and `esfm()`,
+  and says when to use each.
 
-* **`marginal_effects()` also reports the scaling property.** Under
-  `sfm(scaling = ~ z)` one factor `h = exp(z'delta_s)` multiplies both the scale
-  and the pre-truncation mean, so `a = mu/sigma_u` is constant in `z`,
-  `E[u] = h E[u*]`, and the effect is exactly `delta_s_k * E[u]` whatever the
-  family -- with `delta_s_k` itself the semi-elasticity, so `dE_u.dz / E_u` is
-  constant by construction. The quantity was already fitted and simply not
-  reported: the fit stored no scaling block, because `n_blocks` does not name
-  one. `sfm()` now stores `s_spec` alongside `z_spec`, `v_spec` and `mu_spec`.
+* **`sfm(model_name = "NGB2")`** fits a generalized beta of the second kind
+  inefficiency (Makiela and Mazur 2022). It nests the half-normal, exponential,
+  gamma, Weibull and half-t models.
 
+* **`sfm(model_name = "NB", estimator = "cols")`** fits Carree's (2002)
+  binomial inefficiency, the one inefficiency distribution here that can be
+  skewed either way.
 
-* **`vcov()` now offers four covariances, not two.** `type` gains
-  `"sandwich"` and `"clustered"`, joining `"hessian"` and `"bhhh"`, and
-  `vcov()` gains a `cluster` argument. Every maximum-likelihood fit in the
-  package that retains its likelihood through `keep_objective = TRUE` can
-  therefore report Hessian, outer-product, heteroskedasticity-robust and
-  cluster-robust standard errors through one interface, without the caller
-  having to attach `sandwich` and know its idiom.
+* **`copsfm()` gains a `vdist` argument for the noise distribution**:
+  `"logistic"`, `"glogistic"` (skewed) and `"laplace"`, as well as `"normal"`.
+  It also gains `udist = "exponential"` and `copula = "independent"`.
+  Bonanno and Domma (2022) give the density in closed form, and `copsfm()`'s
+  quadrature matches it to about 1e-14. `?copsfm` corrects two of the paper's
+  moment formulas.
 
-  These are computed in the package rather than delegated, because the
-  covariance has to be formed on the scale the scores live on and only then
-  mapped to the scale `coef()` reports. `sandwich::sandwich()` cannot take
-  that step -- it composes bread and meat itself and knows nothing about the
-  mapping. `vcov(type = "clustered")` clusters over the rows of the score
-  matrix, which for the panel likelihoods is one row per FIRM rather than per
-  firm-year, and says so when handed a vector of the wrong length.
+### Inference and diagnostics
 
-* **OPG (BHHH) standard errors are now available from every entry point whose
-  likelihood is separable per observation.** `keep_objective = TRUE` gains
-  `zsfm()`, `lcsfm()`, `ttsfm()` (`"TTNE"`, `"TTHN"`), `copsfm()`, `ivsfm()`
-  (`"IVLIML"`, `"IVCF"`) and `selsfm()`, joining `sfm()` and `psfm()`. Those
-  fits then support `vcov(type = "bhhh")`, `influence_sfa()`, the `sandwich`
-  methods, `TIC()` and `vuong()`. Because the OPG needs no Hessian at all, it
-  is defined in exactly the cases where the default path fails -- an
-  indefinite or non-invertible Hessian.
+* **`vcov()` gains `type = "sandwich"` and `type = "clustered"`**, and a
+  `cluster` argument, alongside `"hessian"` and `"bhhh"`. All four are on the
+  scale `coef()` reports.
 
-  The estimators that maximise no log-likelihood have no score, and now say so
-  instead of returning a fit whose score-based tools are silently unavailable:
-  `ttsfm("TTNLS")` (nonlinear least squares) and `ivsfm("C2SLS")` (2SLS with a
-  corrected intercept) warn that `keep_objective = TRUE` has no effect, as
-  `psfm()` already did for its moment-based and FE estimators. `npsfm()` is
-  nonparametric and has no likelihood to retain.
+* **`keep_objective = TRUE` now works wherever a likelihood is maximised:**
+  in `zsfm()`, `lcsfm()`, `ttsfm()`, `copsfm()`, `ivsfm()` and `selsfm()`, and
+  in every likelihood-based `psfm()` model. `vcov(type = "bhhh")`,
+  `influence_sfa()`, the `sandwich` methods, `TIC()` and `vuong()` follow from
+  it. For `psfm()` models the scores are per firm. Estimators without a
+  likelihood warn that the argument has no effect.
 
-  Two caveats are documented rather than papered over. `selsfm()` is a
-  two-step estimator, so its OPG conditions on the first-stage probit exactly
-  as its Hessian already does; and for `lcsfm("LCM_CN")` with
-  `penalty_c > 0` the contributions are those of the *unpenalised* likelihood,
-  since a penalty on the class probabilities is not a per-observation quantity.
+* **A missing standard error is now explained.** `$se_unresolved` names the
+  parameters and gives the Hessian's extreme eigenvalues, and `print()` and
+  `summary()` show it. This covers `ttsfm()`, `zsfm()`, `lcsfm()`, `copsfm()`,
+  `ivsfm()`, `selsfm()` and `psfm()`.
 
-* **`psfm()`'s closed-form panel likelihoods supply per-firm scores too.**
-  `keep_objective = TRUE` now reaches `"GTRE_FML"`, `"TFE_WMLE"`, `"FD"`,
-  `"PL80"`, `"PL80_MVTN"`, `"BC92"`, `"K1990"` and `"K1990modified"`, joining
-  the four simulated-ML models. Every `psfm()` estimator that maximises a
-  log-likelihood can now produce a score matrix, and the remaining ones
-  (`"TFE"`, `"SSFE"`, `"SSRE"`, `"SSCRE"`, `"CSS"`, `"LS"`, `"KSS"`,
-  `"GTRE_SEQ1"`, `"GTRE_SEQ2"`) are moment-based, FE/LSDV or sequential and
-  warn that the argument has no effect. Contributions are per *firm*, so
-  `sandwich::vcovCL()` takes a cluster variable with one entry per firm and
-  the resulting errors are firm-clustered by construction.
+* **`tt_boundary_report()`** refits a two-tier model from several starting
+  values of `sigma_v` and reports which solution has the highest likelihood.
+  It compares likelihoods; it is not a test.
 
-  This matters most where the Hessian path fails. `"FD"`'s Hessian is
-  routinely indefinite, so three of its five standard errors print as `NaN`;
-  the OPG returns all five, and they are large -- which is the honest answer
-  for parameters the near-zero Hessian eigenvalues said were barely
-  identified.
+* **`marginal_effects()` now covers `"NTN"`** with `uhet` and `muhet`, and
+  fits with the `scaling` property.
+
+* **`simulation_se()` reports each refit's log-likelihood**, in
+  `attr(, "loglik")`.
+
+* **`density_weights(log = TRUE)`** returns log weights. Rank weights on this
+  scale.
+
+### Panel models and data
+
+* **`psfm()` gains the simulated-ML draw controls `sfm()` has**: `sim_type`,
+  `antithetics`, `sim_burn`, `sim_scrambling` and `sim_prime`. The defaults
+  reproduce 1.2.0's draws exactly.
+
+* **`data_gen_p()` gains `fd_draw` and `delta_fd`**, to generate a
+  first-difference design whose null is genuinely false.
+
+* **Fits keep their `data`.** `fitted()`, `residuals()`, `predict()` and
+  `efficiency()` therefore work after the data have gone out of scope.
 
 ## Bug fixes
 
-* **NG and NNAK: the likelihood was wrong for residuals far below the
-  frontier, and an NNAK fit could end below the half-normal model it nests
-  (issue #30).** Three defects, now fixed.
+### Standard errors and covariances
 
-  First, `.log_pcf()` -- the log parabolic cylinder function both densities
-  use -- still returned the clipped value of the gsl code it replaced for
-  arguments below `z = -37.42`, wrong there by hundreds of log units: at
-  `z = -42.9`, `log D` was 240.9 against a true 461.0. At shape 1/2 NNAK
-  equals NHN in closed form, yet on one sample NNAK evaluated at NHN's
-  optimum scored -624.8 against -404.9, all of the gap from one outlying
-  residual. `.log_pcf()` is now exact at any argument, which is checked against
-  the closed form for order -1 and against numerical integration.
+* **A negative variance estimate was reported as a standard error of 0**,
+  with a t-value of `Inf`. It is now `NA`.
 
-  Second, for `z < 0` both densities formed `z^2/2 - eps^2/(2 sigma_v^2)` as
-  the difference of two terms that each reach 1e14 once `sigma_v` nears its
-  floor. The rounding noise came out as a spurious gain, which made the
-  degenerate `sigma_v -> 0` fits look better than they were. That difference is
-  now formed exactly (for NG it equals `eps/sigma_u + sigma_v^2/(2 sigma_u^2)`,
-  for NNAK `-mu eps^2 / sigma^2`), with the remaining factor supplied by a new
-  `.log_pcf_w()` that is exact in the far tail. Both likelihoods now equal the
-  convolution integral to 1e-8 at `sigma_v` down to 1e-7. The efficiency
-  predictions, which formed the same terms, are changed the same way.
+* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()`, `ttsfm()` and
+  `psfm()` could report `NaN` standard errors without a warning**, and a
+  singular Hessian discarded a finished fit. Both cases are now caught and
+  reported in `$se_unresolved`.
 
-  Third, with the likelihood exact, NNAK's surface often has a higher mode at
-  small shape that its single half-normal moment start does not reach. NNAK
-  now goes through the same candidate-and-polish multistart as NG, with the
-  shape swept down to 0.01. A second family of candidates covers a mode
-  near shape 0.001 in which `u` is mostly near zero with a long tail: for
-  shapes 0.001 to 0.03 it sets `sigma_u^2` to 10, 20 or 40 percent of the
-  residual variance rather than anchoring `E[u]` on the residual skewness,
-  which puts `sigma_u` near 0.03 there. The two families are ranked apart,
-  so the second adds to what is polished rather than displacing the first.
+* **`vcov()` returned matrices on the estimation scale under reported
+  names.** This affected `ttsfm()`, `copsfm()`, `ivsfm()` and `psfm()`'s
+  `"PL80"`, `"BC92"`, `"K1990"` and `"K1990modified"`. Standard errors were off
+  by a factor of `1/sigma`, or permuted, and `ivsfm("IVLIML")` failed
+  outright. `vcov()` now applies the fit's Jacobian, and `influence_sfa()` is
+  fixed with it.
 
-  Over 216 fits (12 samples by 18 response columns), the number of NG fits
-  ending more than one log-likelihood unit below the NE it nests falls from
-  7 to 0 (worst shortfall 217.4 to 0.02), and the number of NNAK fits ending
-  that far below NHN falls from 18 to 0 (worst 15905.5 to 0). No NNAK fit
-  ends lower than on main by more than 0.014, and 93 end higher. NNAK fits
-  take about 65 percent longer.
+* **`ttsfm(model_name = "TTNLS")` standard errors omitted the residual
+  variance.** Without determinants they now equal `lm()`'s.
 
-* **`sfm(model_name = "TSL")` could return a non-physical fit.** Both of the
-  truncated skew-Laplace likelihood's exponentially tilted Gaussians were
-  formed as two numbers whose large parts cancel analytically: with
-  `t = sigma_v/sigma_u` the tilt raises `t^2/2 + w t` and `log Phi` takes
-  exactly that back, so `A - aa^2/2 = -eps^2/(2 sigma_v^2)`. As `sigma_u`
-  collapsed, `t` grew without bound and the two pieces cancelled
-  catastrophically -- while both stayed FINITE, so the non-finite guard never
-  saw it. At `sigma_v = 1.126e20`, `sigma_u = 1e-7` the old form returned a
-  log-likelihood of `+2.55e40`, roughly `1e40` better than any legitimate
-  optimum and therefore an attractor. Both tilts, and the matching pair in the
-  TSL efficiency block, now go through `.log_phi_tilt()`, as `NE` and `NGE`
-  already did.
-
-  Over 432 TSL fits spanning 24 samples and 18 response columns -- mostly
-  deliberately misspecified, which is where `sigma_u` collapses -- **8 returned
-  a non-physical log-likelihood, and 8 more returned a perfectly plausible one
-  that was wrong by 1 to 11 log-likelihood units.** Both groups are now correct.
-  The second group is the one worth knowing about: those fits reported values
-  like `-353.45` where the right answer was `-364.47`, with nothing about the
-  number itself to suggest a problem.
-
-  Every one of the 16 sat at `sigma_u = 1e-7` exactly -- its floor -- while
-  scoring ABOVE the OLS that TSL nests at `sigma_u = 0`. That conjunction is a
-  usable diagnostic: it flags 17 of the 432 fits before the fix and 0 after.
-  Reported as issue #28.
+* **A badly scaled Hessian no longer stops `vcov()` or the `sandwich`
+  methods.** The Hessian is equilibrated before inversion. When no inverse
+  exists, the error names the parameter responsible.
 
 * **`sfm(model_name = "tHN")` lost every standard error on about a third of
-  fits.** The tHN branch returned `-.Machine$double.xmax / n` per observation
-  for a parameter outside its domain. Summed over the observations that **is**
-  `.Machine$double.xmax`, and `optim()` differences the objective to build its
-  gradient, so the first difference was not merely large but non-finite, and
-  the Hessian -- and with it every standard error -- came back `NA`.
+  fits**, because the gradient was differenced across the domain penalty. On
+  84 test fits, the number losing every standard error falls from 25 to 2.
 
-  The guard looked unreachable: `nu` is bounded below at 2.05 while the guard
-  tests `nu <= 2`, and `sigma_u` at `1e-7` while the guard tests
-  `sigma_u <= 0`. It is reached because `optim()` steps **outside** its own box
-  to form the finite difference -- `ndeps` defaults to `1e-3`, and the guard
-  was observed firing at `sigma_u = -0.0009999`, exactly `1e-7 - 1e-3`. Over
-  nine fits, every fit that reached the guard lost all its standard errors and
-  every fit that did not kept them.
+* **`copsfm()` lost every standard error when a parameter sat on its bound.**
 
-  Over 84 tHN fits the number losing every standard error falls from **25 to
-  2**, with the fitted log-likelihoods unchanged. The two that remain sit at
-  `nu = 7720` and `nu = 69` -- the t's normal limit, where the degrees of
-  freedom are weakly identified and the Hessian is legitimately near-singular.
+* **`estfun()` returned scores of order 1e150 near a bound.** It now uses a
+  one-sided difference there and warns.
 
-  The penalty is now `.SFA_CONSTANTS$DOMAIN_PENALTY_PER_OBS`, chosen by
-  measurement rather than by analogy: the obvious fix of matching the `1e12`
-  used by the `NGE`, `NGB2`, `NLN` and `NW` branches recovers **nothing**, since
-  `1e12` differences just as badly. Those four branches are unchanged here --
-  whether their own guards are reachable the way tHN's is has not been measured,
-  and assuming it would repeat the reasoning that left tHN untouched.
+* **`AIC()`, `BIC()` and `TIC()` counted 6 parameters for
+  `ivsfm("IVLIML")`, which estimates 11.** The difference was enough to
+  reverse a model choice.
 
-* **A covariance that failed on a badly scaled Hessian now succeeds, and one
-  that genuinely cannot be computed now names the parameter responsible.**
-  Two separate defects sat behind the same `"no invertible Hessian"` message.
-  First, `solve()` was called on the raw Hessian, whose diagonal can span
-  twenty orders of magnitude when one scale parameter is pinned near zero and
-  the likelihood is correspondingly sharp in that direction; the matrix is
-  then declared computationally singular even though it is well conditioned
-  once equilibrated. `vcov()` and the `sandwich` methods now solve
-  `D^(-1/2) H D^(-1/2)` and undo the scaling, which is algebraically the same
-  inverse and numerically a far better one -- on the fit that prompted this,
-  `rcond` rose from 3e-17 to 8e-2 and the standard errors appeared. Second,
-  when no inverse exists on any scaling, the error said only that one did not,
-  leaving the user to guess which of eleven parameters had collapsed. It now
-  reports the specific cause per parameter: a score column that is
-  identically zero, a coefficient pinned on its bound, a flat direction of the
-  diagonal-normalised Hessian, or non-positive curvature.
+* **`logLik()` for `lcsfm()` with `penalty_c > 0` was off by twice the
+  penalty.**
 
-* **`psfm_bootstrap()`'s `seed_offset` did not give distinct runs.** Replication
-  `b` was seeded with `b + seed_offset`, so a run at `seed_offset = 1` repeated
-  replications 2 to `BOOT` of the run at `seed_offset = 0` exactly, although
-  the help page promised "reproducible-but-distinct seeds across multiple
-  bootstrap runs". Two runs pooled as independent shared all but one draw, and
-  a standard error from the pool understated the spread. The seed is now
-  `b + seed_offset * 100000`, so different offsets never share a seed for
-  `BOOT` up to 100000. `seed_offset = 0`, the default, seeds exactly as
-  before, so existing results reproduce; results from a non-zero offset
-  change. Measured alongside: the draws are identical whatever `numCores` is
-  and whatever the caller's RNG kind, and the caller's random stream is left
-  as it was -- both now pinned by tests.
+* **`TIC()` refuses a fit whose Hessian is not positive definite.**
+  `sfma(weights = "tic")` gives such a fit no weight, and `vuong()` refuses it.
 
-* **`sfm("NG")` evaluated its log-likelihood as exactly 0 near a collapsed
-  scale.** The density contains `z^2/4 + log D(z)`, the
-  parabolic cylinder function's log plus a quadratic, and the log-D routine
-  returns `-z^2/4` plus a term of order `log z`. Added as two numbers they
-  cancel, and for NG `z` is about `sigma_v / sigma_u`, so the cancellation
-  bites exactly where `sigma_u` approaches its lower bound. On 200
-  observations the summed NG log-likelihood was off by 0.03 at
-  `sigma_u = 1e-7`, by +117 at `1e-9` -- spuriously better than the truth --
-  and exactly 0 from `1e-10` down. Zero is finite, so the non-finite guard let
-  it through, and it sat far above any real optimum. The multistart guard
-  did not always catch it: a plain `sfm(y ~ x1 + x2, model_name = "NG")` on
-  `data_gen_cs(N = 300, rand = 12, sig_u = 0.5, ...)` returned an objective
-  of exactly 0 at `sigma_u = mu = 1e-7`, with no warning, and now returns an
-  interior fit whose log-likelihood beats the nested normal regression's. The sum is now formed as one
-  quantity, by the large-argument expansion where it would cancel, and the
-  likelihood tends to its correct limit, the normal density of `v` alone.
-  `"NNAK"` contains the same combination and now forms it the same way, but
-  was measured not to be exposed: its argument grows only as `sigma_v -> 0`,
-  where the likelihood is already, correctly, very negative.
+### Efficiency prediction
 
-  The same combination made `efficiency()`'s NG and NNAK scores `NaN` once
-  `z` passed about 53, as `exp(z^2/4)` overflowed in numerator and
-  denominator alike. That ratio is now formed in logs.
+* **`efficiency_ci()` could report the wrong estimator, or the wrong
+  observations.** When a fit had lost `$exp_u_hat`, its fallback reported
+  `exp(-E[u|e])` in place of the Battese-Coelli score. It also accepted stored
+  predictors that were in the wrong order or recycled. Both are now rebuilt
+  from, or checked against, the posterior (issue #2).
 
-* **`optHessian = FALSE` with the default `PSopt = FALSE` failed outright for
-  `sfm()`'s default model and for every `lcsfm()` model, and lost the
-  log-likelihood everywhere else.** Without the final `optim()` stage a fit
-  stored the earlier stage's result as `$opt` unchanged, and two of those
-  stages do not use `optim()`'s field names: `nlminb()` reports `objective`,
-  `bobyqa()` reports `fval` and `ierr`. Every consumer reads `$value`.
-  `sfm()`'s `"NHN"`, `"NE"`, `"NTN"` and `"NU"` run nlminb *instead of* bobyqa,
-  and nlminb's result was discarded, so `$opt` was `NULL` and the fit stopped
-  with "number of items to replace is not a multiple of replacement length".
-  The other eleven `sfm()` models returned a fit whose `logLik()`, AIC and BIC
-  were `NA`, with a warning that blamed moment-based estimation. `lcsfm()`'s
-  `"LCM"` and `"LCM_Z"` stopped with "invalid argument to unary operator",
-  and `"LCM_CN"` never kept any stage's result at all. `zsfm()`, `ttsfm()`,
-  `selsfm()`, `copsfm()`, `ivsfm()` and `psfm()` had the silent-`NA` half.
+* **Battese-Coelli scores underflowed to 0 for firms well above the
+  frontier**, in `sfm()`'s `"NHN"` and `"NHN_Z"` and `psfm()`'s `"TRE"` and
+  `"TRE_Z"`. `meanefficiency()` overflowed for a scale near 40. Both are now
+  computed in logs.
 
-  An earlier stage's result is now put into `optim()`'s shape before it
-  becomes `$opt`, and `sfm()` keeps nlminb's result when that is the stage
-  that ran. `logLik()` on such a fit is the log-likelihood at the reported
-  estimate. `optHessian = TRUE` (the default) and `PSopt = TRUE` are
-  unchanged.
+* **`ttsfm(model_name = "TTNE")`'s `Eemu.cond` used `sigma_v` where the
+  formula has `sigma_v^2`.**
 
-* **`fitted()`, `residuals()`, `predict()` and `efficiency(logDepVar = FALSE)`
-  on a `zsfm()` or `ttsfm()` fit could still answer from the wrong data.** The
-  1.2.1 check on recovered data (A47) is decisive where a fit stored its OLS
-  residuals, as `sfm()` does: the recovered frame is refitted and compared.
-  `zsfm()` and `ttsfm()` stored none, so for them the check could only count
-  rows -- and `ttsfm("TTNLS")` stored no row count either. A different data
-  frame of the same shape, bound to the name the call recorded, passed, and
-  every method answered from it without a warning. Both entry points now keep
-  the frontier's OLS residuals on the fit, and a same-shaped decoy is refused.
-  `ttsfm("TTNLS")` also now stores `nobs`.
+* **Some predictions were out of range far from the frontier.** `ivsfm()`
+  could report efficiencies above 1. `zsfm()` and `lcsfm()` could return `NaN`
+  or `-Inf`, and the `"NG"` and `"NNAK"` scores from `sfm()` could become
+  `NaN`.
 
-* **`ttsfm("TTHN")` replaced `optim()`'s result on a tie, and warned that the
-  final stage had failed.** The branch keeps whichever optimizer stage
-  attained the lowest objective, and chose with a bare `which.min()`. On one
-  seed bobyqa and `optim()` had converged to the same point -- parameters
-  agreeing to 1e-10, identical Hessian eigenvalues -- and a difference of
-  2.8e-14 at an objective of 189, one unit in the last place, discarded
-  `optim()`'s result. The warning printed both objectives to four decimals,
-  where they were equal. `optim()` is now displaced only by a stage that
-  improves on it by more than `optim()`'s own convergence tolerance
-  (`reltol = sqrt(.Machine$double.eps)`, relative), and the warning prints
-  the objectives to ten significant figures. Reported estimates change only
-  where the old choice was a tie, and then by the width of the tie. Standard
-  errors can change more on such fits, because keeping `optim()` also keeps
-  `optim()`'s Hessian, where the tie used to hand over a `numDeriv` one. On
-  one seed the SE count went from 6 to 4. That fit had collapsed `sigma_v`
-  to 0.001 (the corner described in `?ttsfm`), where the objective is flat
-  to about 5e-4 and no finite-difference Hessian resolves the curvature, so
-  neither count was meaningful there. What changes in general is that the
-  SEs no longer depend on which stage won a tie.
+* **`sfm(estimator = "cols")` used the half-normal posterior for `"NE"` and
+  `"NG"`.**
 
-* **`sandwich::sandwich()` and `sandwich::vcovCL()` returned silently wrong
-  standard errors for every model whose estimation and reported parameter
-  scales differ.** `bread()` was built from `vcov()`, on the REPORTED scale,
-  while `estfun()` returns scores on the ESTIMATION scale; `sandwich` composed
-  the two without knowing they disagreed. Where the two scales have the same
-  dimension this produced finite, plausible, wrong numbers: on
-  `ttsfm("TTNE")` the three sigma standard errors came out 29% low, 18% low
-  and 26% HIGH -- each wrong in a different direction -- while the betas,
-  whose Jacobian is 1, were correct. Where the dimensions differ it could not
-  conform at all, which is how `ivsfm("IVLIML")` (11 estimated, 6 reported)
-  surfaced it, failing with `non-conformable arguments`.
+* **`psfm()`'s `"GTRE"` and `"GTRE_Z"` efficiency scores were not
+  reproducible**, and computing them changed the caller's random-number
+  stream. A single firm whose posterior could not be computed also discarded
+  the fit, or failed on some platforms. That firm's scores are now `NA`, with
+  a warning.
 
-  Affected `ttsfm()`, `copsfm()`, `ivsfm()` and `psfm()`'s `PL80` family.
-  `sfm()`, `zsfm()`, `lcsfm()` and `psfm()`'s `TRE`/`GTRE` family report what
-  they estimate and were never affected.
+### Errors and failures
 
-  `bread()` is now on the estimation scale, matching `estfun()`, so
-  `sandwich::sandwich()` and `sandwich::vcovCL()` return an internally
-  consistent estimation-scale covariance -- and are defined for `IVLIML` at
-  all. For a covariance on the scale `coef()` reports, use the new
-  `vcov(type = "sandwich")` and `vcov(type = "clustered")`, which apply the
-  mapping. Where the two scales agree the results are unchanged.
+* **`psfm()`'s default model `"TRE_Z"`, and `"FD"`, failed on a formula with
+  no `|` segment.** An omitted segment now means `| 1`.
 
-* **`psfm(model_name = "GTRE")` combined its antithetic simulation draws on the
-  log scale.** The persistent component is simulated as `+r` and `-r`, two
-  draws of the same density, which average as `log((A + B) / 2)`. Both call
-  sites -- the loop path and the vectorised one -- computed
-  `0.5 * (log A + log B)`, which is `log(sqrt(A * B))`: the geometric mean,
-  which AM-GM puts strictly below the arithmetic one whenever the halves
-  differ. The vectorised site's own comment said the density was being
-  averaged.
+* **`optHessian = FALSE` failed, or lost the log-likelihood**, for most entry
+  points.
 
-  This is a finite-draw bias rather than an asymptotic error -- each half is
-  separately a consistent simulator, so the two rules agree as the draw count
-  grows. But the default count is `ceiling(sqrt(nrow(data))) + 100`, about 118
-  draws for a 60x5 panel, and measured there on identical draws the summed
-  log-likelihood was 0.23 too low, with the `sigma_r` profile optimum shifted
-  down 4.8%. The bias falls to 0.012 at 3200 draws and 0.0013 at 20000.
-  Averaging is now done on the density scale through log-sum-exp, so neither
-  half is exponentiated on its own.
+* **`ttsfm(model_name = "TTHN")` could fail** with "`'x' must be an array of
+  at least two dimensions`".
 
-  `GTRE` is the only model affected: `TRE` uses the `+r` half alone and
-  `GTRE_Z` has no antithetic pairing. GTRE estimates move slightly as a
-  result. Raised by Chris Parmeter.
+* **`psfm()` could fail on valid panels:**
+  - `"PL80"`, `"BC92"`, `"K1990"`, `"K1990modified"` and `"SSFE"` stopped with
+    "system is exactly singular" on between-rank-deficient designs.
+  - `"SSCRE"` could not fit an unbalanced panel.
+  - `"TRE"` failed on some platforms because of where its start fell relative
+    to a bound.
+  - `"GTRE_Z"` and `"TRE_Z"` stopped with a `rhoend` error.
 
-* **The optimizer's credibility gate accepted points outside the feasible
-  region.** `.sfa_point_credible()` decides whether an earlier optimizer stage
-  reached a point worth re-polishing from. It correctly refused a point resting
-  ON a parameter bound -- the signature of a scale driven to its floor -- but
-  tested that with `abs(par - lo) <= tol`, which measures distance rather than
-  direction. A point sitting BELOW the floor is far from it by that measure and
-  so was admitted, meaning the gate refused the boundary and accepted the region
-  beyond it. `psfm("TRE_Z")` is how this surfaced: `sigma_r = -0.2` against a
-  floor of `MIN_POSITIVE` reads as 0.2 away from the bound, so a negative
-  standard deviation passed as a credible optimum. Points outside their bounds
-  in either direction are now rejected.
+  `"SSRE"` and `"SSCRE"` now name the collinear columns.
 
-* **`psfm(model_name = "TRE_Z")` could report a NEGATIVE `sigma_r`.** The
-  sign of `sigma_r` is not identified: it enters the likelihood only as a
-  scale on simulation draws that are symmetric about zero, so `+sigma_r` and
-  `-sigma_r` describe the same model and fit equally well (flipping it moves
-  the objective by 8e-6 in relative terms; flipping `sigma_v`, whose sign is
-  pinned by `sigma_u / sigma_v`, moves it by a factor of 7). `TRE_Z` was the
-  only `psfm()` model that gave `bobyqa` an unbounded lower limit instead of
-  a per-parameter vector flooring the two scale parameters, so it was the
-  only one that could settle on the negative root -- about 7% of samples,
-  against none for `TRE`, `GTRE`, `GTRE_Z` or `GTRE_FML`. Every later
-  optimizer stage floors `sigma_r` at `MIN_POSITIVE`, so once `bobyqa`
-  returned a negative value it was already outside their box and could not be
-  corrected. `sigma_r` is now floored from the first stage. Affected fits
-  return the positive value of the same magnitude; a sample with no
-  detectable random effect goes to the boundary rather than to a negative
-  number.
+* **`ivsfm(instruments = ~1)` gave an unrelated error on R 4.3 and earlier.**
 
-  This also removes a spurious convergence failure. The `convergence/`
-  harness read `sigma_r`'s MSE as flat in the sample size -- slope +0.010 at
-  R2 0.008, where every other parameter of the same model passes at root-n --
-  because roughly one fit in fourteen contributed the squared distance
-  between `+sigma_r` and `-sigma_r` regardless of n. On absolute values the
-  same archive gives slope -0.949. The estimator was consistent all along.
+* **`psfm(model_name = "PL80_MVTN")` stored `$out` untransposed.**
 
-* **`estfun()` could difference against a numerical-stability penalty and
-  return scores of order 1e150.** When a finite-difference step leaves a
-  likelihood's admissible region the closure returns a large penalty as a
-  sentinel. That penalty is *finite*, so it passed the existing
-  `is.finite()` guard and was differenced like an ordinary value, filling the
-  meat matrix with enormous numbers that looked like numbers. Any fit resting
-  at or near a parameter bound was affected, which is the worst case for it to
-  reach: the OPG is offered precisely because it needs no Hessian and so works
-  where the default path fails. Steps that leave the region now fall back to a
-  one-sided difference on the admissible side, are zero only where both sides
-  are inadmissible, and raise a warning saying the fit sits at a bound and
-  that OPG/BHHH errors understate uncertainty in those directions.
+* **`fitted()` and the other methods on a `zsfm()` or `ttsfm()` fit could use
+  the wrong data**: a data frame of the same shape bound to the same name.
 
-* **`sfa_diagnostics()` labelled estimation-scale quantities with reported
-  names.** The Hessian, the numerical gradient and `plot()`'s likelihood
-  slices are all indexed by `opt$par`, which for `ivsfm("IVLIML")` has 11
-  entries against 6 reported names. The gradient came back as
-  `(Intercept), x1, x2, sigma_u, sigma_v, rho_x2, NA, NA, NA, NA, NA` --
-  entries 4 to 6 carrying names that belong to different quantities, which is
-  worse than no name at all. These now use the estimation-scale names, and
-  `print()` discloses the second scale when it differs. The correlation
-  diagnostic deliberately keeps the reported names, because it is built from
-  `vcov()`, which is already on that scale.
+* **The optimizer's internal credibility check accepted points outside the
+  feasible region.**
 
-  `sfa_diagnostics()$convergence$logLik` went through `-opt$value` and so
-  reported a divergence for robust fits; it now goes through `logLik()`. The
-  achieved objective is still reported, as `objective`, under a name that
-  says which objective it is.
+### Messages and reporting
 
-* **`estfun()` gave robust fits advice that could not help them.** The
-  "no retained likelihood" check ran before the robust check, so a robust fit
-  made without `keep_objective = TRUE` was told to refit with it -- and the
-  refit then hit the robust refusal. The robust check now runs first.
+* **A `sigma_u` collapsed to zero was described as "the correct MLE" even
+  under correct skew.** In that case the fit may not be a maximum, and `sfm()`,
+  `print()` and `summary()` now say so.
 
-* **`logLik()`, `AIC()` and `BIC()` returned the divergence objective for
-  robust fits.** `sfm(robust = "mlqe" | "psi" | "mdpd")` minimises an MLq,
-  psi or density-power divergence, not a negative log-likelihood, so
-  `-opt$value` is not a log-likelihood and criteria built on it are not
-  comparable with anything. On a 300-observation NHN fit the numbers were:
+* **`sfm(model_name = "NTN")` with `sigma_v` collapsed now warns** and sets
+  `$ntn_sigma_v_at_bound`.
 
-  | fit | `logLik()` | `AIC()` |
-  |---|---|---|
-  | `mle` | -299.50 | 608.99 |
-  | `mlqe` | -256.77 | 523.53 |
-  | `psi` | +29408.72 | -58807.43 |
-  | `mdpd` | +1240.59 | -2471.18 |
+* **`psfm(keep_objective = TRUE)` warns where it has no effect.** It used to
+  be ignored silently.
 
-  Comparing `AIC(mle)` against `AIC(robust)` -- the obvious thing to do --
-  made the robust fit look better by 3080 points, entirely from the change of
-  objective, with no warning. `mlqe` is the most dangerous of the three
-  because -256.77 sits plausibly beside the MLE's -299.50. `estfun()` and
-  `TIC()` already refused these fits in explicit terms; `logLik()` now
-  refuses in the same terms, returning `NA` with a warning and keeping its
-  `df`/`nobs` attributes so `AIC()`/`BIC()` propagate `NA` rather than error.
-  `sfma()` was never exposed: it passes `robust` to every candidate, and
-  since robust supports `"NHN"` only, the others fail and it stops first.
+* **`sfa_diagnostics()` labelled estimation-scale quantities with
+  reported-scale names**, and reported the divergence for robust fits as
+  `logLik`.
 
-* **`print()` and `summary()` labelled that same number "log likelihood".**
-  They now name the objective they are showing -- `mdpd objective (NOT a log
-  likelihood):` for a robust fit, `penalised log likelihood:` when
-  `penalty_c > 0` -- and are unchanged for ordinary maximum-likelihood fits.
+* **`estfun()` gave robust fits advice that could not help them.**
 
-* **`logLik()` reported the penalised objective for `lcsfm()` fits with
-  `penalty_c > 0`, and the field meant to prevent that was itself wrong.**
-  `like.fn()` returns `-(L + P)` for log-likelihood `L` and penalty `P`, so
-  `-opt$value` is `L + P`; the plain log-likelihood is `-opt$value - P`. Both
-  the `LCM_CN` and the `LCM`/`LCM_Z` branches stored `-opt$value + P`, giving
-  `L + 2P` -- so the "unpenalised" figure was *further* from the truth than
-  the penalised objective it was meant to correct. `P` is at most zero (by
-  Jensen, `J log J + sum log pi <= 0`), so both understated the
-  log-likelihood and `AIC()`/`BIC()` over-penalised the fit.
-
-  Measured on a 600-observation two-class mixture with 74/26 shares at
-  `penalty_c = 20`: `logLik()` returned -804.49 where the log-likelihood is
-  -799.35, understating by 5.14 and overstating `AIC()` by 10.28. The error
-  is zero at `penalty_c = 0` and grows with the penalty and with class
-  imbalance, so it is invisible in the balanced case.
-
-  `logLik()` now reads the corrected field, and the `LCM_CN` penalty is
-  evaluated at the parameters the fit actually reports. Verified against the
-  definition: `logLik()` equals `sum(objective(par, per_obs = TRUE))`, the
-  sum of the unpenalised per-observation contributions, at every
-  `penalty_c` tested.
-
-  `lcsfm_homogeneity()`'s MLR statistic is **unaffected** -- it uses the
-  penalised objective deliberately, since the penalty is what makes the
-  likelihood ratio "modified". Only the reported diagnostic changes.
-
-* **`AIC()`, `BIC()` and `TIC()` under-penalised `ivsfm("IVLIML")`.** Its
-  degrees of freedom came from `length(coefficients)`, the number of
-  parameters *reported*. IVLIML maximises over reduced-form nuisance
-  parameters it never reports -- 11 estimated, 6 reported -- so it was charged
-  for 6, a free `2 * 5 = 10` AIC points against any model that reports what it
-  estimates. On a 300-observation sample whose two log-likelihoods differ by
-  0.005, `AIC()` preferred IVLIML by 0.010; with the correct df it prefers
-  IVCF by 9.99, so the defect was large enough to reverse the choice.
-
-  `TIC(detail = TRUE)` inherited it in a second place. Its `penalty` is a
-  trace computed on the *estimation* scale, so comparing it against the
-  reported count gave `ratio = 11.898 / 6 = 1.98`, which reads as a gross
-  violation of the information matrix equality. Against the estimated count
-  it is `11.898 / 11 = 1.08` -- what a correctly specified model should give.
-
-  `df` is now the estimated count wherever the fit carries an optimizer,
-  falling back to the reported count for the moment-based and FE estimators
-  that do not. Every other model in the package reports exactly what it
-  estimates, so nothing else changes.
-
-* **`vcov()` was permuted for `psfm("PL80")`, `"BC92"`, `"K1990"` and
-  `"K1990modified"`.** These models estimate `(sigma_v, sigma_u, beta)` and
-  report `(beta, sigmaSq, gamma)`, so the two scales differ by a permutation
-  as well as a transformation. `vcov()` returned the estimation-scale inverse
-  Hessian under the reported names, which put `Var(sigma_v)` on the intercept
-  and `Var(beta)` on `sigmaSq`. On a 60-firm panel `confint()` reported the
-  intercept as `[1.0101, 1.0707]` where the printed standard error implies
-  `[0.9303, 1.1505]` -- 3.6 times too narrow, with every other row wrong in a
-  different direction. The delta-method Jacobian these fits already computed
-  for their own standard errors is now stored on the object and applied by
-  `vcov()`, so the two agree exactly.
-
-* **`psfm("PL80_MVTN")` stored `out` untransposed.** Every other entry point
-  stores the `p x 3` transpose, and the documented access `fit$out[, "par"]`
-  failed on this model alone with `subscript out of bounds`.
-
-* **`psfm("PL80_MVTN")` could fail to start, and could stop short of a
-  maximum.** Its out-of-domain penalty was `.Machine$double.xmax`; it is the
-  one likelihood handed straight to `optim()` with no derivative-free stage
-  in front of it, so L-BFGS-B differenced that penalty against an ordinary
-  value and overflowed, aborting the fit with `non-finite value supplied by
-  optim` on some samples. Separately, the orthant probability inside the
-  likelihood is computed to limited precision, so the finite-difference
-  gradient is noisy and a single L-BFGS-B run stopped at points that were not
-  maxima while still reporting `convergence = 0`. The penalty is now damped
-  and a derivative-free stage runs between two L-BFGS-B runs, as in every
-  other `psfm()` model. Already-converged fits are unchanged to the last
-  digit; where the single stage quit early the fit gains 5 to 7
-  log-likelihood points.
-
-* **`vcov()` returned standard errors on the wrong scale for `ttsfm()`,
-  `copsfm()` and `ivsfm()`, and failed outright for `ivsfm("IVLIML")`.** These
-  entry points estimate *log* sigmas and report sigmas, and `ivsfm()` reports
-  `rho = t/sqrt(1 + t't)`. Their reported standard errors have always carried
-  the delta-method correction, but `vcov()` did not: it named the
-  estimation-scale inverse Hessian with the reported names and returned it. So
-  `sqrt(diag(vcov(f)))` disagreed with the `sigma_u` standard error the same
-  fit printed by a factor of exactly `1/sigma_u` -- wrong in a way that looks
-  entirely plausible, and inherited by `confint()`, `lmtest::coeftest()` and
-  anything else built on `vcov()`. `ivsfm("IVLIML")` additionally estimates
-  reduced-form parameters it never reports, so naming an 11x11 matrix with 6
-  names failed with `length of 'dimnames' [1] not equal to array extent`.
-
-  `vcov()` now carries the fit's own Jacobian from the estimation scale onto
-  the reported one, and marginalises estimated-but-unreported parameters by
-  taking the corresponding block of the *inverse* rather than inverting the
-  block -- the latter conditions on the nuisance parameters being known and
-  understates every standard error. Both the Hessian and the BHHH path go
-  through the same map, so the two can no longer disagree about scale.
-  `influence_sfa()` was pairing estimation-scale scores with a reported-scale
-  covariance for the same reason, and is fixed with it.
-
-
-* **`ttsfm(model_name = "TTHN")` could stop with `'x' must be an array of at
-  least two dimensions`.** When the three optimizer stages disagreed about
-  which reached the best objective, `ttsfm()` substituted the winning stage's
-  result into the fit -- but a `bobyqa()` or `psoptim()` object does not carry
-  the `hessian` that the standard-error step then asked for, so the fit died
-  after the work was done. The substituted result is now given `optim()`'s
-  shape, with a Hessian computed at its own parameters. The same substitution
-  also silently cost the fit its log-likelihood: `bobyqa()` reports the
-  objective as `fval` where `optim()` reports `value`, so a `bobyqa`-won TTHN
-  fit returned `NA` from `logLik()`, `AIC()` and `BIC()` with no warning.
-  Both are fixed together.
-
-  **One consequence worth knowing.** Where the stages tie -- and on this
-  likelihood they frequently tie to within rounding -- which stage "wins" is
-  decided by the last bits of the objective and can differ between platforms.
-  The substituted path computes its Hessian with `numDeriv`, while an
-  unsubstituted fit carries `optim()`'s own. On an ill-conditioned fit the two
-  estimators can disagree about whether the Hessian is positive definite, and
-  therefore about how many standard errors are reportable. This is a property
-  of the conditioning, not of the fix -- but before the fix these fits errored
-  rather than reporting anything at all.
-
-* **Cost frontiers could be read as production frontiers by three
-  post-estimation functions.** `composed_cdf()`, `lcsfm_homogeneity()` and the
-  robust residual accessor each decided orientation their own way. Two were
-  wrong in the same manner: a fit made with `inefdec` passed as a *variable*
-  rather than a literal -- `flag <- FALSE; sfm(..., inefdec = flag)` -- had the
-  unevaluated symbol forwarded or an unresolvable value silently treated as a
-  production frontier. A cost fit was then scored with the production sign, with
-  no error and no warning. All three now resolve orientation through the same
-  helper the rest of the package uses, and **stop with a message when the
-  orientation genuinely cannot be determined** rather than assuming one.
-
-* **`efficiency(logDepVar = FALSE)` gave cost frontiers the production
-  formula.** On the level scale it returned `1 - u/f` for every fit; for a cost
-  frontier, where `y = f + u + v`, efficiency is minimum over actual cost,
-  `f / (f + u)`, the level-scale counterpart of the `exp(-u)` the default log
-  scale already reports. Cost-frontier level-scale scores from 1.2.0 were too
-  low (negative where `u` exceeded `f`). Production fits are unchanged. The
-  orientation is now read from the fit's `inefdec` even when it was passed as
-  a variable, which `predict(type = "response")` also could not do. Reported
-  in GitHub issue #2.
-
-* **`efficiency_ci()` could pair point estimates with the wrong
-  observations** if a fit's stored `u_hat` or `exp_u_hat` had a length that
-  divides the number of observations: a data-frame column silently recycles
-  such a vector. It now stops with a message instead (issue #2).
-
-* **`sfm(model_name = "NG")` and `"NNAK"` could return a fit far worse than a
-  point they had already reached.** The three optimizer stages start from the
-  best of NG's polished multistart candidates, and could end below it: on one
-  simulated sample the start scored -259.6 in log-likelihood and the fit came
-  back at -449.5. The fit is now never worse than that start; where the stages
-  end below it, the final stage is re-run from it and the better result kept.
-  Over 40 simulated samples this changed two fits by about 180 log-likelihood
-  points and left the rest within 0.5.
-
-* **`density_weights()` gave the same weight to every observation whose fitted
-  density fell below the smallest positive double, and lost the ordering among
-  them.** The weight was formed by evaluating the density on the natural scale,
-  where `.dens_nhn()` floors at `.Machine$double.xmin`, and then raising it to
-  the power `c`. Every observation past that floor -- `log f` below -708.4 --
-  arrived at the floor itself and came back with one identical weight. The
-  effect is largest exactly where the diagnostic is used: on a sharply peaked
-  fit (`sigma_v` near 0.04, `lambda` near 24, as maximum likelihood returns on
-  the coal data of Bernstein, Parmeter and Wright (2026)), 63 of 3511
-  observations shared a single weight of 1.7e-67 while their true log densities
-  spanned -4680 to -708, and `order(w)` -- the documented way to ask which
-  observations an estimator discounts most -- was wrong among them. The weight
-  is now formed as `exp(c * log f)`, normalised in logs before exponentiating.
-  A new `log` argument returns `log w` directly, which is what ranking or
-  thresholding should use: the smallest weights here run to `exp(-1042)` and
-  are not representable, let alone distinguishable, once exponentiated.
-  Weights that were already above the floor are unchanged to about 1e-14, and
-  no fitted value moves: `hscore()` and the robust objectives are bit-identical
-  before and after, and `calibrate_c()` shifts by about 1e-12 relative.
-
-* **The robust objectives formed `exp(loglik)^c` rather than `exp(c * loglik)`.**
-  `.robust_objective_vec()` and the calibration's `.per_obs_term()` exponentiated
-  the log-likelihood before applying the power, so an observation with `loglik`
-  below about -745 contributed exactly the `c`-limit of its term instead of a
-  value near it. This is now formed in the exponent throughout. No estimate
-  changes -- at those depths the recovered term is below the resolution of the
-  1 it is subtracted from, so the contribution is still `1/c` to the last bit --
-  but the objective is no longer discontinuous at the underflow boundary, which
-  matters for the numerical derivatives taken through it.
-
-* **`psfm(model_name = "FD")`, `"TFE"` and `"TFE_WMLE"` were not reproducible,
-  and changed the caller's random-number stream.** Their variance components are
-  seeded by an internal pooled fit whose own starting values were unseeded
-  `runif()` draws. Two fits of identical data in one session could differ by
-  up to about 3e-4 in relative terms, and occasionally one of them stopped with
-  an abnormal line-search termination where the other did not; every fit also
-  advanced the user's RNG. The draws are now taken under a fixed local seed and
-  the caller's RNG state is restored. The starting-value distribution is
-  unchanged, but results will differ slightly from fits made with 1.2.0, which
-  were themselves random.
-
-* **`psfm(model_name = "GTRE")` by simulated ML, and `"GTRE_Z"`, reported
-  efficiency scores that were not reproducible, and changed the caller's
-  random-number stream.** The persistent and transient efficiencies (`H`,
-  `U`) are ratios of multivariate normal orthant probabilities from
-  `tmvtnorm::ptmvnorm()`, which integrates by randomized quasi-Monte Carlo.
-  Two fits of identical data differed by up to 0.4% in `U` and 0.2% in `H`.
-  Parameter estimates and standard errors were never affected, nor were
-  `estimator = "fiml"` and `"TRE"`. The integration now runs under a fixed
-  local seed and the caller's RNG state is restored; the scores still carry
-  the integrator's own error of about 1e-3, now the same error every time.
-
-* **`ttsfm(model_name = "TTNE")` reported a wrong `Eemu.cond` and M6 metric
-  whenever `sigma_v` was not 1.** The exponent in E[exp(-u) | eps] used
-  `0.5 * sig.v` where the closed form has `0.5 * sig.v^2`. At `sigma_v = 0.3`
-  the reported value was 10.9% too high (0.522 against an exact 0.471). The
-  square is restored; all six conditional expectations now agree with numerical
-  integration to about 1e-11. Parameter estimates were not affected.
-
-* **`ttsfm(model_name = "TTNE")` clipped its log-likelihood's exponents.** The
-  density was formed as `log(pnorm(beta) * exp(alpha) + pnorm(b) * exp(a))` in
-  levels, with `alpha` and `a` capped before exponentiating to avoid overflow,
-  so the reported density was wrong wherever the cap bound and either `pnorm()`
-  could underflow. It is now a log-sum-exp of the two terms, exact with no cap.
-  On 20 simulated two-tier samples, 19 fits are unchanged to about 1e-6 and one
-  reaches a log-likelihood 1.2e-4 higher.
-
-* **`ivsfm()` could report efficiencies above 1.** The JLMS predictor divided
-  `dnorm(zz)` by `pnorm(zz)` floored at machine epsilon, so for a firm well above
-  the frontier (`zz` below about -8.1) the inefficiency estimate came back
-  negative and `exp(-jlms)` exceeded 1: on simulated data with one firm 20 above
-  the frontier, `model_name = "C2SLS"` reported an efficiency of 71, and 25
-  million at 80 above. It is now computed in logs and cannot be negative.
-  Estimates are unaffected.
-
-* **`zsfm(model_name = "ZISF_Z")` often stopped in a spurious local optimum.**
-  Its likelihood has a second basin in the regime-link coefficients, 10 to 64
-  log-likelihood units below the best maximum. In 50 simulated samples (40%
-  of firms efficient, the covariate unrelated to the regime) 7 shipped fits
-  ended there, reporting a regime slope averaging 0.38 against a truth of 0,
-  with no warning. `"ZISF"` already guarded against the same problem with
-  several starting fits; `"ZISF_Z"` now does too, over the link intercept. On
-  the same 50 samples no fit falls more than 0.53 below the best of six
-  polished starts, none is worse than before, and a fit takes about 0.20 s
-  instead of 0.13 s.
-
-* **`zsfm()` and `lcsfm()` could return `NaN` or `-Inf` for an observation far
-  from the frontier.** `zsfm()`'s inefficient-regime log-density was
-  `log(dnorm()) + log(pnorm())`, which is `-Inf` once either factor underflows
-  (beyond about 38 standard deviations; the truth there is finite, e.g. -919),
-  and both `zsfm()` and `lcsfm()` computed the JLMS predictor as
-  `dnorm(zz) / pnorm(zz)`, which is `0 / 0` below `zz` of about -37 (a firm far
-  above the frontier; the truth is about 0.007). Both are now taken in logs. On
-  ordinary data the likelihood is unchanged at every fit checked, `ZISF` and
-  `LCM` fits agree to within 7e-5, and `lcsfm()` is identical.
-
-* **`sfm(model_name = "NU")`'s log-likelihood, and `"NHN"`/`"NHN_Z"`'s at
-  extreme parameters, were floored rather than computed.** NU took
-  `log(pnorm(b) - pnorm(a))` as a difference floored at `.Machine$double.xmin`:
-  for a residual more than about 9 noise standard deviations above the frontier
-  both CDFs round to 1, and the log-density came back as -708 where the truth
-  is -44. NHN and NHN_Z floored the density in levels, so any log-density below
-  -708 was reported as -708. Both now work in logs. Estimates move by less than
-  8e-8 (NHN), 5e-6 (NHN_Z) and, in flat cases, 3e-3 (NU) at the same maximum
-  likelihood.
-
-* **Battese-Coelli efficiencies could come back as 0 for firms well above the
-  frontier.** `sfm()`'s `"NHN"` and `"NHN_Z"` and `psfm()`'s `"TRE"` and
-  `"TRE_Z"` computed `exp_u_hat` (`U`) as a ratio of `1 - pnorm()` terms, which
-  underflow together once the scaled residual `lambda * eps / sigma` passes
-  about 8: at lambda = 10 a firm 0.8 above the frontier was reported at 0.83
-  instead of 0.988, and one 1.0 above at 0 instead of 0.990. A single NHN fit
-  tends to keep this out of reach, because such a point pulls lambda down; the
-  exposed cases are `"NHN_Z"` and `"TRE_Z"`, where lambda varies by observation.
-  They now use the log-space predictor the package already used elsewhere;
-  ordinary fits agree with the old values to 3e-15. `meanefficiency()`'s
-  closed forms for half-normal, truncated-normal and Rayleigh inefficiency,
-  which overflowed to `NaN` for a scale or truncation point near 40, are now
-  evaluated in logs too.
-
-* **`sfm(model_name = "NR")` was drawn to `sigma_v = 0` by a rounding artefact.**
-  Its log-density formed `-(eps/sigma_v)^2/2 + z^2/2`, two very large terms
-  whose exact sum is `-eps^2/sigma^2`. As `sigma_v` fell toward zero the
-  difference lost its digits and read too high (by 22 log-likelihood units per
-  observation at `sigma_v = 1e-9`), so fits ran to the `sigma_v` bound and could
-  report a log-likelihood far above the true one (-539.9 against -585.1 on one
-  simulated sample). The term is now formed exactly. On data with
-  `lambda = 2` nothing changes; with `lambda = 10` fits reach the best maximum
-  of the exact likelihood in 187 of 200 samples.
-
-* **`TIC()` could return an absurd value for a fit on a parameter bound**, and
-  `sfma(weights = "tic")` then gave that model all the weight: -2.64e14 for an
-  NR fit with `sigma_v` on its bound, although another candidate fitted
-  better. `TIC()` now stops when the Hessian is not positive definite or the
-  Takeuchi penalty is not positive; `sfma()` gives such a candidate no weight
-  and says which one and why (unless `quiet = TRUE`), and `vuong()` refuses it.
-
-* **`sfm(model_name = "NR")` evaluated its log-likelihood inaccurately for
-  residuals far above the frontier.** The term `log(phi(z) - z * Phi(-z))` was
-  computed as the difference of two nearly equal quantities through `erf()`:
-  from z of about 7 it lost all precision and overstated the log-density by up
-  to about 7 (by 0.8 at z = 8 and 4.6 at z = 10). Such z values arise at trial
-  parameters with a small `sigma_v`, so the optimizer was working on a
-  distorted surface there, and `exp_u_hat` used the same form. Both are now
-  computed through the continued fraction for the Mills ratio, accurate to
-  1e-13 across the range. On a design with lambda = 2 every fit reaches the same
-  maximum as before; with lambda = 10 fits reach the best maximum as often as
-  before (156 against 155 of 200) but can differ individually where the
-  likelihood is flat.
-
-* **`psfm(keep_objective = TRUE)` was silently ignored** for every model except
-  `"GTRE"` (simulated ML), `"TRE"`, `"GTRE_Z"` and `"TRE_Z"`, and `estfun()`'s
-  error then advised refitting with `keep_objective = TRUE` -- which could not
-  help. `psfm()` now warns when the argument has no effect, and the message
-  says which models retain their likelihood.
-
-* **`psfm(model_name = "GTRE_Z")` lost its whole fit when one firm's efficiency
-  could not be computed.** A single firm whose posterior system could not be
-  inverted stopped the fit with "Failed to compute GTRE posterior matrices",
-  discarding estimates that had already converged. That firm's `U` and `H` are
-  now `NA`, with a warning naming it.
-
-* **`psfm(model_name = "GTRE_Z")` stopped on some platforms with "sigma must be
-  positive definite"** from `tmvtnorm`, when a firm's efficiency posterior
-  covariance lost positive definiteness to rounding: the same call fitted on
-  macOS and failed on Windows and Linux. The covariance is now repaired when
-  the defect is rounding-sized (eigenvalues clipped at a relative floor, for
-  `"GTRE"` by simulated ML as well); a larger defect gives that firm `NA`
-  efficiencies with the warning above. Where the covariance was already valid
-  the results are identical.
-
-* **A starting value just outside its bound stopped the fit** with "Starting
-  values violate bounds" from `bobyqa()`. On a panel whose random-effects start
-  puts the firm-effect scale at essentially zero, `psfm(model_name = "TRE")`
-  began with `sigma_r` a hair above its `1e-7` bound on one platform and below
-  it on another, so the same call fitted on macOS and failed on Linux and
-  Windows. The internal `bobyqa()` stage now moves only coordinates that lie
-  strictly outside their bounds to just inside; every start already inside is
-  used unchanged, so fits that ran before are identical.
-
-* **`psfm(model_name = "GTRE_Z")` and `"TRE_Z"` stopped with
-  "0 < ctrl$rhoend is not TRUE"** when the random-effects regression that seeds
-  them put the firm-effect variance on its boundary. Its firm effects are then
-  all zero, and the intercept-only fit that turns them into starting values was
-  started at zero scale, which leaves `bobyqa()` no trust region. It now starts
-  from a small positive scale; inputs with any spread are handled exactly as
-  before.
-
-* **`psfm()` died with "system is exactly singular" for `PL80`, `BC92`,
-  `K1990`, `K1990modified` and `SSFE` on a between-rank-deficient design**,
-  such as `factor(year)` in an unbalanced panel. None of these models uses the
-  random-effects starting regression -- each builds its own starting values --
-  but `start_panel()` ran it for them anyway, and did so outside the
-  collinearity guard, which skips these models. The regression is now run only
-  for the seven models that read its result (`TRE_Z`, `GTRE_Z`, `TRE`, `GTRE`,
-  `GTRE_FML`, `GTRE_SEQ1`, `GTRE_SEQ2`). Reported from a replication of
-  Filippini and Greene (2016) on the Swiss railways panel, which had been
-  working around it by substituting a different variance-component method
-  inside `plm()`.
-
-* **`psfm(model_name = "SSCRE")` could not fit an unbalanced panel**, and
-  most real panels are unbalanced. In the between-firm dimension each Mundlak
-  mean duplicates its regressor, so `plm`'s Swamy-Arora variance components
-  for an unbalanced panel hit an exactly singular system. `SSCRE`'s variance
-  components are now defined as the Swamy-Arora components of the model
-  *without* the Mundlak means. On a balanced panel that is exactly what it
-  computed before, so balanced results are unchanged; on an unbalanced one the
-  identical components come from `plm`'s Wallace-Hussain step on the augmented
-  model, checked to agree. The slopes on time-varying regressors still equal
-  the within estimates exactly.
-
-* **`psfm(model_name = "SSRE")` and `"SSCRE"` now explain a singular
-  random-effects fit** instead of failing with a bare "Lapack routine dgesv:
-  system is exactly singular". When the formula is collinear between firms the
-  message names the columns and suggests remedies.
+* **`density_weights()` and the robust objectives underflowed for very poorly
+  fitting observations**, tying their weights.
 
 ## Dependencies
 
-* **`pracma` and `MASS` are no longer imported, and `pbapply` moves from
-  `Imports` to `Suggests`.** Each was used for a single function. `erfinv()` and
-  `ginv()` are now internal copies that compute the same thing the same way:
-  the simulated-ML draws and every fit are bitwise identical. `pbapply` only
-  ever supplied `psfm_bootstrap()`'s optional progress bar, and the code already
-  ran without it; its `pkgs` default no longer loads it on the workers.
+* `pracma`, `MASS` and `tmvtnorm` are no longer used. `tmvtnorm` is replaced by
+  `mvtnorm`, which it was built on. `gsl` and `pbapply` move from `Imports` to
+  `Suggests`, so installing from source no longer needs the GNU Scientific
+  Library. All fits are bitwise identical except `y_pl_mvtn`, above.
 
-* **`tmvtnorm` is replaced by `mvtnorm`**, which `tmvtnorm` itself was built on:
-  13 recursive dependencies become none outside base R. `psfm()`'s GTRE
-  efficiency scores called `tmvtnorm::ptmvnorm()`, which for an untruncated
-  orthant is exactly `mvtnorm::pmvnorm()`; they now call that directly and are
-  bitwise identical. `data_gen_p()`'s truncated multivariate normal draw for the
-  `PL80_MVTN` column now comes from an internal Gibbs sampler (checked against
-  the exact truncated moments), so that column and `y_pl_mvtn` differ from
-  earlier versions for the same seed; every other column is unchanged.
-
-* **`gsl` is no longer imported** (it moves to `Suggests`, where the tests use
-  it as an independent reference), so installing `sfa` from source no longer
-  needs the GNU Scientific Library. Its only use was the parabolic cylinder
-  function behind `sfm()`'s `"NG"` and `"NNAK"`, which is now computed in R:
-  a power series in the argument where that does not cancel, and a
-  peak-centred quadrature otherwise, agreeing with the `gsl` route to about
-  1e-10 in log. Below an argument of `-sqrt(1400)` the `gsl` code evaluated
-  its series at a clipped argument, and overflowed at larger shapes; that
-  behaviour is reproduced exactly rather than corrected, because it is what
-  keeps the optimizer out of the `sigma_v -> 0` corner where the composed
-  likelihood is unbounded.
-
-## New features
-
-* **`psfm()` gains the simulated-ML draw controls `sfm()` has had since 1.2.0**
-  (gap H10): `sim_type` (`"halton"`, `"sobol"`, `"torus"`, `"uniform"`),
-  `antithetics`, `sim_burn`, `sim_scrambling` and `sim_prime`, for `"GTRE"`
-  with `estimator = "sml"`, `"TRE"`, `"GTRE_Z"` and `"TRE_Z"`. The seed remains
-  `rand.gtre`. The panel draws are now built by the same code as the
-  cross-sectional ones, keeping one block per firm and the shift
-  randomization. At the defaults the draws and the fits are bitwise identical
-  to 1.2.0's.
-
-* **Score-based diagnostics now work for `psfm()`'s simulated-ML panel models**
-  (`"GTRE"`, `"TRE"`, `"GTRE_Z"`, `"TRE_Z"`). `keep_objective = TRUE` was
-  accepted and stored a likelihood, but the closure had no `per_obs` branch,
-  so `influence_sfa()`, `vcov(type = "bhhh")`, the `sandwich` methods, `TIC()`
-  and `vuong()` all failed on it. The closure now returns one contribution per
-  firm, since firms are the independent units, which makes the sandwich
-  standard errors firm-clustered and the influence diagnostics firm-deletion
-  diagnostics. `bread()` scales by the number of firms: scaling by `nobs()`
-  with firm-level scores would have overstated the sandwich variance by a
-  factor of T squared, silently.
-
-* **`data_gen_p()` can generate a genuinely non-null first-difference design.**
-  Two new arguments for the `y_fd` column. `fd_draw = "truncated"` draws the
-  firm-level inefficiency from the truncated normal `N+(mu, sig_u^2)` that Wang
-  and Ho (2010) and `psfm(model_name = "FD")` assume; the default, `"folded"`,
-  keeps the historical `|N(mu, sig_u^2)|`. The two coincide only at `mu = 0`.
-  `delta_fd` sets the coefficient in `u_it = exp(delta_fd * z_it) * u_i*`
-  separately from `mu`; previously the same `mu` controlled both, so a design
-  with `delta_z != mu` could not be generated. Both defaults reproduce the old
-  output exactly. Requested by Christopher Parmeter for the convergence study.
+* `npsfm(method = "SZ")` runs its DEA step through the `DEA` package, which
+  joins `Suggests`. `lpSolve` is no longer used.
 
 ## Documentation
 
-* **`?endogeneity_test` now carries a size and power table.** The test shipped
-  in 1.2.0 with a theoretical argument for why it should be well calibrated at
-  the null -- `ivsfm()` parameterises `rho = t/sqrt(1 + t't)`, so `rho = 0` is
-  an interior point and the delta-method Jacobian is the identity there -- and
-  a rejection rate measured at a single sample size. Size at one `n` shows
-  neither convergence to nominal nor its absence, so the table is a sweep.
-  Measured over 1,000 replications per cell at
-  n = 500, 1000, 2000 and 4000: size is 0.043-0.053 against a nominal 5% and
-  power rises monotonically to one. The variance estimate was checked directly,
-  not inferred from the rejection rate -- the mean reported standard error of
-  `rho` over the actual sampling spread of `rho-hat` is 0.95 to 1.05 across
-  every cell. No code changed; the claim is simply now supported.
-
-## A wrong-skewness suite
-
-Four approaches to the Waldman (1982) boundary now sit together under one help
-topic, `?sfa-wrongskew`, which says what each does and when to prefer it. Two
-of them are new estimators; the third is a new diagnostic; the fourth
-(`esfm()`) shipped in 1.2.0.
-
-* **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter
-  and Zhao (2023, *Empirical Economics* 64:2831). Corrected OLS with the first
-  absolute moment `E|eps|` in place of the third central moment -- the third
-  moment is the only ingredient that can drive `sigma_u` to the boundary, so
-  removing it removes the failure. Implemented for `NHN` and `NE`, which are
-  the two the paper covers.
-
-  Replicated against the paper's own Monte Carlo. At `n = 200` every COLS
-  figure matches to 0.005 or better, and the ACOLS Type I failure rates match
-  too: `lambda = 0.2` gives 0.162 against the paper's 0.160, `lambda = 0.4`
-  gives 0.151 against 0.146, `lambda = 1.5` gives 0.026 against 0.022. The
-  Normal-Exponential table is reproduced essentially exactly.
-
-  One thing the paper leaves open had to be settled. Its recipe is to minimize
-  the squared moment equation from many starting values, but that equation has
-  **more than one exact root in 18 to 36 per cent of samples**, and every root
-  attains the same objective of zero. `sfa` keeps the root with the highest
-  profile likelihood -- a tiebreak, never an optimization -- which reproduces
-  the paper's failure rates and, unlike "always the first" or "always the
-  last", is never far off its mean squared errors at either end of the lambda
-  range.
-
-  The `NE` moment equation is also written through `log Phi` rather than
-  `2 exp(lam^2/2) Phi(-lam)`, which overflows above `lam = 37`. That overflow
-  is why the paper had to treat `sigma_u < 0.03` as zero; here the equation
-  stays finite to `lam = 200`.
-
-* **`sfm(estimator = "cmle")`** is the moment-constrained maximum likelihood of
-  Zhao and Parmeter (2022, *Economics Letters* 221:110901). The same
-  likelihood `estimator = "mle"` maximizes, subject to two equality
-  constraints the assumed density implies. Nothing is respecified, and the two
-  estimators are asymptotically identical; the constraints simply do not hold
-  at the OLS stationary point, so the search cannot settle there.
-
-  The implementation does not need a constrained optimizer. Given `beta` the
-  two constraints pin both variance parameters -- in closed form for `NHN`, by
-  one scalar root-find for `NE` -- so the problem is a profile over `beta`
-  alone. Clamping at the edge of the admissible set rather than rejecting keeps
-  that profile continuous, and a fit that ends up clamped is flagged through a
-  new `$boundary` component and a warning.
-
-  On wrong-skew samples, `sigma_u` collapses to zero in 95 to 97 per cent of
-  standard ML fits and 2.5 to 4.5 per cent of constrained ones, against the
-  paper's claim of a reduction "over 90 per cent". Its `beta0` mean-squared
-  error ratios of 2.07 to 3.40 bracket the paper's 2.15 to 2.76.
-
-* **`skewness_decomp()`** implements the third-moment decomposition of Bonanno,
-  De Giovanni and Domma (2017, *JPA* 47:49), the paper behind `copsfm()`. It
-  splits `E[(eps - E eps)^3]` into the part from the asymmetry of `u`, the part
-  from the asymmetry of `v`, and the part from the dependence between them,
-  and reports Zenga's median-based measure alongside -- the measure whose sign
-  says which way the density actually leans.
-
-  The point is what it says about the textbook model: a normal `v` zeroes the
-  second component and independence zeroes the third, so under the standard
-  specification the sign of the composed third moment *is* the sign of
-  `-E[(u - Eu)^3]` and nothing else. Run it on an `NHN` fit and two of the
-  three components come back identically zero.
-
-  The marginals are closed forms; the dependence term is Gauss-Legendre
-  quadrature on the unit square against the copula density, so it covers every
-  marginal and copula `copsfm()` supports rather than only the
-  exponential/generalized-logistic/FGM combination the paper writes out. It
-  also settles the two errors 1.2.1 already recorded in those papers' summary
-  moment formulas: the corrected expressions are now derived and pinned, and
-  `?copsfm` gives them.
-
-## Two-tier models: reporting, and a boundary diagnostic
-
-* **`ttsfm()` now reports the three scale parameters on their natural scale,
-  with names.** This is a **breaking change** to `$out` and `coef()`. The rows
-  are `sigma_v`, `sigma_u` and `sigma_w`. Previously the matrix held raw
-  optimizer values: the row labelled `sigv` was `log(sigma_v)`, and in the
-  homoskedastic case the two one-sided scales were *both* labelled
-  `(Intercept)`, so `u` and `w` could not be told apart and none of the three
-  numbers was on the scale its label implied. **Code that exponentiated those
-  rows must stop doing so.**
-
-  Where `sigma_u` or `sigma_w` carries determinants there is no single scale to
-  report, so those rows stay as coefficients on the link and take `Zu.` and
-  `Zw.` prefixes — which is also what makes the two blocks distinguishable when
-  they share a covariate name, something the old labelling could not express at
-  all. Standard errors on the converted rows carry the delta-method factor.
-
-* **`tt_boundary_report()`** refits a two-tier frontier from several starting
-  values of `sigma_v`, scores every solution on the same likelihood, and says
-  which is highest. Use it when `ttsfm()` returns `sigma_v` at essentially zero
-  and you need to know whether that is the maximum likelihood estimate or an
-  optimizer that stopped short.
-
-  **It is a likelihood comparison, not a test, and reports no p-value.** The
-  hypothesis a reader would attach to it sits on the boundary of the parameter
-  space, where the usual chi-square reference distribution does not apply, and
-  no appropriate null distribution has been established for this model. The
-  ordinary linear model on the same data is reported alongside, because a
-  collapsed `sigma_v` is not the same claim as "there is no frontier here".
-
-* **`?ttsfm` now documents the `"TTHN"` boundary behaviour**: when `sigma_u`
-  and `sigma_w` are close the fit drives `sigma_v` to zero, and that collapse
-  *is* the maximum likelihood estimate. With `sigma_u = sigma_w` the difference
-  `w - u` is already symmetric and heavier-tailed than a normal, so a small
-  normal `v` underneath it is very nearly invisible. On a 2,000-observation
-  draw the profile in `sigma_v` is flat to 0.000 log units from `1e-6` upward
-  and decreasing above 0.01, with no interior maximum. Asymmetric
-  `(sigma_u, sigma_w)` does not show this. The two-tier structure is
-  identified; the noise underneath two equal and opposite tiers is not.
-
-## A third bug in already-released code
-
-* **`sfm(estimator = "cols")` returned the frontier coefficients with the wrong
-  sign on a COST frontier** (`inefdec = FALSE`), in 1.2.0 as released. The
-  moment path fits on `Yc = inefdec_n * Y`, which is the production orientation
-  whatever the caller asked for: a cost frontier `y = x'b + v + u` is fitted as
-  `-y = x'(-b) + (-v) - u`, so what came back was `-b`. The scale parameters
-  were right -- `v` is symmetric and `u` is the same `u` -- which is why it went
-  unnoticed. On a fit with a true intercept of 1 and slope 0.8 it reported
-  -1.112 and -0.744 where maximum likelihood on the same data gave 1.103 and
-  0.751. Fixed, and `fitted() + residuals() == y` is now pinned in both
-  orientations. Any cost-frontier `estimator = "cols"` fit made with 1.2.0
-  should be re-run.
-
-## DEA
-
-* **`npsfm(method = "SZ")`'s DEA step now runs from the `DEA` package** rather
-  than from a linear program built here on `lpSolve`. `DEA` moves into
-  `Suggests` and `lpSolve` moves out; the guard and the error message that
-  names the missing package are unchanged. The two agreed to **6e-12** across
-  all four returns-to-scale settings and one and two inputs before the swap,
-  and `tests/testthat/test-dea.R` now pins the contract `sfa` needs from `DEA`
-  -- orientation, the returns-to-scale spelling, the invariants
-  `method = "SZ"` relies on -- rather than re-testing linear algebra that
-  belongs to `DEA`.
-
-## Documentation
-
-* The four data sets, and `sfm()` and `psfm()` themselves, had titles that were
-  just their own names, so the manual's index read `FinnishElec  FinnishElec`.
-  All six now describe what they are.
-
-## Three new distributional specifications
-
-* **`copsfm()` gains skewed noise and a choice of inefficiency marginal**, via
-  new `vdist` and `udist` arguments (Bonanno and Domma 2022, *Mathematics*
-  10:3876). `vdist = "glogistic"` is a generalized logistic noise carrying its
-  own skewness parameter `alpha_v`; `vdist = "logistic"` fixes it at 1, and
-  `udist = "exponential"` replaces the half-normal inefficiency. `copula =
-  "independent"` is now offered as well, and estimates no dependence parameter
-  at all, so the skewed-noise frontier can be fitted without a copula.
-
-  The point is the wrong-skewness anomaly. The third moment of the composed
-  error depends on the skew of `v` and on the dependence between `v` and `u`,
-  not only on the skew of `u`; where `v` is symmetric and independent a
-  positive residual skew has nowhere to go but `sigma_u = 0`. The paper's four
-  specifications are four `(copula, vdist)` pairs -- see `?copsfm`.
-
-  The paper publishes the composed density in closed form, as four Gauss
-  hypergeometric terms, for both a production frontier (Theorem 1) and a cost
-  frontier (Theorem 2). `copsfm()` computes it by quadrature, and the two agree
-  to about **1e-14** in `log f` across `alpha_v`, `theta` and both
-  orientations. Two of the paper's *summary moment* formulas do not survive the
-  same check and are not consistent with its own appendix; `?copsfm` says which.
-
-* **`sfm(model_name = "NGB2")`** fits a generalized beta of the second kind
-  inefficiency (Makiela and Mazur 2022, *JPA* 58:35-54, section 3), with a
-  scale and three shape parameters. It nests
-  most of the rest of the table -- half-normal, exponential, gamma and Weibull
-  as `nu -> Inf` limits, and the half-Student *t* exactly -- so one fit says
-  which of them the data want. `nu` is flat above a few hundred, where the
-  family has reached its generalized-gamma limit, and `sfm()` warns rather than
-  reporting the number as an estimate.
-
-  The composed density is evaluated by deterministic quadrature with two node
-  sets, one on the inefficiency's scale and one on the noise's, combined by the
-  balance heuristic. It was written on the simulated-ML path first, and that
-  was wrong in a way worth repeating: with 100 draws per proposal the simulated
-  likelihood is biased upward and the optimizer chases the bias, reporting a
-  log-likelihood of -336.9 at parameters whose exact value is -458.7. Four
-  shape parameters give simulation error room to be maximized.
-
-* **`sfm(model_name = "NB", estimator = "cols")`** fits Carree's (2002)
-  binomial inefficiency by corrected OLS. It is the only inefficiency
-  distribution here that can be skewed **either** way, which is the whole
-  reason for it: a positive residual skew, which every other model must report
-  as `sigma_u = 0`, is here an admissible `p > 1/2` and says that most firms
-  carry considerable inefficiency. The estimator inverts the second, third and
-  fourth residual moments; it refuses maximum likelihood, and reports Carree's
-  infeasible region as "no binomial solution" rather than as a number.
-
-## Bug fixes
-
-* **`copsfm(inefdec = FALSE)` fitted the cost frontier with the density
-  mirrored, in 1.2.0.** `eps` is already sign-normalized, so multiplying the
-  quadrature node by `S` as well reflected the composed density: the function
-  maximized `f_{v-u}(y - Xb)` where it needed `f_{v+u}(y - Xb)`. On clean cost
-  data with `sigma_u = 1` and `sigma_v = 0.4` it returned `sigma_u = 0.031` and
-  `sigma_v = 0.69`, with the intercept 0.8 too high. The slopes were unaffected,
-  and so was every production fit (`inefdec = TRUE`, the default), which is why
-  the existing tests did not catch it. **Any `copsfm()` cost fit made with
-  1.2.0 should be re-run.**
-
-* **A parameter on its bound cost `copsfm()` every standard error in the fit.**
-  The likelihood refused out-of-range draws with `.Machine$double.xmax`;
-  `optim()` differences the objective to build its gradient, and differencing
-  1.8e308 overflows to a non-finite value, so the final stage aborted and all
-  standard errors came back `NA`. It bites whenever a parameter ends up ON a
-  bound, which a dependence parameter routinely does. Now a large finite
-  penalty, with the two bounded parameters clamped rather than refused --
-  matching what `sfm()`'s `NGE`/`NLN`/`NW` branches already did.
-
-* **`sfm(estimator = "cols")` predicted efficiency with the wrong posterior for
-  `"NE"` and `"NG"`.** `E[exp(-u)|eps]` is a property of the assumed `u`, and
-  the COLS path applied the normal/half-normal posterior regardless of
-  `model_name`. Parameter estimates were correct; only `exp_u_hat` was affected.
-  It now dispatches, `"NG"` using the same parabolic-cylinder form its
-  maximum-likelihood branch uses.
-
-* **`ivsfm(model_name = "IVLIML")` could walk into a corner of its own box and
-  report the result as an ordinary fit.** `IVLIML` is the default estimator, so
-  this is the one to know about. On the design of Hou, Ramalho and
-  Roseta-Palma (2025) it returned `rho = -0.99503719` with `beta2` near 6
-  against a truth of 0.5 -- on **27 of 300** draws at `rho = 0.8` and 6 of 300
-  at `rho = 0.4` -- with no error, no warning and a plausible-looking
-  `sigma_u`. `"IVCF"` failed on 0 of 300 of the same draws.
-
-  The cause was the STARTING POINT, not the search. `rho = t/sqrt(1 + t't)`,
-  and `t` started at 0 -- which is `rho = 0` exactly, the one point where the
-  frontier and reduced-form blocks are independent and the likelihood carries
-  no gradient information about which way `rho` should move. It is also the
-  centre of the box, because `span = pmax(10 * abs(start_v), 10)` gives a bound
-  of `+-10` when the start is zero, so the corner `t = -10`
-  (`rho = -10/sqrt(101)`) sat exactly as far from the start as the true
-  optimum.
-
-  `IVLIML` is now seeded from the `IVCF` solution. That is not an
-  approximation borrowed from another model: `IVCF` is the same likelihood with
-  `Pi` and `chol(Sigma_xi)` pinned at their OLS values, so its answer is a
-  valid point of `IVLIML`'s own parameter space once those two blocks are
-  appended. It lands `t` near its optimum, which both supplies a gradient and
-  recentres the box away from the corner. Measured over 300 replications at
-  each of `rho = 0`, `0.4` and `0.8`:
-
-  | rho | collapses before | collapses after | RMSE(beta2) before | after |
-  |---|---|---|---|---|
-  | 0.0 | 0/300 | 0/300 | 0.0261 | 0.0268 |
-  | 0.4 | 6/300 | **0/300** | 0.9188 | **0.0263** |
-  | 0.8 | 27/300 | **0/300** | 1.6808 | **0.0241** |
-
-  The fit is also about twice as fast, because the optimizer now starts near
-  the answer. `"IVCF"` and `"C2SLS"` are untouched -- the seeding runs only for
-  `IVLIML`, and a sub-fit that fails or does not improve on the old start is
-  discarded rather than used.
-
-* **The `DESCRIPTION` now says what the package does.** The previous text
-  ("a user-friendly framework ... extensive flexibility in specification and
-  estimation techniques") named no model, no method and no reference. It now
-  names the model families and cites Aigner, Lovell and Schmidt (1977),
-  Meeusen and van den Broeck (1977), Greene (2005), Colombi, Kumbhakar,
-  Martini and Vittadini (2014) and Amsler, Prokhorov and Schmidt (2016) with
-  DOIs.
+* The README has a "Which model should I use?" table and a "Troubleshooting"
+  section (issue #3).
+* `?psfm` explains that `rand.gtre` changes the simulated likelihood, so it is
+  not a multistart. To measure the resulting variation, use `simulation_se()`.
+* `?ttsfm` documents the `"TTHN"` boundary, where `sigma_v` collapses when
+  `sigma_u` and `sigma_w` are close.
+* `?endogeneity_test` gives a size and power table, from n = 500 to 4000.
+* `DESCRIPTION` now names the model families, with references. The data sets,
+  `sfm()` and `psfm()` have descriptive titles.
 
 # sfa 1.2.0
 

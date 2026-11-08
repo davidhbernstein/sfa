@@ -1,5 +1,5 @@
 ## Per-firm score contributions for psfm()'s simulated-ML panel models (gap A5).
-## Before 1.2.1 these closures had no `per_obs` branch, so keep_objective = TRUE
+## Before 1.3.0 these closures had no `per_obs` branch, so keep_objective = TRUE
 ## stored an objective that estfun(), sandwich(), vcov(type = "bhhh") and
 ## influence_sfa() could not use.
 
@@ -78,7 +78,7 @@ test_that("keep_objective = TRUE warns for a psfm() model that cannot retain it"
   d <- .score_panel()
   ## SSFE is a within/LSDV estimator, not maximum likelihood, so there is no
   ## likelihood to keep. PL80 used to sit here and no longer does -- it gained
-  ## per-firm contributions in 1.2.1.
+  ## per-firm contributions in 1.3.0.
   expect_warning(
     fit <- psfm(y_ssfe ~ x1 + x2, model_name = "SSFE", data = d,
       individual = "name", time = "year", keep_objective = TRUE),

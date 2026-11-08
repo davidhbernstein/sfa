@@ -91,7 +91,7 @@ test_that("a non-zero convergence code with an IMPROVED value is kept", {
 })
 
 test_that("ttsfm reports the three scales on their natural scale, named", {
-  ## Chris Parmeter, 2026-09-11. Before 1.2.1 out[, "par"] held RAW OPTIMIZER
+  ## Chris Parmeter, 2026-09-11. Before 1.3.0 out[, "par"] held RAW OPTIMIZER
   ## VALUES: "sigv" was log sigma_v and the two one-sided scales were BOTH
   ## labelled "(Intercept)", so u and w could not be told apart and none of the
   ## three was on the scale its label implied. Reading that table without

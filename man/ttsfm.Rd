@@ -36,7 +36,7 @@ other value is refused with an error rather than quietly optimized without
 them.}
 \item{logit}{Accepted but not used by \code{ttsfm()}.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
-\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1, for \code{"TTNE"} and \code{"TTHN"}. It has no effect for \code{"TTNLS"}, which is nonlinear least squares rather than maximum likelihood and so has no score; that case warns. \code{FALSE} by default, because a closure carries its enclosing environment.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0, for \code{"TTNE"} and \code{"TTHN"}. It has no effect for \code{"TTNLS"}, which is nonlinear least squares rather than maximum likelihood and so has no score; that case warns. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}
 }
 \details{
@@ -74,7 +74,7 @@ An object of class \code{"sfareg"} containing the following components:
 
 \item{out}{A matrix with parameter estimates, standard errors, and t-values, one row per parameter.
 
-\bold{Scale parameters are reported on their natural scale and named, as of 1.2.1.} The rows are \code{sigma_v}, \code{sigma_u} and \code{sigma_w}. Before 1.2.1 this matrix held raw optimizer values -- the row labelled \code{sigv} was \eqn{\log\sigma_v}, and in the homoskedastic case the two one-sided scales were \emph{both} labelled \code{(Intercept)}, so \eqn{u} and \eqn{w} could not be told apart. Code that exponentiated these rows must stop doing so.
+\bold{Scale parameters are reported on their natural scale and named, as of 1.3.0.} The rows are \code{sigma_v}, \code{sigma_u} and \code{sigma_w}. Before 1.3.0 this matrix held raw optimizer values -- the row labelled \code{sigv} was \eqn{\log\sigma_v}, and in the homoskedastic case the two one-sided scales were \emph{both} labelled \code{(Intercept)}, so \eqn{u} and \eqn{w} could not be told apart. Code that exponentiated these rows must stop doing so.
 
 Where \eqn{\sigma_u} or \eqn{\sigma_w} carries determinants there is no single scale to report, so those rows stay as \emph{coefficients} on the link and take the prefixes \code{Zu.} and \code{Zw.} -- which is also what makes the two blocks distinguishable when they share a covariate name. \code{sigma_v} is homoskedastic in every case and is always reported directly.
 
