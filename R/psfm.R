@@ -2060,6 +2060,24 @@ psfm <- function(formula,
     start_v <- Opt.Optim$start_v
     opt <- Opt.Optim$opt
 
+    ## L-BFGS-B can stop short on the sigr/sigh ridge; polish as sfm() does (A62).
+    ## Not at a collapsed scale: there the decrement is the domain penalty's, and
+    ## a re-differenced Hessian would report SEs that do not exist.
+    stationarity <- NULL
+    .scales <- opt$par[(length(opt$par) - 3L):length(opt$par)]
+    ## Layout (sigr, sigv, sigh, sigu); the 1% rule is the one the reported flags use.
+    .ref <- sqrt(.scales[4]^2 + .scales[2]^2)
+    .scale_at_bound <- any(.scales - .SFA_CONSTANTS$MIN_POSITIVE <=
+      1e-4 * abs(.scales) + 1e-4 * (abs(.scales) < sqrt(.Machine$double.eps / 7e-7))) ||
+      isTRUE(.panel_scale_at_bound(.scales[3], .ref)) ||
+      isTRUE(.panel_scale_at_bound(.scales[1], .ref))
+    if (optHessian == TRUE && !.scale_at_bound && !is.null(opt$hessian) &&
+      all(is.finite(opt$hessian))) {
+      .sp <- .stationarity_polish(like.fml, opt, lower_f)
+      opt <- .sp$opt
+      stationarity <- .sp$info
+    }
+
     End.Time <- end.time(Start.Time)
 
     if (optHessian == FALSE & PSopt == FALSE) {
@@ -2126,6 +2144,7 @@ psfm <- function(formula,
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
+    if (!is.null(stationarity)) results$stationarity <- stationarity
 
     ## Same persistent-boundary check as the "sml" branch above. It matters
     ## MORE here, because this is the estimator psfm(model_name = "GTRE")
