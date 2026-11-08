@@ -267,6 +267,10 @@ wrong result came without an error or a warning.
 * **`ttsfm(model_name = "TTNLS")` standard errors omitted the residual
   variance.** Without determinants they now equal `lm()`'s.
 
+* **`psfm()` dropped every standard error when one Hessian entry was exactly
+  zero**, as happens when a scale is flat at its bound. Only a Hessian that is
+  missing, non-finite or entirely zero now does that.
+
 * **A badly scaled Hessian no longer stops `vcov()` or the `sandwich`
   methods.** The Hessian is equilibrated before inversion. When no inverse
   exists, the error names the parameter responsible.
