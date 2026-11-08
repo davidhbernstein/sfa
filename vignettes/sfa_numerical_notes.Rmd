@@ -1,0 +1,265 @@
+---
+title: "Numerical notes on sfm and psfm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Numerical notes on sfm and psfm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+This vignette collects the Monte Carlo measurements behind the caveats in
+`?sfm` and `?psfm`. The help pages state each caveat; this document records
+the evidence for it. Nothing here is run when the vignette is built. The
+numbers come from the package's own convergence and replication studies, and
+they describe the designs stated, not every data set.
+
+# Cross-sectional models (`sfm`)
+
+## Optimizer stages
+
+Under `use.nlminb = "auto"`, the `nlminb` stage runs for `NHN`, `NE`, `NTN`
+and `NU`. On those models it reached an optimum at least as good as the
+bobyqa path and was roughly 4 to 8 times faster at identical accuracy. For
+`NR` and `NGE` the `nlminb` path converged to a materially worse optimum,
+which is why bobyqa stays on for them.
+
+## Cascading starts for the normal-gamma model
+
+Over forty samples, an `NG` fit seeded from an `NE` fit with `start_from`
+was never worse than the default fit. It was indistinguishable on thirty-nine
+samples and 176.7 log-likelihood points better on one. The rescue is rare and
+large: on that sample the default start converged quietly to a much worse
+optimum, with nothing in the returned object to say so.
+
+## Shape heterogeneity (`shapehet`)
+
+On a design with a true shape effect, `shapehet` improved the log-likelihood
+by about 10,000 points at n = 2000, so it does capture the variation. Its
+parameters did not recover: the shape coefficient came back at 0.19 against a
+true 0.4, and sigma_V collapsed to its lower bound. Plain `NG` recovered
+cleanly on the same design without a shape effect, so the problem is specific
+to the extended model.
+
+## Stored objectives
+
+On a 200-observation example, `keep_objective = TRUE` grows the fitted object
+from about 38 KB to 1.7 MB, because the stored closure carries the estimation
+data.
+
+## Simulated ML for `NLN` and `NW`
+
+These models now use deterministic quadrature by default.
+`integration = "simulate"` keeps the earlier simulated ML.
+
+* **Draw counts must grow with n.** The old fixed default of `Nsim = 100`
+  returned (0.362, 0.821, 1.284, 0.328) for `NW` at n = 3000, against a truth
+  of (0.3, 1.0, 1.5, 0.5). At a fixed draw count every parameter except the
+  frontier slopes converges to the wrong value.
+* **`NLN` and `NW` need similar draw counts.** At n = 3000, measured against
+  quadrature at the true parameters, total simulation error at the default
+  `Nsim` is 3.4 log-likelihood units for `NLN` and 3.0 for `NW`. At
+  `Nsim = 6400` it falls to 0.07 and 0.06. The old single-proposal scheme gave
+  226.8 for `NLN`; its need for far more draws was a property of that scheme,
+  not of the model.
+* **Error at the optimum.** At the default `Nsim`, the simulated
+  log-likelihood was off by 0.3 to 0.5 at the optimum on n = 500. That is
+  enough to move `sigu` and the shape parameter well away from the maximum
+  likelihood estimate (issue #65), and is why quadrature became the default.
+* **Blocking draws by observation.** A column-major fill hands observation i
+  the elements h_i, h_(i+n), ... of a van der Corput sequence, which is not
+  equidistributed. At n = 500 and `Nsim = 100` the first observation's block
+  spanned only [0.50, 0.75], a quarter of the inefficiency distribution.
+* **Background.** Bhat (2001) found 100 Halton draws more precise than 1000
+  pseudorandom ones, and 125 Halton draws gave half the simulation error of
+  1000 random draws.
+
+## Heavy-tailed noise (`tHN`)
+
+On data simulated from `tHN` at n = 1000 with a true nu = 5, the profile
+log-likelihood varied by only about 0.24 across nu from 10 to 100 and peaked
+near 20. A single reported nu should not be taken at face value.
+
+## Truncated skew-Laplace (`TSL`)
+
+On the package's convergence design (sigma_u = 1, lambda = 1.5, 60
+replications at each of n = 500, 1000, 2000, 4000), estimating one parameter
+with the other held at its true value:
+
+| estimated | other parameter | slope of log MSE on log n | sd at n = 4000 |
+|-----------|-----------------|---------------------------|----------------|
+| sigma_u   | lambda free     | -0.65                     | 0.038          |
+| sigma_u   | lambda fixed    | -1.12                     | 0.020          |
+| lambda    | sigma_u free    | -0.38 (median)            | 26.3           |
+| lambda    | sigma_u fixed   | -1.07 (median)            | 0.62           |
+
+Each parameter attains the root-n rate (slope -1) when the other is known and
+fails it when the other is free. That is weak scale-shape separation, not an
+optimizer problem. The dispersion of lambda falls fortyfold once sigma_u is
+fixed. With both free, E[U] still converges at the root-n rate (slope -1.03,
+sd 0.031 at n = 4000), and E[exp(-U)] nearly so (slope -0.89).
+
+## Generalized beta of the second kind (`NGB2`)
+
+* **Nesting.** The tests check that the error against each limiting family
+  falls like 1/nu_u, not merely that it is small at one value. Past a few
+  hundred the density stops moving: the discrepancy from the
+  generalized-gamma limit is 2e-4 at nu_u = 10^6.
+* **Quadrature accuracy.** Against adaptive integration over 243 parameter
+  settings, at points where log f > -20, the median error in log f is 1.2e-8
+  and the worst is 3.4e-2. The worst cases sit in one corner of the grid
+  (sigma_v = 0.15 against a spiky generalized gamma, psi_u = 8), where
+  adaptive integration disagrees with itself by up to 0.9. A single node set
+  on the probability scale of u was wrong by up to 12 at the peak of the
+  density on the same grid.
+* **Why not simulation.** A first version used simulated ML with 100 draws
+  per proposal. The simulated likelihood was biased upward and the optimizer
+  chased the bias: on n = 400 generated from a half-normal it walked to
+  psi_u = 88, tau = 0.22, a near point mass, and reported a log-likelihood of
+  -336.9 where the exact value at those parameters is -458.7.
+* **Speed.** About 0.08 s per likelihood evaluation at n = 500, so a fit
+  takes minutes.
+
+## Robust estimators
+
+The robust objectives and their sandwich standard errors were checked against
+an independently audited reference implementation, by direct numerical
+integration and finite differences. The sandwich errors were also checked in
+the limit c -> 0 against the ordinary MLE Hessian errors, and by Monte Carlo
+against the empirical spread of repeated fits.
+
+# Panel models (`psfm`)
+
+## Simulation draws (`rand.gtre`)
+
+On a 56-firm, 24-period GTRE panel at the default number of draws, changing
+only `rand.gtre` moved the simulated log-likelihood at one fixed parameter
+vector over a range of 26 units. Four of six refits exceeded the exact
+maximum given by `estimator = "fiml"`. With `halton_num = 1000` the range fell
+to 3.
+
+## Two-step GTRE estimators
+
+On the package's convergence design (T = 10, sigma_h = 0.8, sigma_r = 0.4),
+`GTRE_SEQ1` and `GTRE_SEQ2` settle at gamma_uv of about 0.87 against 0.917 and
+sigma^2_hr of about 0.68 against 0.80. The slopes of log MSE on log N are near
+zero rather than -1. The same second-stage routines applied to the latent
+draws recover the truth at the root-N rate, which places the problem in the
+first-stage decomposition.
+
+## Collapse of a persistent scale in GTRE
+
+**Frequency.** On simulated data at T = 6 with both components present
+(sigma_r = 0.20, sigma_h = 0.40), one of the two collapsed in 37% of 87
+replications, more often sigma_r than sigma_h. The share with both interior
+improves slowly with N: 15, 19 and 21 of about 29 at N = 50, 100, 200.
+
+**A collapse can beat the truth.** On one replication whose realized sigma_h
+scale was 0.3695, the boundary solution's log-likelihood exceeded that of the
+true parameter vector by 3.66, a likelihood ratio of about 39.
+
+**The collapse formulas.** At sigma_h = 0.40, sigma_r = 0.20 the formulas in
+`?psfm` predict a surviving sigma_r of 0.3133 with an intercept shift of
+-0.3192 when sigma_h collapses, and a surviving sigma_h of 0.5197 with a shift
+of +0.0955 when sigma_r collapses. Over 1000 replications at each of five
+sample sizes the measurements were 0.2973, -0.3035, 0.5058 and +0.0931. All
+four are within 2.5% to 5.1% of prediction and slightly below it, which is
+what selection produces.
+
+**Between-firm skew.** Over 1000 replications, samples whose between-firm
+residual skew was positive lost sigma_h to the boundary 69% of the time,
+against 3.6% for the rest. The area under the ROC curve for that one
+statistic is 0.955. No wrong-skew sample collapsed sigma_r instead. When
+sigma_h = 0, the between-firm skew still leans negative on short panels: 82%
+of the time at T = 4, 63% at T = 10 and 53% at T = 30.
+
+**Firms against periods.** Crossed (N, T) designs, regressing the collapse
+rate on log N and log T (standard errors in parentheses):
+
+| estimator         | fits | log N         | log T         |
+|-------------------|------|---------------|---------------|
+| `fiml` (default)  | 600  | -1.66 (0.18)  | -0.93 (0.20)  |
+| `sml`             | 251  | -0.68 (0.26)  | -1.07 (0.27)  |
+
+Under `fiml`, firms buy about 1.8 times what periods do; under `sml`, periods
+buy about 1.6 times what firms do. Restricting the `fiml` design to N <= 200,
+the grid the `sml` design used, gives -1.64 (0.22), so the difference comes
+from the estimator. The difference in the N coefficient is significant
+(z = 2.8); the difference in the T coefficient is not. At T = 4 the `fiml`
+collapse rate falls 68%, 36%, 18%, 6% across N = 50, 100, 200, 400, and
+reaches 0% at N = 400, T = 16. Under `sml` the same row is flat: 60%, 39%,
+41%.
+
+**The signal-to-noise ratio.** Across six designs varying all four scales
+(50 replications each, N = 100, T = 6), S/N orders the collapse rate
+perfectly: Spearman -1.000 under both estimators, and a logistic coefficient
+on log(S/N) of -1.15 (0.20).
+
+| S/N   | collapse | sigma_h -> 0 | sigma_r -> 0 |
+|-------|----------|--------------|--------------|
+| 0.67  | 54%      | 0.14         | 0.40         |
+| 0.90  | 50%      | 0.10         | 0.40         |
+| 0.96  | 40%      | 0.21         | 0.19         |
+| 1.30  | 31%      | 0.15         | 0.17         |
+| 5.20  | 8%       | 0.06         | 0.02         |
+| 11.69 | 6%       | 0.04         | 0.02         |
+
+Going from a sigma_h/sigma_r ratio of 2 to 4 by shrinking sigma_r takes
+sigma_h -> 0 down (0.15 to 0.10) and sigma_r -> 0 up (0.17 to 0.40). The net
+rate rises from 31% to 50%, because S/N falls from 1.30 to 0.90. Holding the
+ratio at 2 and scaling both components up takes the rate from 31% to 8%.
+
+**The ordering of the estimators depends on the design.** The elasticities
+above were measured at sigma_r = 0.20 against sigma_h = 0.40. Where the random
+effect dominates (sigma_r = 0.50, sigma_h = 0.40, N = 100, T = 6), `fiml`
+collapses on 33% of replications and `sml` on 20%.
+
+## Profiling `sigh`
+
+For GTRE's `sigh`, the profile log-likelihood spans over 200 log units at
+N = 200 and sharpens with N. That ruled out weak identification as the
+explanation for its convergence behaviour.
+
+## True fixed effects
+
+With N fixed at 100 and a true lambda of 3.333, `TFE` returned lambda of
+88.5, 4.8, 3.6, 3.6 and 3.5 at T = 10, 20, 30, 40 and 50. The fit is pinned
+at the bound at T = 10 and has converged by T = 50.
+
+## KSS rank selection
+
+At n = 100 over five seeds and two true ranks, an uncapped IC_p2 criterion
+returned its maximum on all ten designs at T = 6 and again at T = 8. Capped at
+floor(T/2), it recovers the true rank exactly from T = 8 upward. At T = 6 it
+is right for a one-factor structure and occasionally one too high for a
+two-factor structure.
+
+## Mundlak terms
+
+Over 40 replications with N = 80 and T = 6, on a design where the firm effect
+is correlated with the firm mean of x and on a control where it is not:
+
+| design             | estimator | bias    | RMSE   |
+|--------------------|-----------|---------|--------|
+| effect correlated  | plain     | +0.0479 | 0.0570 |
+| effect correlated  | `mundlak` | -0.0061 | 0.0310 |
+| no correlation     | plain     | -0.0033 | 0.0253 |
+| no correlation     | `mundlak` | -0.0068 | 0.0311 |
+
+Where there is correlation, `mundlak` removes the bias and nearly halves the
+RMSE. Where there is none, it costs about 23% in RMSE.
+
+## Iteration defaults
+
+The `psfm()` defaults were raised in 1.1.3 from 100/10/10 to 5000/100/1000.
+The old caps were binding: 100 bobyqa evaluations left the seven-parameter
+`K1990`/`K1990modified` fits several log-likelihood units short of the
+optimum, and `GTRE_FML` at N = 500, T = 10 roughly halves its root mean
+square error against known true values when the caps are lifted, at about
+1.5 times the run time.
+
+## Error-components models
+
+`PL80` and `BC92` were checked against `frontier::sfa()` before that
+dependency was removed. Coefficients, log-likelihoods and predicted
+efficiencies matched to numerical precision across balanced and unbalanced
+panels and production and cost specifications.

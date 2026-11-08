@@ -29,22 +29,22 @@
   \item{\code{"TRE"}, \code{"TRE_Z"}}{Greene's (2005) true random effects, by simulated maximum likelihood. \code{_Z} adds determinants of \eqn{\sigma_u}.}
   \item{\code{"GTRE"}, \code{"GTRE_Z"}}{the four-component model separating persistent from transient inefficiency, by simulated maximum likelihood. \code{_Z} adds determinants.}
   \item{\code{"GTRE_FML"}}{the same four-component model by full information maximum likelihood through its closed-skew-normal representation; deterministic, but requires a balanced panel.}
-  \item{\code{"GTRE_SEQ1"}, \code{"GTRE_SEQ2"}}{two-step/moment-based estimators of the four-component model. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"TFE"}}{Greene's (2005) true fixed effects. \bold{Changed meaning in 1.1.3} -- see \sQuote{Details}.}
+  \item{\code{"GTRE_SEQ1"}, \code{"GTRE_SEQ2"}}{two-step/moment-based estimators of the four-component model. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"TFE"}}{Greene's (2005) true fixed effects. \bold{Changed meaning in 1.1.3}; see \sQuote{Details}.}
   \item{\code{"TFE_WMLE"}}{Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator.}
   \item{\code{"FD"}}{the first-difference estimator of Wang and Ho (2010).}
-  \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"CSS"}}{Cornwell, Schmidt and Sickles (1990): a firm-specific quadratic in time, so inefficiency varies over time and firms may cross over. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"LS"}}{Lee and Schmidt (1993): one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t \alpha_i}. Time-varying but no crossover. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"SSRE"}}{Schmidt and Sickles (1984) random effects: the GLS estimator, with inefficiency read off the firm effects' BLUPs. More efficient than \code{"SSFE"} and identifies time-invariant regressors, at the cost of assuming the effects are uncorrelated with the regressors. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"SSCRE"}}{Correlated random effects: \code{"SSRE"} augmented with the within-firm means of the time-varying regressors (Mundlak 1978), so that correlation between effects and regressors is modelled rather than assumed away. Not maximum likelihood -- no \code{logLik()}.}
-  \item{\code{"KSS"}}{Kneip, Sickles and Song (2012): the firm effect is a smooth function of time lying in an \eqn{L}-dimensional space whose basis is estimated from the data. Nests \code{"SSFE"}, \code{"LS"} and \code{"CSS"}. Balanced panels only. Not maximum likelihood -- no \code{logLik()}.}
+  \item{\code{"SSFE"}}{Schmidt and Sickles' (1984) fixed-effects estimator, inefficiency read off the firm effects. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"CSS"}}{Cornwell, Schmidt and Sickles (1990): a firm-specific quadratic in time, so inefficiency varies over time and firms may cross over. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"LS"}}{Lee and Schmidt (1993): one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t \alpha_i}. Time-varying but no crossover. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"SSRE"}}{Schmidt and Sickles (1984) random effects: the GLS estimator, with inefficiency read off the firm effects' BLUPs. More efficient than \code{"SSFE"} and identifies time-invariant regressors, but assumes the effects are uncorrelated with the regressors. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"SSCRE"}}{Correlated random effects: \code{"SSRE"} augmented with the within-firm means of the time-varying regressors (Mundlak 1978), so the correlation between effects and regressors is modelled. Not maximum likelihood: no \code{logLik()}.}
+  \item{\code{"KSS"}}{Kneip, Sickles and Song (2012): the firm effect is a smooth function of time in an \eqn{L}-dimensional space whose basis is estimated from the data. Nests \code{"SSFE"}, \code{"LS"} and \code{"CSS"}. Balanced panels only. Not maximum likelihood: no \code{logLik()}.}
   \item{\code{"PL80"}}{Pitt and Lee (1980): time-invariant inefficiency.}
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
   \item{\code{"PL80_MVTN"}}{Pitt and Lee's (1981) Model III: inefficiency varies over time and is CORRELATED within a firm, through a multivariate normal truncated to the negative orthant. This is the likelihood from their Appendix 2, which they derived but did not use, calling the T-dimensional integrals intractable. Balanced panels only. See \code{\link{PL80_MVTN}}.}
   \item{\code{"K1990"}, \code{"K1990modified"}}{Kumbhakar (1990) time patterns for inefficiency.}
 } Matching ignores case, so \code{"tre"}, \code{"TRE"} and \code{"Tre"} are the same choice.}
-  \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table) -- the panel index is constructed internally from the \code{individual} and \code{time} arguments -- or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
+  \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table), in which case the panel index is built from the \code{individual} and \code{time} arguments, or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
   \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
   \item{maxit.nlminb}{Maximum number of iterations for the nlminb optimization routine.}
   \item{maxit.psoptim}{Maximum number of iterations for the psoptim optimization routine}
@@ -59,114 +59,96 @@
   \item{inefdec}{Production or cost function}
   \item{Method}{Method passed to \code{optim} for the final stage. Must be
   \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
-  and upper bounds this package uses to keep scale parameters positive, and any
-  other value is refused with an error rather than quietly optimized without
-  them.}
+  and upper bounds this package uses to keep scale parameters positive. Any
+  other value is an error.}
   \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
-  \item{rand.psoptim}{Integer. Seed for the particle-swarm stage, so that a fit with \code{PSopt = TRUE} can be reproduced. It has no effect unless \code{PSopt = TRUE}. Varying it with \code{PSopt = TRUE} is how to check sensitivity to the starting point; see \code{rand.gtre}. Default \code{NULL}.}
+  \item{rand.psoptim}{Integer. Seed for the particle-swarm stage, so that a fit with \code{PSopt = TRUE} can be reproduced. It has no effect unless \code{PSopt = TRUE}. Varying it with \code{PSopt = TRUE} checks sensitivity to the starting point; see \code{rand.gtre}. Default \code{NULL}.}
   \item{rand.gtre}{Integer. Randomizes the simulation draws of the simulated-ML models listed under \code{halton_num}, by a uniform shift of the sequence (see \code{sim_type}). Fixing it makes a fit reproducible. Default \code{NULL}.
 
-  \bold{Changing it changes the likelihood being maximized, not the starting point.} With the default \code{PSopt = FALSE} the starting values are deterministic, so refits under different \code{rand.gtre} begin from the same place and optimize different simulated likelihoods. Their log-likelihoods are therefore \emph{not comparable}, and the refit with the highest one is not a better solution: it is the one whose simulation error happened to be most favourable. Measured on a 56-firm, 24-period GTRE panel at the default number of draws, changing only \code{rand.gtre} moved the simulated log-likelihood at one \emph{fixed} parameter vector over a range of 26 units, and four of six refits exceeded the exact maximum given by \code{estimator = "fiml"}; with \code{halton_num = 1000} the range fell to 3.
+  \bold{Changing it changes the likelihood being maximized, not the starting point.} With the default \code{PSopt = FALSE} the start is deterministic, so refits under different \code{rand.gtre} start from the same place and maximize different simulated likelihoods. Their log-likelihoods are \emph{not comparable}. The refit with the highest one is not a better solution, only the one with the most favourable simulation error; at the default draw count such refits can even exceed the exact maximum that \code{estimator = "fiml"} gives.
 
-  To measure this variation, use \code{\link{simulation_se}}, which refits under independent values of \code{rand.gtre} and reports both the parameter and the log-likelihood spread. To reduce it, raise \code{halton_num}. To check sensitivity to the \emph{starting point} instead, set \code{PSopt = TRUE} and vary \code{rand.psoptim}, or supply \code{start_val}. On a balanced panel, \code{model_name = "GTRE"} with \code{estimator = "fiml"} (the default) involves no simulation at all.}
+  To measure this variation, use \code{\link{simulation_se}}, which refits under independent values of \code{rand.gtre} and reports the spread of the parameters and of the log-likelihood. To reduce it, raise \code{halton_num}. To check sensitivity to the \emph{starting point}, set \code{PSopt = TRUE} and vary \code{rand.psoptim}, or supply \code{start_val}. On a balanced panel, \code{model_name = "GTRE"} with \code{estimator = "fiml"} (the default) involves no simulation.}
   \item{OPG_calc}{Logical. Should the outer product of gradients be calculated for inference.  Default to \code{FALSE}.}
   \item{estimator}{How to estimate the four-component GTRE model, in the same spirit as \code{\link{sfm}}'s \code{estimator}: one model, several routes to it. Applies to \code{model_name = "GTRE"} only, and is ignored with a warning elsewhere.
 \describe{
-  \item{\code{"fiml"}}{\bold{the default.} Full information maximum likelihood through the closed-skew-normal representation. Deterministic -- nothing is integrated by Monte Carlo, so repeated fits to the same data agree exactly. Requires a \bold{balanced} panel.}
+  \item{\code{"fiml"}}{\bold{the default.} Full information maximum likelihood through the closed-skew-normal representation. Deterministic: repeated fits to the same data agree exactly. Requires a \bold{balanced} panel.}
   \item{\code{"sml"}}{Simulated maximum likelihood over Halton draws. Handles unbalanced panels. This is what \code{model_name = "GTRE"} meant through version 1.1.3.}
   \item{\code{"seq1"}, \code{"seq2"}}{The two-step moment-based estimators. Not maximum likelihood, so they carry no \code{logLik()}.}
 }
 The older names remain and are unchanged: \code{"GTRE_FML"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} select the same three routes directly.
 
-On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you simply took the default, \code{psfm()} warns and falls back to \code{"sml"} -- erroring would make \code{"GTRE"} unusable by default on a whole class of data. If you asked for \code{"fiml"} explicitly it errors instead, rather than silently fitting a different estimator than the one you named.}
-  \item{collinear_action}{One of \code{"start_only"} (default), \code{"error"}, or \code{"warn_drop"}. Controls what happens when the \emph{between-individual} design matrix used to build starting values is rank deficient. This is checked separately from the pooled design because the two can differ: time dummies, for example, are routinely estimable in a pooled specification while collapsing onto the intercept once averaged within each unit, which is exactly the situation that makes the internal random-effects initialization fail. \code{"start_only"} keeps the model you asked for and removes the offending columns from the starting-value regression only, taking their starting values from a pooled OLS fit; \code{"error"} stops before estimation and names the offending columns; \code{"warn_drop"} removes those terms from the estimated model. All three report what was found. Only relevant to the models initialized by a random-effects regression (\code{GTRE}, \code{TRE} and their \code{_Z}/\code{SEQ} variants).}
-  \item{time}{Character. Name of a time-period column in \code{data}, used by the error-components frontier models (\code{"PL80"}, \code{"BC92"}, \code{"K1990"}, \code{"K1990modified"}). If \code{NULL} (the default), a sequential within-individual time index is constructed from row order, which assumes \code{data} is already sorted chronologically within each individual.}
-  \item{tfe_lambda_max}{Numeric. Upper bound placed on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, i.e. \eqn{\sigma_v} is not allowed below about 1\% of \eqn{\sigma}. This is a guard against a genuine degeneracy of Greene's likelihood rather than a convergence tolerance -- see \sQuote{Details}. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
-\item{keep_objective}{Retain the likelihood closure on the fitted object as \code{$objective}, for every \code{model_name} fit by maximum likelihood: the simulated-ML models \code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"} and \code{"TRE_Z"}, and, from 1.3.0, the closed-form likelihoods \code{"GTRE_FML"}, \code{"TFE_WMLE"}, \code{"FD"}, \code{"PL80"}, \code{"PL80_MVTN"}, \code{"BC92"}, \code{"K1990"} and \code{"K1990modified"}. This lets the log-likelihood be evaluated away from the optimum, which is what profiling a single parameter requires; \code{\link{sfa_diagnostics}} uses it, and it is how the \code{sigh} convergence question was localized (see \sQuote{Details}). \code{FALSE} by default, since the closure captures the data and the draws and so is not small. From 1.3.0 the closure also accepts \code{per_obs = TRUE}, returning one log-likelihood contribution per \emph{firm} -- firms are the independent units in these models -- so the score-based tools work on these fits: \code{\link{influence_sfa}}, \code{vcov(type = "bhhh")}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{\link{vuong}}. Their rows and their sandwich standard errors are therefore firm-level, i.e. clustered by firm. The remaining \code{model_name}s (\code{"TFE"}, \code{"SSFE"}, \code{"SSRE"}, \code{"SSCRE"}, \code{"CSS"}, \code{"LS"}, \code{"KSS"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"}) are moment-based, FE/LSDV or sequential rather than maximum likelihood, so they have no score matrix; for those the argument has no effect and \code{psfm()} warns.}
+On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the default, \code{psfm()} warns and falls back to \code{"sml"}. If you asked for \code{"fiml"} explicitly it errors.}
+  \item{collinear_action}{One of \code{"start_only"} (default), \code{"error"}, or \code{"warn_drop"}. Controls what happens when the \emph{between-individual} design matrix used for starting values is rank deficient. This is checked separately from the pooled design because the two can differ: time dummies, for example, are estimable pooled but collapse onto the intercept once averaged within each unit, which breaks the random-effects initialization. \code{"start_only"} keeps the model you asked for, drops the offending columns from the starting-value regression only, and takes their starts from pooled OLS; \code{"error"} stops and names the columns; \code{"warn_drop"} removes those terms from the model. All three report what was found. Only relevant to the models initialized by a random-effects regression (\code{GTRE}, \code{TRE} and their \code{_Z}/\code{SEQ} variants).}
+  \item{time}{Character. Name of a time-period column in \code{data}, used by the error-components frontier models (\code{"PL80"}, \code{"BC92"}, \code{"K1990"}, \code{"K1990modified"}). If \code{NULL} (the default), a sequential within-individual time index is built from row order, which assumes \code{data} is sorted chronologically within each individual.}
+  \item{tfe_lambda_max}{Numeric. Upper bound on \eqn{\lambda = \sigma_u/\sigma_v} when fitting \code{model_name = "TFE"}; ignored by every other model. Defaults to \code{100}, so \eqn{\sigma_v} cannot fall below about 1\% of \eqn{\sigma}. It guards against a degeneracy of Greene's likelihood (see \sQuote{Details}); it is not a convergence tolerance. A fit that pins at the bound warns and should not be read as an estimate of \eqn{\lambda}.}
+\item{keep_objective}{Retain the likelihood closure on the fitted object as \code{$objective}, for every \code{model_name} fit by maximum likelihood: the simulated-ML models \code{"GTRE"}, \code{"TRE"}, \code{"GTRE_Z"} and \code{"TRE_Z"}, and, from 1.3.0, the closed-form likelihoods \code{"GTRE_FML"}, \code{"TFE_WMLE"}, \code{"FD"}, \code{"PL80"}, \code{"PL80_MVTN"}, \code{"BC92"}, \code{"K1990"} and \code{"K1990modified"}. This lets the log-likelihood be evaluated away from the optimum, which profiling requires; \code{\link{sfa_diagnostics}} uses it. \code{FALSE} by default, since the closure captures the data and the draws. From 1.3.0 the closure also accepts \code{per_obs = TRUE}, returning one log-likelihood contribution per \emph{firm} (firms are the independent units), so the score-based tools work on these fits: \code{\link{influence_sfa}}, \code{vcov(type = "bhhh")}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{\link{vuong}}. Their rows and sandwich standard errors are firm-level, i.e. clustered by firm. The other \code{model_name}s (\code{"TFE"}, \code{"SSFE"}, \code{"SSRE"}, \code{"SSCRE"}, \code{"CSS"}, \code{"LS"}, \code{"KSS"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"}) are not fit by maximum likelihood here, so they have no score matrix; for those the argument has no effect and \code{psfm()} warns.}
 \item{kss_L}{\code{"KSS"} only. The dimension \eqn{L} of the factor space. \code{"auto"} (the default) selects it by the Bai and Ng (2002) \eqn{IC_{p2}} criterion; give an integer to fix it.}
 \item{kss_smooth}{\code{"KSS"} only. The smoothing penalty applied to each firm's residual trajectory before the basis is extracted. \code{"auto"} (the default) chooses it by generalized cross-validation; \code{0} turns smoothing off, which reduces the model to an unrestricted factor model.}
-\item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is capped internally at \eqn{\lfloor T/2 \rfloor} as well, for the reason given in \sQuote{Details}, and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
-\item{sim_type}{Sequence used to build the draws for the simulated-ML models listed under \code{halton_num}; ignored by every other model. \code{"halton"} (default) reproduces previous behaviour exactly. \code{"sobol"} accepts \code{sim_scrambling}; \code{"torus"} accepts \code{sim_prime}; \code{"uniform"} is pseudorandom, a baseline rather than a recommendation. The same options as \code{\link{sfm}}, built by the same code, so see \sQuote{Details} there. Each firm receives its own block of the sequence, and \code{rand.gtre} randomizes it by a shift modulo 1 (by the seed, for \code{"sobol"} and \code{"uniform"}).}
+\item{kss_L_max}{\code{"KSS"} only. Largest \eqn{L} the automatic criterion may choose. The criterion is also capped internally at \eqn{\lfloor T/2 \rfloor} (see \sQuote{Details}) and warns if it selects that cap. An explicit \code{kss_L} is not subject to the \eqn{\lfloor T/2 \rfloor} cap, only to \eqn{\min(T-1, n-1)}.}
+\item{sim_type}{Sequence used to build the draws for the simulated-ML models listed under \code{halton_num}; ignored by every other model. \code{"halton"} (default) reproduces previous behaviour exactly. \code{"sobol"} accepts \code{sim_scrambling}; \code{"torus"} accepts \code{sim_prime}; \code{"uniform"} is pseudorandom, a baseline rather than a recommendation. The same options as \code{\link{sfm}}, built by the same code; see \sQuote{Details} there. Each firm receives its own block of the sequence, and \code{rand.gtre} randomizes it by a shift modulo 1 (by the seed, for \code{"sobol"} and \code{"uniform"}).}
 \item{antithetics}{Logical. If \code{TRUE}, half of each firm's draws are taken from the sequence and the other half created as their mirror images. Default \code{FALSE}.}
 \item{sim_burn}{Number of leading elements of the sequence discarded. Default \code{NULL}, meaning 1000.}
 \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
 \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
 }
-\details{The generalized true random effects model (GTRE, 4-component model) and true random effects models (TRE)  are both estimated by simulated maximum likelihood based on the paper by the Fillipini and Greene (2016, JPA). The TRE_Z and GTRE_Z allow for modeling the u-component of the GTRE and TRE with determinants of inefficiency. The first-difference estimator (FD) of Wang and Ho (2010, JoE) is also available.
+\details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
 \tabular{lll}{
  \bold{\code{model_name}} \tab \bold{what it models} \tab \bold{use it when} \cr
- \code{"TRE"}, \code{"TRE_Z"} \tab true random effects: firm heterogeneity plus transient inefficiency \tab firm effects are not inefficiency \cr
- \code{"GTRE"}, \code{"GTRE_Z"} \tab four components: heterogeneity, persistent and transient inefficiency \tab both kinds of inefficiency matter \cr
- \code{"GTRE_SEQ1"}, \code{"GTRE_SEQ2"} \tab the four-component model in two steps \tab \eqn{T} is large; inconsistent for fixed \eqn{T} \cr
- \code{"TFE"}, \code{"TFE_WMLE"} \tab true fixed effects \tab firm effects may be correlated with the regressors \cr
+ \code{"TRE"} \tab true random effects: firm heterogeneity plus transient inefficiency, by simulated ML \tab firm effects are not inefficiency \cr
+ \code{"TRE_Z"} \tab \code{"TRE"} with determinants of \eqn{\sigma_u} \tab as \code{"TRE"}, and covariates drive inefficiency \cr
+ \code{"GTRE"} \tab four components: heterogeneity, persistent and transient inefficiency; route set by \code{estimator} \tab both kinds of inefficiency matter \cr
+ \code{"GTRE_Z"} \tab \code{"GTRE"} by simulated ML, with determinants \tab as \code{"GTRE"}, and covariates drive inefficiency \cr
+ \code{"GTRE_FML"} \tab the four-component model by exact (closed-skew-normal) ML \tab a balanced panel; same as \code{"GTRE"}'s default \cr
+ \code{"GTRE_SEQ1"} \tab four components in two steps, ML second stage \tab \eqn{T} is large; inconsistent for fixed \eqn{T} \cr
+ \code{"GTRE_SEQ2"} \tab four components in two steps, moment second stage \tab \eqn{T} is large; inconsistent for fixed \eqn{T} \cr
+ \code{"TFE"} \tab Greene's true fixed effects \tab firm effects may correlate with the regressors; long panels \cr
+ \code{"TFE_WMLE"} \tab within ML true fixed effects (Chen, Schmidt and Wang 2014) \tab as \code{"TFE"}, on short panels \cr
  \code{"FD"} \tab first differences (Wang and Ho 2010) \tab fixed effects with inefficiency determinants \cr
- \code{"PL80"}, \code{"BC92"}, \code{"PL80_MVTN"} \tab time-invariant, decaying or correlated inefficiency \tab the classical panel frontiers \cr
- \code{"K1990"}, \code{"K1990modified"} \tab Kumbhakar (1990) time paths for inefficiency \tab inefficiency follows a smooth time pattern \cr
- \code{"SSFE"}, \code{"SSRE"}, \code{"SSCRE"} \tab Schmidt-Sickles: the firm effect is the inefficiency \tab no distributional assumption on \eqn{u} \cr
- \code{"CSS"}, \code{"LS"}, \code{"KSS"} \tab distribution-free, time-varying firm effects \tab inefficiency changes over time, no distribution
+ \code{"PL80"} \tab time-invariant inefficiency (Pitt and Lee 1980) \tab inefficiency is constant within a firm \cr
+ \code{"BC92"} \tab inefficiency decaying exponentially (Battese and Coelli 1992) \tab inefficiency trends smoothly over time \cr
+ \code{"PL80_MVTN"} \tab time-varying inefficiency, correlated within firm \tab a balanced panel; no imposed time path \cr
+ \code{"K1990"} \tab logistic time path (Kumbhakar 1990) \tab a richer time path than \code{"BC92"} \cr
+ \code{"K1990modified"} \tab quadratic time path \tab a richer time path than \code{"BC92"} \cr
+ \code{"SSFE"} \tab Schmidt-Sickles within estimator; effect is inefficiency \tab no distribution for \eqn{u}; time-invariant \cr
+ \code{"SSRE"} \tab Schmidt-Sickles GLS (random effects) \tab as \code{"SSFE"}, effects uncorrelated with regressors \cr
+ \code{"SSCRE"} \tab \code{"SSRE"} with Mundlak means \tab as \code{"SSRE"}, effects may correlate \cr
+ \code{"CSS"} \tab a firm-specific quadratic in time \tab no distribution; firms may cross over \cr
+ \code{"LS"} \tab one common time pattern scaled per firm \tab no distribution; rankings fixed over time \cr
+ \code{"KSS"} \tab a smooth time-varying effect with an estimated basis \tab no distribution; a balanced panel
 }
 
-Each family has its own subsection below.
+The subsections below cover the panel index and formula, each model family, starting values, standard errors and efficiency prediction. The Monte Carlo measurements behind several of the caveats are collected in \code{vignette("sfa_numerical_notes", package = "sfa")}.
+
+\subsection{Formula, panel index and time}{
+Every model needs \code{individual}, the column that identifies panel units. The models with a time path also use \code{time}; without it, rows are taken to be in chronological order within each unit. A \code{plm::pdata.frame} supplies both.
+
+For \code{"TRE_Z"} and \code{"GTRE_Z"} the segment after the first pipe holds the determinants of \eqn{\sigma_u}, and for \code{"GTRE_Z"} a second segment holds those of \eqn{\sigma_h}. These models place \eqn{z'\delta} on the \emph{variance}, \eqn{\sigma_u = \sqrt{\exp(z'\delta)}}, so \eqn{\delta} is twice what \code{\link{sfm}}'s default \code{z_link = "sd"} reports for the same data.
+
+\code{mundlak} adds within-firm means to the frontier for the random-effects models; see \sQuote{Mundlak adjustment terms} below.
+}
 
 \subsection{The four-component model (GTRE)}{
-\bold{Choosing how GTRE is estimated.} Since version 1.1.4 the four routes to the four-component model are selected with \code{estimator} rather than by picking among four \code{model_name} values that looked like four different models. \code{model_name = "GTRE"} now defaults to \code{estimator = "fiml"}; through 1.1.3 it fitted the simulated-ML estimator, which is \code{estimator = "sml"}. Scripts that pass \code{"GTRE"} therefore get a different estimator than they did and are warned once per call. The explicit names \code{"GTRE_FML"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} are unaffected.
-
-\bold{Two ways of estimating the same four-component model.} \code{"GTRE"} and \code{"GTRE_FML"} both fit
+\code{"GTRE"} and \code{"GTRE_FML"} fit
 \deqn{y_{it} = \beta_0 + x_{it}'\beta + r_i - h_i + v_{it} - u_{it},}
-with \eqn{r_i, v_{it}} two-sided and \eqn{h_i, u_{it}} one-sided (half-normal), separating \emph{persistent} inefficiency \eqn{h_i} from \emph{transient} inefficiency \eqn{u_{it}}. They differ in how the likelihood is obtained.
+with \eqn{r_i, v_{it}} two-sided and \eqn{h_i, u_{it}} half-normal, separating \emph{persistent} inefficiency \eqn{h_i} from \emph{transient} inefficiency \eqn{u_{it}} (Filippini and Greene 2016; Colombi, Kumbhakar, Martini and Vittadini 2014).
 
-\code{"GTRE"} uses simulated maximum likelihood over Halton draws. \code{"GTRE_FML"} uses \emph{full information} maximum likelihood through the model's closed-skew-normal representation: with \eqn{A = -[1_T, I_T]}, \eqn{V = \mathrm{diag}(\sigma_h^2, \sigma_u^2 I_T)} and \eqn{\Sigma = \sigma_v^2 I_T + \sigma_r^2 1_T 1_T'}, the firm-level density is available in closed form and nothing is integrated by Monte Carlo. The likelihood is therefore deterministic, and repeated fits to the same data give identical answers.
+\bold{Choosing the route.} Since version 1.1.4 the route is chosen with \code{estimator}. \code{model_name = "GTRE"} now defaults to \code{estimator = "fiml"}; through 1.1.3 it fitted simulated ML, now \code{estimator = "sml"}. Scripts that pass \code{"GTRE"} therefore get a different estimator, and are warned once per call. \code{"GTRE_FML"}, \code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} are unaffected.
 
-The \eqn{(T+1)}-dimensional normal CDF this requires would normally be the bottleneck, but its covariance is diagonal-plus-rank-one for this model, so it collapses to a one-dimensional Gauss-Hermite integral -- the same reduction used for \code{"TFE"}.
+\bold{Full information ML.} With \eqn{A = -[1_T, I_T]}, \eqn{V = \mathrm{diag}(\sigma_h^2, \sigma_u^2 I_T)} and \eqn{\Sigma = \sigma_v^2 I_T + \sigma_r^2 1_T 1_T'}, the firm-level density has a closed-skew-normal form, so nothing is simulated and repeated fits agree exactly. The \eqn{(T+1)}-dimensional normal CDF it needs has a diagonal-plus-rank-one covariance, so it reduces to a one-dimensional Gauss--Hermite integral. \code{"GTRE_FML"} reports raw standard deviations \code{sigr}, \code{sigv}, \code{sigh}, \code{sigu}, not the \eqn{\lambda}/\eqn{\sigma} parameterization of \code{"GTRE"} under \code{"sml"}. It requires a \bold{balanced} panel and errors otherwise.
 
-\code{"GTRE_FML"} reports \bold{raw standard deviations} \code{sigr}, \code{sigv}, \code{sigh}, \code{sigu} (individual effect, noise, persistent inefficiency, transient inefficiency), \emph{not} the \eqn{\lambda}/\eqn{\sigma} reparameterization \code{"GTRE"} uses, and it requires a \bold{balanced} panel -- the closed-skew-normal pieces are built at a single \eqn{T}. It errors rather than silently mis-estimating if the panel is unbalanced; use \code{"GTRE"} in that case.
+\bold{Starting values.} The likelihood has a boundary optimum at \eqn{\sigma_h = 0}, where the model reduces to \code{"TRE"} and the intercept absorbs \eqn{E[h] = \sigma_h\sqrt{2/\pi}}. A fit can land there because it got stuck, or because that is the maximum for the sample (see the next subsection). The start search addresses only the first case. Following Colombi (2010) and Colombi, Martini and Vittadini (2011), \code{psfm()} evaluates two candidate starts, the random-effects decomposition and the \code{"GTRE_SEQ2"} estimate, and begins from the better one. \code{start_search} records the choice. \code{start_val} overrides it.
 
-\bold{Starting values for \code{"GTRE_FML"}.} The closed-skew-normal likelihood carries a boundary optimum at \eqn{\sigma_h = 0}, where the model collapses to \code{"TRE"} and the intercept absorbs the missing \eqn{E[h] = \sigma_h\sqrt{2/\pi}}. \emph{Two different things can put a fit there, and the likelihood tells them apart.} A fit whose boundary solution has a \emph{lower} likelihood than the true parameter vector reached it by getting stuck, and is an optimizer failure; one whose boundary solution has a \emph{higher} likelihood reached it because that is where the maximum is, and is the correct answer for that sample (see \sQuote{When a persistent scale collapses to zero} below). The start search addresses only the first kind. Following Colombi (2010) and Colombi, Martini and Vittadini (2011), who recommend seeding this likelihood from the two-step moment estimates, \code{psfm()} builds two candidate starts -- the random-effects decomposition shared with \code{"GTRE"}, and the two-step estimator reported by \code{"GTRE_SEQ2"} -- evaluates the likelihood at each, and begins from the better one. Which was chosen, and the log-likelihood at both, is returned in \code{start_search}. Supplying \code{start_val} overrides the search.
-
-Note that \eqn{\sigma_r} and \eqn{\sigma_h} enter the density only through \eqn{\sigma_r^2 + \sigma_h^2}; their separation rests entirely on the skewness term. That pair is therefore the least precisely estimated part of the model even when the fit is at the global optimum, which is consistent with the confounding between latent heterogeneity and persistent inefficiency reported in the source papers.
-
-\bold{\code{"GTRE_SEQ1"} and \code{"GTRE_SEQ2"} are large-T estimators.} Both take
-the random-effects decomposition from \code{plm} and hand its two output series to a
-second stage -- \code{"GTRE_SEQ1"} fits an intercept-only normal--half-normal likelihood
-to each, \code{"GTRE_SEQ2"} inverts their second and third moments. The second stage
-treats those series as if they were draws from \eqn{v_{it}-u_{it}} and \eqn{r_i-h_i},
-and at finite \eqn{T} they are not: \code{alpha_hat} is the shrunken predictor
-\eqn{c\,(\alpha_i+\bar e_i)} with \eqn{c = T\sigma_\alpha^2/(T\sigma_\alpha^2+\sigma_\epsilon^2)},
-and \code{eps_hat} is the quasi-demeaned residual
-\eqn{(1-\theta)\alpha_i + e_{it} - \theta\bar e_i} with
-\eqn{\theta = 1-\sigma_\epsilon/\sqrt{T\sigma_\alpha^2+\sigma_\epsilon^2}}.
-
-Relative to the latent draws this attenuates the third central moment on the
-\eqn{\epsilon} side by \eqn{(1-\theta/T)^3+(T-1)(-\theta/T)^3} (about 0.81 at
-\eqn{T=10}) and scales the \eqn{\alpha} side by \eqn{c^2} and \eqn{c^3}. None of these
-factors tends to 1 as \eqn{N} grows with \eqn{T} fixed, so \bold{both estimators
-converge to the wrong constants and are inconsistent for fixed \eqn{T}}; each call
-warns accordingly. On the package's own convergence design (\eqn{T=10},
-\eqn{\sigma_h=0.8}, \eqn{\sigma_r=0.4}) the estimates settle at
-\eqn{\gamma_{uv}\approx0.87} against 0.917 and \eqn{\sigma^2_{hr}\approx0.68} against
-0.80, and the log MSE-on-log \eqn{N} slopes are near zero rather than \eqn{-1}. The
-same routines applied to the latent draws themselves recover the truth at the
-\eqn{\sqrt{N}} rate, which locates the problem in the first-stage decomposition rather
-than in either second stage. Raising \eqn{T} removes the bias; raising \eqn{N} only
-sharpens it. For a consistent alternative use \code{model_name = "GTRE"}, which
-estimates all four variance components jointly.
-
-The standard errors these two report are delta-method errors built from the
-\emph{iid} moment variances, so they describe sampling variability around each
-estimator's probability limit, not around the truth. They are also optimistic on the
-\eqn{\epsilon} side, whose \eqn{n} residuals are correlated within firm.
+\bold{The persistent split is the weakest part of the model.} \eqn{\sigma_r} and \eqn{\sigma_h} enter the density only through \eqn{\sigma_r^2 + \sigma_h^2}, and their separation rests on the skewness term alone. Expect them to be the least precisely estimated parameters even at the global optimum.
 }
 
 \subsection{When a persistent scale collapses to zero}{
-\bold{When a persistent scale collapses to zero.} \code{GTRE} carries two persistent components -- \eqn{\sigma_h}, persistent inefficiency, and \eqn{\sigma_r}, the firm random effect -- and the likelihood cannot always separate them in a given sample. When it cannot, it merges them: one scale goes to zero and the other absorbs its variation, coming back inflated.
+\code{"GTRE"} carries two persistent components, \eqn{\sigma_h} and \eqn{\sigma_r}, and a given sample cannot always separate them. When it cannot, one scale goes to zero and the other absorbs its variation. This is common, not exceptional, even when both components are present. \code{psfm} reports it in \code{$sigh_at_bound} and \code{$sigr_at_bound} and warns, naming the surviving scale.
 
-This is common rather than exceptional. On simulated data at \eqn{T = 6} with both components genuinely present (\eqn{\sigma_r = 0.20}, \eqn{\sigma_h = 0.40}), one of the two collapsed in \bold{37\% of 87 replications}, and the commoner direction was \eqn{\sigma_r \to 0} rather than \eqn{\sigma_h \to 0}. The share with both interior does improve with \eqn{N} (15, 19 and 21 of about 29 at \eqn{N = 50, 100, 200}) but slowly.
+\bold{A collapse is usually the right answer.} The boundary fit often has a higher likelihood than the true parameters, just as \eqn{\sigma_u = 0} is the maximum likelihood estimate under wrong skewness in a cross-section (Waldman 1982; see \code{\link{skewness_test}}). The start search above removes trapped optimizers; what remains is the estimate. Bounding either scale away from zero would corrupt exactly the samples where the boundary is the answer. Read the two persistent scales together and treat their split as unidentified in that sample; their sum is still informative.
 
-\bold{A collapse is usually the right answer, not a numerical failure.} On one such replication -- whose realized \eqn{\sigma_h} scale was 0.3695, so persistent inefficiency was certainly present -- the boundary solution had a log-likelihood \emph{higher than the true parameter vector} by 3.66, a likelihood ratio of about 39. This is the panel counterpart of the cross-sectional wrong-skewness result (Waldman 1982), where \eqn{\sigma_u = 0} is the correct maximum likelihood estimate rather than an optimizer failure; see \code{\link{skewness_test}}. This is not in tension with the start search described above under \code{"GTRE_FML"}: a boundary fit that beats the truth on likelihood is the estimate, while one that loses to it is a trapped optimizer, and the search exists to remove the second so that what remains is the first.
-
-\bold{What a collapse does to the rest of the fit, exactly.} One rule covers it: \emph{a collapse conserves the persistent variance and relocates the persistent mean into the intercept}. Those are two different destinations. \eqn{h} is half-normal, so it carries both a mean \eqn{E[h] = \sigma_h\sqrt{2/\pi}}{E[h] = sigma_h sqrt(2/pi)} and a variance \eqn{\mathrm{Var}(h) = \sigma_h^2(1 - 2/\pi)}{Var(h) = sigma_h^2 (1 - 2/pi)}, and the model has a separate place for each: the frontier intercept takes the mean, since \eqn{E[y] = \beta_0 - E[h] - E[u]}, and the surviving persistent scale takes the variance. The intuitive shortcut -- that the survivor comes back at \eqn{\sqrt{\sigma_h^2 + \sigma_r^2}}{sqrt(sigma_h^2 + sigma_r^2)} -- ignores that split and is wrong.
+\bold{What a collapse does to the other parameters.} It conserves the persistent variance and moves the persistent mean into the intercept, since \eqn{E[y] = \beta_0 - E[h] - E[u]}. The survivor does \emph{not} come back at \eqn{\sqrt{\sigma_h^2 + \sigma_r^2}}{sqrt(sigma_h^2 + sigma_r^2)}:
 
 \tabular{lll}{
   \tab \bold{surviving scale} \tab \bold{intercept} \cr
@@ -174,96 +156,95 @@ This is common rather than exceptional. On simulated data at \eqn{T = 6} with bo
   \eqn{\sigma_r \to 0}{sigma_r -> 0} \tab \eqn{\hat\sigma_h = \sqrt{\sigma_h^2 + \sigma_r^2/(1-2/\pi)}}{sigma_h_hat = sqrt(sigma_h^2 + sigma_r^2 / (1 - 2/pi))} \tab shifts by \eqn{+\Delta E[h]}{+Delta E[h]}
 }
 
-At \eqn{\sigma_h = 0.40}, \eqn{\sigma_r = 0.20} that predicts 0.3133 and \eqn{-0.3192} in the first row, 0.5197 and \eqn{+0.0955} in the second, with nothing fitted. Over 1000 replications at each of five sample sizes the measurements are 0.2973, \eqn{-0.3035}, 0.5058 and \eqn{+0.0931} -- within 2.5\% to 5.1\%, and all four slightly below prediction, which is what selection produces rather than a wrong constant.
+So a collapsed fit displaces the intercept by a known, substantial amount, and any level read off \code{coef()} moves with it.
 
-The practical consequence is that a collapsed fit does not merely mislabel the persistent split. It displaces the intercept by a known and substantial amount, so any level read off \code{coef()} is displaced with it.
+\bold{What a collapse says about the data.} A collapsed \eqn{\sigma_h} is wrong skewness between firms: average the OLS residuals within each firm and look at their skew. A positive between-firm skew predicts a \eqn{\sigma_h} collapse well. Treat this as a reading of the sign, not a test. The firm mean also contains \eqn{-\bar u_i}, which is itself skewed, so on short panels the between-firm skew leans negative even when \eqn{\sigma_h = 0}. \code{\link{skewness_test}} does not apply to the between-firm residuals as it stands.
 
-\bold{What a collapse is telling you about your data.} It is wrong skewness, measured between firms rather than within them. Take the OLS residuals, average them within each firm -- that average is the persistent part of the error -- and look at their skew. Over 1000 replications, the samples whose between-firm skew came out positive (the wrong way for a production frontier) lost \eqn{\sigma_h} to the boundary \bold{69\%} of the time, against 3.6\% for the rest; the area under the ROC curve for that single statistic is \bold{0.955}. Not one wrong-skew sample collapsed \eqn{\sigma_r} instead. So a collapsed \eqn{\sigma_h} is not a numerical accident to be retried with different starting values: this sample carries no between-firm evidence of persistent inefficiency, and the estimate is reporting that.
-
-Note that this is a reading of the sign, not a test. The firm mean of the residuals contains \eqn{-\bar u_i} as well as \eqn{-h_i}, and the mean of \eqn{T} half-normals is itself skewed the same way, so on short panels the between-firm skew leans negative even when \eqn{\sigma_h = 0} -- 82\% of the time at \eqn{T = 4}, 63\% at \eqn{T = 10}, 53\% at \eqn{T = 30}. \code{\link{skewness_test}} is therefore \emph{not} applicable to the between-firm residuals as it stands.
-
-\bold{Whether firms or periods help depends on the estimator, and the two answers are opposite.} Crossed \eqn{(N, T)} designs on the same data-generating process, fitting the collapse rate on \eqn{\log N}{log N} and \eqn{\log T}{log T}:
-
-\tabular{llll}{
-  \bold{estimator} \tab \bold{fits} \tab \bold{log N} \tab \bold{log T} \cr
-  \code{"fiml"} (the default) \tab 600 \tab \bold{-1.66} (0.18) \tab -0.93 (0.20) \cr
-  \code{"sml"} \tab 251 \tab -0.68 (0.26) \tab \bold{-1.07} (0.27)
-}
-
-Under the default, firms buy about 1.8 times what periods do; under simulated ML it is the other way round, periods buying about 1.6 times what firms do. Restricting the \code{"fiml"} design to \eqn{N \le 200}{N <= 200}, cell for cell the same grid the \code{"sml"} one used, leaves it at \eqn{-1.64} \eqn{(0.22)}, so this is the estimator and not the design; the difference in the \eqn{N} coefficient is significant \eqn{(z = 2.8)} and the difference in the \eqn{T} coefficient is not.
-
-The practical reading, for the estimator you get by default: \bold{add firms}. At \eqn{T = 4} the collapse rate falls 68\%, 36\%, 18\%, 6\% across \eqn{N = 50, 100, 200, 400}, and reaches 0\% at \eqn{N = 400, T = 16}. Under \code{"sml"} the same row is flat -- 60\%, 39\%, 41\% -- which is why a short panel really is a dead end there however many firms it has. If you must use \code{estimator = "sml"} (an unbalanced panel forces it), then length is what buys the split, and a four-period panel will not give it to you.
-
-\bold{How to tell in advance whether your panel can support the split.} One
-quantity governs it, and it is not \eqn{\sigma_h/\sigma_r}. What the likelihood has to do is read the persistent part out of firm means that the transient block contaminates, so write the firm-mean composite as \eqn{r_i - h_i - \bar u_i + \bar v_i} and compare its persistent variance with the transient variance left in it:
-
+\bold{Whether your panel can support the split.} The governing quantity is not \eqn{\sigma_h/\sigma_r} but the persistent variance of the firm-mean composite against the transient variance left in it:
 \deqn{S/N = \frac{\sigma_r^2 + \sigma_h^2(1 - 2/\pi)}{[\sigma_u^2(1 - 2/\pi) + \sigma_v^2]/T}}{S/N = [sigma_r^2 + sigma_h^2 (1 - 2/pi)] / ([sigma_u^2 (1 - 2/pi) + sigma_v^2] / T)}
-
-Across six designs varying all four scales in different combinations (50 replications each, \eqn{N = 100}, \eqn{T = 6}), this orders the collapse rate \bold{perfectly} -- Spearman \eqn{-1.000} under both estimators, and a logistic coefficient on \eqn{\log(S/N)}{log(S/N)} of \eqn{-1.15} \eqn{(0.20)}:
-
-\tabular{lllll}{
-  \bold{S/N} \tab \bold{collapse} \tab \eqn{\sigma_h \to 0}{sigma_h -> 0} \tab \eqn{\sigma_r \to 0}{sigma_r -> 0} \tab \cr
-  0.67 \tab 54\% \tab 0.14 \tab 0.40 \tab \cr
-  0.90 \tab 50\% \tab 0.10 \tab 0.40 \tab \cr
-  0.96 \tab 40\% \tab 0.21 \tab 0.19 \tab \cr
-  1.30 \tab 31\% \tab 0.15 \tab 0.17 \tab \cr
-  5.20 \tab 8\% \tab 0.06 \tab 0.02 \tab \cr
-  11.69 \tab 6\% \tab 0.04 \tab 0.02 \tab
+As a rule of thumb, below \eqn{S/N \approx 1}{S/N about 1} about half of fits merge the two components, and it takes roughly \eqn{S/N > 5} to get under 10\%. Two consequences:
+\itemize{
+  \item \bold{Raising \eqn{\sigma_h/\sigma_r} does not help}; it only decides which scale collapses. Shrinking \eqn{\sigma_r} lowers \eqn{S/N} and raises the collapse rate.
+  \item \bold{More transient inefficiency hurts}: \eqn{\sigma_u} is in the denominator.
 }
 
-As a rule of thumb: below \eqn{S/N \approx 1}{S/N about 1} about half your fits will merge the two components, and it takes roughly \eqn{S/N > 5}{S/N > 5} to get under 10\%.
-
-Two things follow that are easy to get backwards. First, \bold{raising \eqn{\sigma_h/\sigma_r} does not help} -- it only decides which scale dies. Going from a ratio of 2 to 4 by shrinking \eqn{\sigma_r} takes \eqn{\sigma_h \to 0}{sigma_h -> 0} down (0.15 to 0.10) and \eqn{\sigma_r \to 0}{sigma_r -> 0} up (0.17 to 0.40), and the net rate \emph{rises} from 31\% to 50\%, because shrinking \eqn{\sigma_r} removes persistent variance and lowers \eqn{S/N} from 1.30 to 0.90. Holding the ratio at 2 and scaling both components instead takes the rate from 31\% to 8\%. Second, \bold{more transient inefficiency hurts}: \eqn{\sigma_u} enters the denominator, so a noisier transient block contaminates the firm means and makes the persistent split harder.
-
-Note what this quantity does and does not explain. \eqn{T} enters it directly, so it covers the contamination channel by which longer panels help. It says nothing about \eqn{N}, which helps through a different route -- sampling error in what is effectively a deconvolution from \eqn{N} firm-level draws -- which is why the two dimensions have to be measured separately, as above.
-
-One limit on all of that, stated because it is easy to over-read. Those elasticities were measured at \eqn{\sigma_r = 0.20} against \eqn{\sigma_h = 0.40}, where persistent inefficiency is the larger of the two time-invariant components. On a design where the random effect dominates instead (\eqn{\sigma_r = 0.50}, \eqn{\sigma_h = 0.40}, \eqn{N = 100}, \eqn{T = 6}) the \emph{level} ordering reverses: \code{"fiml"} collapses on 33\% of replications and \code{"sml"} on 20\%. Which estimator handles the split better is not a fact about the estimators alone -- it depends on how much persistent inefficiency there is to find.
-
-\code{psfm} therefore reports the condition rather than preventing it, in \code{$sigh_at_bound} and \code{$sigr_at_bound} and in a warning naming the surviving scale. Bounding either parameter away from zero would corrupt precisely the samples where the boundary is the answer. What the warning asks of you is to read the two persistent scales together and to treat the split between them as unidentified in that sample -- their \emph{sum} remains informative even where the division does not.
+\bold{Firms or periods.} \eqn{S/N} covers \eqn{T} but not \eqn{N}, and the two help through different channels. Under the default \code{estimator = "fiml"}, adding firms reduces collapse more than adding periods. Under \code{"sml"} the reverse holds, and a short panel stays a dead end however many firms it has. So if an unbalanced panel forces \code{"sml"}, panel length is what buys the split. Which estimator collapses less often depends on the design: where the random effect dominates, \code{"sml"} can collapse less often than \code{"fiml"}.
 }
 
-\subsection{True fixed effects}{
-\bold{The two true-fixed-effects estimators, and a change of meaning in \code{"TFE"}.} Both \code{"TFE"} and \code{"TFE_WMLE"} fit the same model,
+\subsection{Two-step estimators (GTRE_SEQ1, GTRE_SEQ2)}{
+Both take the random-effects decomposition from \code{plm} and pass its two
+output series to a second stage: \code{"GTRE_SEQ1"} fits an intercept-only
+normal--half-normal likelihood to each, \code{"GTRE_SEQ2"} inverts their second
+and third moments. The second stage treats those series as draws from
+\eqn{v_{it}-u_{it}} and \eqn{r_i-h_i}, which at finite \eqn{T} they are not:
+\code{alpha_hat} is the shrunken predictor \eqn{c\,(\alpha_i+\bar e_i)} with
+\eqn{c = T\sigma_\alpha^2/(T\sigma_\alpha^2+\sigma_\epsilon^2)}, and
+\code{eps_hat} is the quasi-demeaned residual
+\eqn{(1-\theta)\alpha_i + e_{it} - \theta\bar e_i} with
+\eqn{\theta = 1-\sigma_\epsilon/\sqrt{T\sigma_\alpha^2+\sigma_\epsilon^2}}.
+
+This attenuates the third central moment on the \eqn{\epsilon} side by
+\eqn{(1-\theta/T)^3+(T-1)(-\theta/T)^3} (about 0.81 at \eqn{T=10}) and scales
+the \eqn{\alpha} side by \eqn{c^2} and \eqn{c^3}. None of these factors tends to
+1 as \eqn{N} grows with \eqn{T} fixed, so \bold{both estimators are inconsistent
+for fixed \eqn{T}}, and each call warns. Raising \eqn{T} removes the bias;
+raising \eqn{N} does not. For a consistent estimator use
+\code{model_name = "GTRE"}.
+
+Their delta-method standard errors use \emph{iid} moment variances, so they
+describe variability around each estimator's probability limit, not around the
+truth. They are also optimistic on the \eqn{\epsilon} side, whose residuals are
+correlated within firm.
+}
+
+\subsection{Simulated maximum likelihood (TRE, TRE_Z, GTRE_Z, GTRE with sml)}{
+These models integrate the firm effects by simulation over \code{halton_num} draws per firm, from the sequence \code{sim_type} selects (Filippini and Greene 2016). \code{"TRE_Z"} and \code{"GTRE_Z"} add determinants of the one-sided scales. The simulated log-likelihood depends on the draws: \code{rand.gtre} changes the objective itself, so log-likelihoods from different draws are not comparable. Use \code{\link{simulation_se}} to measure simulation error and raise \code{halton_num} to reduce it. \code{"TRE_Z"} becomes unstable on small panels (below about 60 firms).
+}
+
+\subsection{True fixed effects and first differences}{
+\code{"TFE"} and \code{"TFE_WMLE"} fit the same model,
 \deqn{y_{it} = \alpha_i + x_{it}'\beta + v_{it} - u_{it},\quad v \sim N(0,\sigma_v^2),\ u \sim N^+(0,\sigma_u^2),}
-with \eqn{\alpha_i} an unrestricted individual effect; they differ in how they estimate it.
+with \eqn{\alpha_i} an unrestricted individual effect. They differ in how they treat \eqn{\alpha_i}.
 
-\code{"TFE"} is Greene's (2005, JoE/JPA) true fixed effects estimator: the ordinary composed-error likelihood with the \eqn{N} individual intercepts estimated jointly with \eqn{(\lambda, \sigma, \beta)}. This package concentrates the \eqn{\alpha_i} out at every likelihood evaluation (each is the unique root of a strictly decreasing score, solved by safeguarded Newton to machine precision), so the reported parameter vector, its standard errors and the \code{out} layout are the same 2 + K as \code{"TFE_WMLE"}. It is the estimator subject to the \emph{incidental parameters problem}: with \eqn{T} fixed, \eqn{\sigma_u} is biased upward and efficiency scores correspondingly pessimistic.
+\code{"TFE"} is Greene's (2005) true fixed effects estimator: the composed-error likelihood with the \eqn{N} intercepts estimated jointly. The package concentrates each \eqn{\alpha_i} out at every evaluation (the unique root of a strictly decreasing score, solved by safeguarded Newton), so the parameter vector and \code{out} layout match \code{"TFE_WMLE"}. It suffers the \emph{incidental parameters problem}: with \eqn{T} fixed, \eqn{\sigma_u} is biased upward and efficiency scores are too pessimistic.
 
-\code{"TFE_WMLE"} is Chen, Schmidt and Wang's (2014, JoE) within maximum-likelihood estimator, which applies maximum likelihood to the deviations from individual means. The \eqn{\alpha_i} drop out of the likelihood entirely, so the estimator is free of the incidental parameters problem; the firm effects are recovered afterwards from the mean residual with the usual \eqn{\sqrt{2/\pi}\,\sigma_u} adjustment.
+\code{"TFE_WMLE"} is Chen, Schmidt and Wang's (2014) within maximum-likelihood estimator, which applies ML to deviations from individual means. The \eqn{\alpha_i} drop out, so it has no incidental parameters problem. The firm effects are recovered afterwards from the mean residual plus \eqn{\sqrt{2/\pi}\,\sigma_u}.
 
-The two are \emph{not} nested and their log-likelihoods are not on the same scale -- \code{"TFE"} evaluates the likelihood of the data, \code{"TFE_WMLE"} that of the within-transformed deviations -- so \code{logLik()}, \code{AIC()} and \code{BIC()} must not be used to choose between them.
-
-\bold{Through sfa 1.1.2, \code{model_name = "TFE"} selected the Chen-Schmidt-Wang estimator.} It now selects Greene's, matching standard usage; the Chen-Schmidt-Wang estimator is \code{"TFE_WMLE"}. Existing scripts that pass \code{"TFE"} therefore get a different estimator than they did, and are warned once per call.
-
-\bold{Degeneracy of the Greene likelihood.} Because \eqn{\alpha_i} is unrestricted, Greene's likelihood always has a supremum on the \eqn{\sigma_v \to 0} boundary: setting \eqn{\alpha_i = \max_t (y_{it} - x_{it}'\beta)} makes every composed error weakly negative, \eqn{\Phi(-\lambda e/\sigma) \to 1}, and what remains is the deterministic-frontier likelihood, which is finite and attained. On simulated panels this supremum is reached along a path that first dips below the interior local maximum and then rises past it, so an unconstrained search that escapes the interior basin returns \eqn{\sigma_v \approx 0} together with meaningless standard errors; when \eqn{\lambda} is large and \eqn{T} small, no interior maximum need exist at all. \code{tfe_lambda_max} bounds the search accordingly, and a fit that pins at the bound warns. This is a property of the estimator, not of the implementation, and is one of the motivations for \code{"TFE_WMLE"}.
-
-\bold{Both problems are small-\eqn{T} phenomena.} Simulations in which \eqn{T} grows with \eqn{N} fixed at 100 (truth \eqn{\lambda = 3.333}) recover \eqn{\hat\lambda = } 88.5, 4.8, 3.6, 3.6, 3.5 at \eqn{T = } 10, 20, 30, 40, 50: the fit is pinned at the bound at \eqn{T = 10} and has converged by \eqn{T = 50}. The degeneracy and the incidental-parameters bias dissolve together as \eqn{T} grows, so \code{tfe_lambda_max} matters on short panels and is irrelevant on long ones. \code{"TFE_WMLE"}, having no incidental parameters, is unaffected by \eqn{T} either way.
+Caveats:
+\itemize{
+  \item \bold{The two log-likelihoods are not comparable}: \code{"TFE"} is the likelihood of the data, \code{"TFE_WMLE"} of the within deviations. Do not use \code{logLik()}, \code{AIC()} or \code{BIC()} to choose between them.
+  \item \bold{\code{"TFE"} changed meaning.} Through sfa 1.1.2 it selected the Chen-Schmidt-Wang estimator, now \code{"TFE_WMLE"}. Scripts that pass \code{"TFE"} get Greene's estimator and are warned once per call.
+  \item \bold{Greene's likelihood is degenerate.} Its supremum is always on the \eqn{\sigma_v \to 0} boundary: setting \eqn{\alpha_i = \max_t (y_{it} - x_{it}'\beta)} makes every composed error weakly negative, and the deterministic-frontier likelihood that remains is finite. An unconstrained search that leaves the interior basin returns \eqn{\sigma_v \approx 0} with meaningless standard errors, and with large \eqn{\lambda} and small \eqn{T} no interior maximum need exist. \code{tfe_lambda_max} bounds the search, and a fit at the bound warns.
+  \item \bold{Both problems shrink as \eqn{T} grows.} On short panels \code{"TFE"} pins at the bound; on long ones it converges and \code{tfe_lambda_max} is irrelevant. \code{"TFE_WMLE"} is unaffected by \eqn{T} either way.
 }
 
-\subsection{Other likelihood-based panel models}{
-\code{"K1990"} and \code{"K1990modified"} (Kumbhakar, 1990) extend the same error-components frontier with richer time paths for inefficiency: \code{"K1990"} uses \eqn{B_{it} = (1 + \exp(b t + c t^2))^{-1}} and \code{"K1990modified"} uses \eqn{B_{it} = 1 + d(t - T_i) + e(t - T_i)^2}, against \code{"BC92"}'s \eqn{\exp(-\eta(t - T_{ref}))} and \code{"PL80"}'s time-invariant \eqn{B_{it} = 1}. All four share one likelihood, differing only in \eqn{B_{it}}. Note that \code{"K1990"}'s \code{b} and \code{c} are weakly identified -- quite different pairs produce near-identical fitted time paths -- so the fitted \eqn{B_{it}} path is more interpretable than either coefficient on its own.
-
-\code{"PL80"} (time-invariant panel inefficiency, Pitt and Lee, 1980, JoE) and \code{"BC92"} (time-varying decay, Battese and Coelli, 1992, JPA) are both natively estimated maximum-likelihood implementations of the same "error components frontier": y_it = x_it'beta + v_it - B_it*u_i (production; sign flips for cost), with v_it iid normal, u_i iid half-normal and constant across time within a firm, and B_it = 1 for \code{"PL80"} or B_it = exp(-eta*(t - Tref)) for \code{"BC92"} (Tref being the last time period in the whole panel). The closed-form log-likelihood is obtained by integrating u_i out of the joint density of (epsilon_i, u_i); it nests the ordinary cross-sectional normal-half-normal likelihood when every firm has a single observation. Verified against \code{frontier::sfa()} (matching coefficients, log-likelihood, and \code{frontier::efficiencies()}-style predicted efficiencies to numerical precision across balanced/unbalanced panels and production/cost specifications) before that dependency was removed. The \code{time} argument above supplies each observation's period for \code{"BC92"}'s decay term; if left \code{NULL}, a sequential within-individual time index is constructed from row order, which assumes \code{data} is already sorted chronologically within each individual.
+\code{"FD"} is the first-difference estimator of Wang and Ho (2010), which also removes the fixed effect and lets determinants scale inefficiency.
 }
 
-\subsection{Distribution-free estimators}{
-\code{"SSFE"} is the classical Schmidt and Sickles (1984, JBES) fixed-effects (LSDV) estimator: a standard within/fixed-effects panel regression, with technical inefficiency read directly off the estimated firm effects (each firm's distance from the best-performing firm in the sample) rather than estimated by maximum likelihood. It requires no numerical optimization and returns no log-likelihood -- \code{logLik()}/\code{AIC()}/\code{BIC()} are not defined for it (see \code{\link[sfa]{sfareg-methods}}). Note this is a different model from \code{"TFE"}/\code{"TFE_WMLE"} above, despite the similar names: both of those are maximum-likelihood estimators that allow a separate stochastic noise term on top of the fixed effects, while \code{"SSFE"} attributes all within-firm deviation to inefficiency directly.
+\subsection{Error-components frontiers (PL80, BC92, K1990, PL80_MVTN)}{
+\code{"PL80"} (Pitt and Lee 1980) and \code{"BC92"} (Battese and Coelli 1992) fit \eqn{y_{it} = x_{it}'\beta + v_{it} - B_{it}u_i} (production; the sign flips for cost), with \eqn{v_{it}} iid normal and \eqn{u_i} half-normal and constant within a firm. \eqn{B_{it} = 1} for \code{"PL80"} and \eqn{B_{it} = \exp(-\eta(t - T_{ref}))} for \code{"BC92"}, with \eqn{T_{ref}} the last period in the panel. The closed-form likelihood integrates \eqn{u_i} out of the joint density, and nests the cross-sectional normal-half-normal likelihood when every firm has one observation. \code{time} supplies each observation's period.
 
-\bold{The Schmidt--Sickles family.} \code{"SSFE"}, \code{"SSRE"} and \code{"SSCRE"} are the within, GLS and correlated-random-effects members of one family: all three read inefficiency off a firm effect as distance from the best firm, and none assumes a distribution for \eqn{u}. The choice among them is the standard panel trade-off, with a frontier-specific twist. Random effects is the more efficient estimator and is the only one of the three that identifies coefficients on \emph{time-invariant} regressors, which the within transformation sweeps away -- but it requires the effects to be uncorrelated with the regressors, and in a frontier model that assumption says a firm's inefficiency is unrelated to its input choices, which is close to saying managers do not respond to their own productivity.
+\code{"K1990"} uses \eqn{B_{it} = (1 + \exp(b t + c t^2))^{-1}} and \code{"K1990modified"} uses \eqn{B_{it} = 1 + d(t - T_i) + e(t - T_i)^2}. All four share one likelihood, differing only in \eqn{B_{it}}. \code{"K1990"}'s \code{b} and \code{c} are weakly identified: quite different pairs give near-identical paths, so interpret the fitted \eqn{B_{it}} path rather than either coefficient.
 
-\code{"SSCRE"} is the answer to that. Adding the within-firm means of the time-varying regressors (Mundlak 1978) models the correlation instead of assuming it away; the slopes on the original regressors then equal the within estimates \emph{exactly} -- not approximately -- while time-invariant regressors remain identified. The coefficients on the added means are reported with a \code{.mean_} prefix, and testing them jointly against zero is the Mundlak form of the Hausman test: if they are indistinguishable from zero, \code{"SSRE"} was safe. A regressor already constant within firm has a group mean identical to itself, so it contributes no Mundlak term; those are exactly the regressors random effects exists to identify, and they are left alone. The variance components, and so \eqn{\theta} and the BLUP-based inefficiencies, are the Swamy--Arora components of the model \emph{without} the Mundlak means, balanced or unbalanced. On a balanced panel that is what \pkg{plm}'s Swamy--Arora step returns; on an unbalanced one that step is singular, because in the between-firm dimension each mean duplicates its regressor, and \code{"SSCRE"} obtains the identical components through \pkg{plm}'s Wallace--Hussain step on the augmented model, checking that they agree.
+\code{"PL80_MVTN"} drops the common-\eqn{u_i} restriction and lets inefficiency vary over time with within-firm correlation; see \code{\link{PL80_MVTN}}.
+}
 
-\bold{Time-varying fixed effects without a distribution for u.} \code{"CSS"} and \code{"LS"} sit between \code{"SSFE"}, which holds inefficiency fixed over time, and the maximum-likelihood panel models, which let it move but only by assuming a distribution for \eqn{u} and a decay path for it. Both instead let the firm effect itself vary with time and read inefficiency off it, so neither assumes any distribution and neither returns a log-likelihood.
+\subsection{Schmidt-Sickles and time-varying fixed effects}{
+These estimators read inefficiency off a firm effect, as distance from the best firm, and assume no distribution for \eqn{u}. None returns a log-likelihood, so \code{logLik()}, \code{AIC()} and \code{BIC()} are not defined for them (see \code{\link[sfa]{sfareg-methods}}).
 
-They differ in what they are willing to spend on flexibility. Cornwell, Schmidt and Sickles (1990) give every firm its own quadratic in time, \eqn{\alpha_{it} = \theta_{i1} + \theta_{i2}t + \theta_{i3}t^2}: \eqn{3N} parameters, firms may overtake one another, and \eqn{T_i \ge 4} is required before a firm contributes to \eqn{\beta} at all (a firm observed three times is fitted exactly by its own quadratic and its residuals are identically zero -- \code{sfa} warns rather than letting such firms silently dilute the estimate). Lee and Schmidt (1993) impose one common temporal pattern scaled per firm, \eqn{\alpha_{it} = \delta_t\alpha_i}: \eqn{N + T - 1} parameters, and the ranking of firms cannot change, only the spread. Cross-over versus no cross-over is the substantive choice between them, not a technical one.
+\bold{\code{"SSFE"}, \code{"SSRE"}, \code{"SSCRE"}.} The within, GLS and correlated-random-effects members of the Schmidt and Sickles (1984) family. \code{"SSFE"} is the LSDV estimator; it attributes all within-firm deviation to inefficiency, unlike \code{"TFE"}, which keeps a separate noise term. \code{"SSRE"} is more efficient and identifies coefficients on time-invariant regressors, but requires the effects to be uncorrelated with the regressors. In a frontier that says a firm's inefficiency is unrelated to its input choices, which is rarely credible.
 
-\code{"CSS"} is fitted by residualizing \eqn{y} and \eqn{X} on each firm's own \eqn{(1, t, t^2)} rather than by building \eqn{3N} dummy columns; a regressor spanned by those quadratics -- a pure time trend, for instance -- is a rank failure and is refused rather than reported as a small coefficient. \code{"LS"} is a rank-one factor model, so it is fitted by alternating least squares, which handles an unbalanced panel with no special-casing; \eqn{\delta_1 = 1} fixes the scale that \eqn{\delta_t\alpha_i} leaves free, with a fallback to a norm constraint when the first period's effect is near zero.
+\code{"SSCRE"} models the correlation by adding the within-firm means of the time-varying regressors (Mundlak 1978). The slopes on the original regressors then equal the within estimates exactly, and time-invariant regressors stay identified. The means' coefficients carry a \code{.mean_} prefix; testing them jointly against zero is the Mundlak form of the Hausman test. A regressor constant within firm gets no mean term. The variance components (and so \eqn{\theta} and the BLUPs) are the Swamy--Arora components of the model \emph{without} the means. On an unbalanced panel \pkg{plm}'s Swamy--Arora step is singular for the augmented model, so \code{"SSCRE"} obtains the same components through \pkg{plm}'s Wallace--Hussain step and checks that they agree.
 
-For both, inefficiency is identified only relative to the best firm \emph{in each period} -- \eqn{u_{it} = \max_j \alpha_{jt} - \alpha_{it}} -- which is what makes them time-varying at all; comparing against a single overall best would collapse them back to a time-invariant ranking. Neither absorbs an intercept separately: it goes into the firm effect, as in \code{"SSFE"}, so \code{coef()} returns slopes only.
+\bold{\code{"CSS"} and \code{"LS"}.} Both let the firm effect vary over time. Cornwell, Schmidt and Sickles (1990) give each firm its own quadratic, \eqn{\alpha_{it} = \theta_{i1} + \theta_{i2}t + \theta_{i3}t^2}: \eqn{3N} parameters, and firms may overtake one another. Lee and Schmidt (1993) impose one common pattern scaled per firm, \eqn{\alpha_{it} = \delta_t\alpha_i}: \eqn{N + T - 1} parameters, and the ranking of firms cannot change. Crossover or no crossover is the substantive choice between them.
+
+\code{"CSS"} residualizes \eqn{y} and \eqn{X} on each firm's \eqn{(1, t, t^2)}. A firm needs \eqn{T_i \ge 4} to contribute to \eqn{\beta}; with three periods its quadratic fits exactly and \code{sfa} warns. A regressor spanned by those quadratics, such as a time trend, is refused as a rank failure. \code{"LS"} is a rank-one factor model fitted by alternating least squares, which handles unbalanced panels; \eqn{\delta_1 = 1} fixes the scale, with a norm constraint as fallback when the first period's effect is near zero.
+
+For both, inefficiency is measured against the best firm \emph{in each period}, \eqn{u_{it} = \max_j \alpha_{jt} - \alpha_{it}}. The intercept goes into the firm effect, so \code{coef()} returns slopes only.
 }
 
 \subsection{Kneip, Sickles and Song (KSS)}{
-\bold{Kneip, Sickles and Song (2012).} \code{"KSS"} writes the firm effect as \eqn{\alpha_{it} = \sum_{r=1}^{L}\theta_{ir} g_r(t)}, where both the basis functions \eqn{g_r} and the dimension \eqn{L} are estimated from the data rather than assumed. That makes explicit what the other time-varying estimators here are special cases of:
+\code{"KSS"} writes the firm effect as \eqn{\alpha_{it} = \sum_{r=1}^{L}\theta_{ir} g_r(t)}, estimating both the basis functions \eqn{g_r} and the dimension \eqn{L}. The other time-varying estimators are special cases:
 
 \tabular{lll}{
   \strong{model} \tab \strong{\eqn{L}} \tab \strong{basis} \cr
@@ -273,37 +254,32 @@ For both, inefficiency is identified only relative to the best firm \emph{in eac
   \code{"KSS"}  \tab estimated \tab estimated
 }
 
-Estimation follows the three steps of the original: cross-sectional centering by period (which imposes \eqn{\sum_i u_i(t) = 0} and removes any common function of time), then smoothing of each firm's residual trajectory followed by an eigendecomposition of their empirical covariance to give \eqn{\hat g_r}, then loadings by least squares and the effects rebuilt from them -- iterated with \eqn{\beta} until the residual sum of squares settles. Smoothing before the eigendecomposition is what makes the estimated basis a set of smooth \emph{functions} rather than \eqn{T} arbitrary period effects, and is the whole difference between this and an unrestricted factor model.
+Estimation follows the original three steps, iterated with \eqn{\beta} until the residual sum of squares settles: centre by period (which imposes \eqn{\sum_i u_i(t) = 0}), smooth each firm's residual trajectory and take the eigendecomposition of their covariance to get \eqn{\hat g_r}, then fit loadings by least squares. Smoothing is what makes the basis a set of smooth functions rather than arbitrary period effects.
 
-Two tuning choices are therefore unavoidable, and both are exposed. \code{kss_smooth} defaults to generalized cross-validation. \code{kss_L} defaults to the Bai and Ng (2002) \eqn{IC_{p2}} criterion -- \bold{not} the threshold rule of the original paper, which is stated here because it matters: \eqn{IC_{p2}} is the standard criterion for this problem and the literature that motivates the estimator treats Bai and Ng (2002) and Bai (2009) as the comparable methods, but a different rule can select a different \eqn{L}. Set \code{kss_L} explicitly to take the choice out of the criterion's hands, and inspect \code{$kss$eigenvalues} to see whether the choice was close.
-
-\bold{The criterion needs a long enough panel, and says so.} \eqn{IC_{p2}} works because the residual variance flattens out once the real factors are in and the penalty then dominates. On a short panel that never happens: if \eqn{L} is allowed up to \eqn{T-1} the factors can span nearly the whole time dimension, the variance collapses toward zero, and no penalty competes. Measured at \eqn{n = 100} over five seeds and two true ranks, an uncapped criterion returned its maximum on \emph{all ten} designs at \eqn{T = 6} and again at \eqn{T = 8}. The automatic search is therefore capped at \eqn{\lfloor T/2 \rfloor}, which recovers the true rank exactly from \eqn{T = 8} upward; at \eqn{T = 6} it is right for a one-factor structure and occasionally one too high for a two-factor one. Whenever the automatic choice lands \emph{on} that cap \code{psfm} warns, because a selection at the boundary is not a free choice -- read it as "at least this many", inspect the eigenvalues, and prefer a longer panel to a larger \code{kss_L_max}.
-
-One consequence of the period centering is worth knowing before comparing models: \code{"KSS"}'s \code{alpha_hat} carries no period mean, while \code{"CSS"}'s and \code{"LS"}'s do. The two therefore differ by a per-period constant by construction and should not be correlated against each other directly. \code{u_hat} is a within-period contrast and is invariant to that shift, so it is the quantity to compare across these models -- and is what the estimators are for.
+Caveats:
+\itemize{
+  \item \bold{\eqn{L} is chosen by Bai and Ng's (2002) \eqn{IC_{p2}}, not the threshold rule of the original paper}, and a different rule can choose a different \eqn{L}. Set \code{kss_L} to fix it, and inspect \code{$kss$eigenvalues} to see whether the choice was close. \code{kss_smooth} defaults to generalized cross-validation.
+  \item \bold{The criterion needs a long enough panel.} On a short panel the factors can span almost the whole time dimension and no penalty competes, so an uncapped criterion picks its maximum. The automatic search is therefore capped at \eqn{\lfloor T/2 \rfloor}, which recovers the true rank from about \eqn{T = 8}. When the choice lands on the cap, \code{psfm} warns: read it as \dQuote{at least this many}, and prefer a longer panel to a larger \code{kss_L_max}.
+  \item \bold{\code{alpha_hat} is not comparable across models.} Period centering removes the period mean from \code{"KSS"}'s \code{alpha_hat} but not from \code{"CSS"}'s or \code{"LS"}'s. Compare \code{u_hat}, a within-period contrast that is invariant to the shift.
+}
 }
 
-\subsection{Mundlak adjustment terms (\code{mundlak})}{
-\bold{Mundlak adjustment terms (\code{mundlak}).} The true random effects model assumes the firm effect is independent of the regressors. In production data it usually is not -- better managers choose different input levels -- and the effect is then split between the slopes and inefficiency, biasing the technology parameters and understating inefficiency. Mundlak's (1978) device models the correlation instead of assuming it away, \eqn{\alpha_i = \pi'\bar{x}_i + \delta_i}. Substituting into the frontier leaves the \emph{same likelihood with a wider design matrix}, which is why this is an argument rather than a new \code{model_name}.
+\subsection{Mundlak adjustment terms}{
+The true random effects model assumes the firm effect is independent of the regressors. In production data it usually is not, and the effect then leaks into the slopes and inefficiency. Mundlak's (1978) device models the correlation, \eqn{\alpha_i = \pi'\bar{x}_i + \delta_i}. Substituting into the frontier leaves the same likelihood with a wider design matrix, so this is an argument, not a new \code{model_name}.
 
-Karagiannis and Kellermann (2019) widen it to \eqn{\alpha_i = \pi'\bar{x}^*_i + \gamma'z_i + \delta_i}, adding environmental variables -- conditions outside the producer's control, such as agro-ecological conditions or the geography an airline serves. Those enter the formula as ordinary time-invariant regressors; \code{mundlak} supplies the piece a user cannot easily build by hand, the within-firm means computed against the same panel index the fit uses. Naming a \emph{subset} of the regressors gives their Hausman-Taylor variant, in which only some regressors are taken to correlate with the effect.
+Karagiannis and Kellermann (2019) extend it to \eqn{\alpha_i = \pi'\bar{x}^*_i + \gamma'z_i + \delta_i}, with environmental variables \eqn{z_i} beyond the producer's control. Those enter the formula as ordinary time-invariant regressors. \code{mundlak} builds the within-firm means against the same panel index the fit uses. Naming a \emph{subset} of the regressors gives the Hausman-Taylor variant.
 
-Measured over 40 replications with \eqn{N = 80}, \eqn{T = 6}, on a design where the firm effect is correlated with \eqn{\bar{x}} by construction, and on a control where it is not:
+\code{mundlak} removes the bias when the effect is correlated with the regressors, but costs precision when it is not. It is not a default.
 
-\tabular{lllll}{
-  design \tab estimator \tab bias \tab RMSE \cr
-  effect correlated \tab plain \tab +0.0479 \tab 0.0570 \cr
-  effect correlated \tab \code{mundlak} \tab \bold{-0.0061} \tab \bold{0.0310} \cr
-  no correlation \tab plain \tab -0.0033 \tab \bold{0.0253} \cr
-  no correlation \tab \code{mundlak} \tab -0.0068 \tab 0.0311
+A variable constant within firm gets no mean column, since it would equal its own mean. Every \code{mundlak} fit warns of collinearity in the \emph{starting-value} regression; this is expected, because \eqn{x} and \eqn{\bar{x}} coincide in a between-individual regression. The starts fall back to pooled OLS and the full formula is estimated.
 }
 
-So it removes the bias where there is one and nearly halves RMSE -- and where there is no correlation it costs about 23\% in RMSE for nothing. It is not free, and it is not a default.
+\subsection{Starting values and optimization}{
+The maximum-likelihood models run a staged optimizer (nlminb or bobyqa, optionally \code{psoptim}, then \code{optim} with \code{"L-BFGS-B"}). The defaults (\code{maxit.bobyqa}/\code{maxit.psoptim}/\code{maxit.optim} of 5000/100/1000) were raised in 1.1.3 from 100/10/10, which stopped several models short of the optimum. They stay below \code{\link{sfm}}'s because the simulated-ML models are expensive to evaluate. Lower them for a quick approximate fit.
 
-A variable that is already constant within firm gets no mean column: its own mean is itself, so the two would be exactly collinear. Every \code{mundlak} fit also emits a collinearity warning from the \emph{starting-value} regression, which is expected and harmless -- in a between-individual regression \eqn{x} and \eqn{\bar{x}} are the same column by construction. The starting values fall back to pooled OLS and the likelihood is estimated with the full requested formula.
-}
+Random-effects starting values come from a between regression; see \code{collinear_action} when it is rank deficient. \code{"GTRE_FML"} runs its own start search (see above).
 
-\subsection{Profiling a fitted panel likelihood}{
-\bold{Profiling a fitted panel likelihood.} With \code{keep_objective = TRUE} the fitted object carries \code{$objective}, the same negative-summed-log-likelihood the optimizer minimised. Evaluating it away from the optimum is the only way to ask whether a parameter is weakly identified, as distinct from badly estimated:
+\bold{Profiling.} With \code{keep_objective = TRUE} the fit carries \code{$objective}, the negative log-likelihood the optimizer minimized. Evaluating it away from the optimum separates a weakly identified parameter from a badly estimated one:
 
 \preformatted{fit <- psfm(y ~ x1 + x2, "GTRE", d, individual = "id",
             estimator = "sml", keep_objective = TRUE)
@@ -313,17 +289,22 @@ ll   <- vapply(grid, function(v) \{
           p <- fit$opt$par; p[ih] <- v; -fit$objective(p) \}, numeric(1))
 plot(grid, ll - max(ll), type = "l")}
 
-A flat curve means no estimator could recover the parameter from these data; a sharp one means the difficulty lies elsewhere. For \code{GTRE}'s \code{sigh} the curve spans over 200 log units at \eqn{N = 200} and sharpens with \eqn{N}, which is what ruled out weak identification as the explanation for its convergence behaviour.
+A flat curve means no estimator could recover the parameter from these data; a sharp one means the difficulty lies elsewhere.
 }
 
-\subsection{Optimizer defaults}{
-Note on default iteration counts: \code{psfm()}'s defaults were raised in version 1.1.3, from 100/10/10 for \code{maxit.bobyqa}/\code{maxit.psoptim}/\code{maxit.optim} to 5000/100/1000, and \code{maxit.nlminb} (previously hard-coded) is now an argument. The old values were binding rather than merely economical: the \code{K1990}/\code{K1990modified} branch already carried a note that 100 bobyqa evaluations left its seven-parameter fits several log-likelihood units short of the optimum purely on the iteration cap, and \code{GTRE_FML} at N = 500, T = 10 roughly halves its root-mean-square error against known true values when the caps are lifted, at about 1.5 times the run time. They remain below \code{sfm()}'s defaults because several \code{psfm()} models (\code{GTRE}, \code{GTRE_Z}, \code{TRE}, \code{TRE_Z}) are estimated by simulated maximum likelihood over Halton draws, so each objective evaluation is far more expensive than the closed-form likelihoods used elsewhere. Lower them explicitly if a fast approximate call is wanted.
+\subsection{Standard errors}{
+Standard errors come from the numerical Hessian and need \code{optHessian = TRUE}. \code{OPG_calc = TRUE} adds outer-product-of-gradients errors (\code{out_opg}, \code{out_sandwich} for \code{"GTRE_Z"}). With \code{keep_objective = TRUE}, \code{vcov(type = "bhhh")} and the \pkg{sandwich} methods give firm-clustered errors for the maximum-likelihood models. For simulated-ML fits, \code{\link{simulation_se}} measures the part of the uncertainty due to the draws, and \code{\link{psfm_bootstrap}} gives parametric bootstrap errors for the GTRE family. The two-step estimators' delta-method errors are discussed above. At a boundary fit the affected standard errors are not meaningful.
+}
+
+\subsection{Efficiency prediction}{
+The GTRE family returns transient efficiency \code{U} per observation and persistent efficiency \code{H} per firm. \code{"TRE"}-type models return \code{U}. \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"}, \code{"PL80"} and \code{"BC92"} return \code{exp_u_hat}, \eqn{E[\exp(-u)|\epsilon]} (Battese and Coelli 1988), generalized to the panel case for the error-components models by pooling a firm's observations and scaling by \eqn{B_{it}}. The distribution-free estimators return \code{u_hat} and \code{exp_u_hat} measured from the best firm. \sQuote{Value} gives the details per model; \code{\link{efficiency}} gives a common interface.
 }
 }
-\references{Fillipini and Greene (2016, JPA); Colombi, Kumbhakar, Martini and Vittadini (2014, JPA) on the closed-skew-normal four-component likelihood, with Colombi (2010) and Colombi, Martini and Vittadini (2011) on the two-step estimator used to seed it; Greene (2005, JoE and JPA); Wang and Ho (2010, JoE); Chen, Schmidt and Wang (2014, JoE); Kumbhakar (1990, JoE); Pitt and Lee (1980, JoE); Battese and Coelli (1992, JPA); Battese and Coelli (1988, JoE); Jondrow, Lovell, Materov and Schmidt (1982, JoE); Schmidt and Sickles (1984, JBES)}
+\references{Filippini and Greene (2016, JPA); Colombi, Kumbhakar, Martini and Vittadini (2014, JPA) on the closed-skew-normal four-component likelihood, with Colombi (2010) and Colombi, Martini and Vittadini (2011) on the two-step estimator used to seed it; Greene (2005, JoE and JPA); Wang and Ho (2010, JoE); Chen, Schmidt and Wang (2014, JoE); Kumbhakar (1990, JoE); Pitt and Lee (1980, JoE); Battese and Coelli (1992, JPA); Battese and Coelli (1988, JoE); Jondrow, Lovell, Materov and Schmidt (1982, JoE); Schmidt and Sickles (1984, JBES)}
 \author{David H. Bernstein}
 
-\seealso{\code{\link{sfm}} for cross-sectional models, \code{\link{psfm_bootstrap}} for bootstrap standard errors, \code{\link{data_gen_p}} for simulating panel data with known true parameters, and \code{\link{sfareg-methods}} for extracting results.}
+\seealso{\code{\link{sfm}} for cross-sectional models, \code{\link{psfm_bootstrap}} for bootstrap standard errors, \code{\link{data_gen_p}} for simulating panel data with known true parameters, \code{\link{sfareg-methods}} for extracting results, and \code{vignette("sfa_numerical_notes", package = "sfa")} for the measurements behind the caveats above.}
+
 \value{
 An object of class \code{"sfareg"} containing components that vary by model. All models return:
 
@@ -379,7 +360,7 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \item{exp_u_hat}{Predicted technical efficiency, \code{exp(-u_hat)}.}
 
 \bold{For the GTRE model:}
-\item{sigh_at_bound, sigr_at_bound}{\code{TRUE} when that persistent scale has collapsed to the zero boundary, judged relative to \code{sigma}. Frequently the CORRECT maximum likelihood estimate rather than a failure -- see \sQuote{Details} -- so it is reported rather than suppressed, and \code{psfm} warns naming the other persistent scale, since the two must be read together.}
+\item{sigh_at_bound, sigr_at_bound}{\code{TRUE} when that persistent scale has collapsed to the zero boundary, judged relative to \code{sigma}. Often the correct maximum likelihood estimate rather than a failure; see \sQuote{Details} -- so it is reported rather than suppressed, and \code{psfm} warns naming the other persistent scale, since the two must be read together.}
 
 \bold{For CSS and LS models:}
 \item{alpha_hat}{The fitted firm effect for every observation, \eqn{\alpha_{it}} -- time-varying, unlike \code{SSFE}'s one value per firm.}
