@@ -103,6 +103,13 @@
   sqrt(v)
 }
 
+## No Hessian to invert: absent, non-finite (a skipped stage's all-NA
+## placeholder) or all zero (an adopted corner). A single zero ENTRY is not
+## this -- a scale flat at its bound has exact zero cross-derivatives (A76).
+.hessian_unusable <- function(h) {
+  is.null(h) || !is.matrix(h) || !all(is.finite(h)) || all(h == 0)
+}
+
 ## Why a reported standard error is missing, in the fit's own names. An
 ## indefinite Hessian puts negative entries on the inverse diagonal (A53).
 .se_missing_report <- function(se, nms, hessian = NULL, label = "") {
