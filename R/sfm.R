@@ -2061,6 +2061,20 @@ sfm <- function(formula,
       )
     }
 
+    ## A standard error lost with no boundary flag to explain it (A75, as A65).
+    if (optHessian == TRUE &&
+      !isTRUE(results$sigma_u_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound) &&
+      !isTRUE(results$sigma_v_at_bound) && !isTRUE(results$thn_sigma_u_at_bound) &&
+      !.corner_adopted) {
+      .sm <- .se_missing_report(out["st_err", ], colnames(out), opt$hessian,
+        paste0("sfm(model_name = \"", model_name, "\"): ")
+      )
+      if (!is.null(.sm)) {
+        warning(.sm$message, call. = FALSE)
+        results$se_unresolved <- .sm
+      }
+    }
+
     ## The variance-determinant block, kept so marginal_effects() can report d
     ## E[u]/d z and d Var[u]/d z without re-deriving the design matrix from.
     if (model_name %in% c("NHN_Z", "NE_Z") && isTRUE(n_z_vars > 0)) {
