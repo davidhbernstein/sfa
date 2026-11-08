@@ -2965,22 +2965,32 @@
   list(par = c(sv0, o$par), value = o$objective)
 }
 
-## NTN: profile lambda upward from the fit, each rung seeded from the last.
-## With lambda free the optimizer walks back to the interior (A59).
+## NTN: profile lambda upward from the fit, at fixed lambda (A59).
+## With lambda free the optimizer walks back to the interior.
+## Each rung starts from the last rung AND from the fit: a rung can run mu
+## down the mu -> -Inf ridge, and seeded only from there the rest stay on it.
 .ntn_lambda_ladder <- function(like.fn, par, mults = 10^seq(1, 11, by = 2)) {
-  q <- par[-1]
+  q0 <- par[-1]
+  q <- q0
+  lower <- c(1e-8, rep(-Inf, length(q0) - 1))
+  climb <- function(start, g) {
+    o <- NULL
+    for (k in 1:3) {
+      o <- tryCatch(stats::nlminb(start, g, lower = lower),
+        error = function(e) NULL)
+      if (is.null(o) || !is.finite(o$objective)) return(NULL)
+      start <- o$par
+    }
+    o
+  }
   best <- NULL
   for (lam in par[1] * mults) {
     g <- function(th) like.fn(c(lam, th))
-    for (k in 1:3) {
-      o <- tryCatch(
-        stats::nlminb(q, g, lower = c(1e-8, rep(-Inf, length(q) - 1))),
-        error = function(e) NULL
-      )
-      if (is.null(o) || !is.finite(o$objective)) break
-      q <- o$par
-    }
-    if (is.null(o) || !is.finite(o$objective)) break
+    o <- climb(q, g)
+    o0 <- climb(q0, g)
+    if (is.null(o) || (!is.null(o0) && o0$objective < o$objective)) o <- o0
+    if (is.null(o)) break
+    q <- o$par
     if (is.null(best) || o$objective < best$value) {
       best <- list(par = c(lam, o$par), value = o$objective)
     }
