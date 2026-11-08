@@ -1,5 +1,5 @@
 ## A transformed response (log(y) ~ ...) must be fitted as transformed. Until
-## 1.2.1 every entry point built on data_proc() took the response as
+## 1.3.0 every entry point built on data_proc() took the response as
 ## all.vars(formula)[1] -- the raw column -- while the regressors went through
 ## model.frame(), so log(q) ~ log(K) fitted q in levels on log(K).
 

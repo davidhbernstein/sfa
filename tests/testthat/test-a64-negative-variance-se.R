@@ -58,8 +58,11 @@ test_that("psfm('GTRE_FML') reports no zero standard error on the A55 design", {
     "no negative variance estimate on this platform"
   )
   ## Exactly the negative-variance coordinates lose their standard error.
-  expect_true(all(is.na(se[v < 0])))
-  expect_true(all(is.finite(se[v > 0])))
+  ## v is a second solve() of the same Hessian, so a variance at rounding level
+  ## can take either sign in it and in the fit; judge only the clear ones.
+  clear <- abs(v) > 1e-8 * max(abs(v))
+  expect_true(all(is.na(se[v < 0 & clear])))
+  expect_true(all(is.finite(se[v > 0 & clear])))
 })
 
 test_that("vcov()'s diagonal fallback carries NA, not a zero variance", {

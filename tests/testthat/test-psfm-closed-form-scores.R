@@ -105,7 +105,7 @@ test_that("PL80's vcov() is on the REPORTED scale, not the estimation scale", {
 
   ## This model ESTIMATES (sigma_v, sigma_u, beta) and REPORTS
   ## (beta, sigmaSq, gamma) -- a permutation as well as a transformation.
-  ## Before 1.2.1 vcov() named the estimation-scale inverse Hessian with the
+  ## Before 1.3.0 vcov() named the estimation-scale inverse Hessian with the
   ## reported names, so confint()'s intercept interval was built from
   ## Var(sigma_v). The Jacobian is stored on the fit precisely to stop that.
   expect_false(is.null(fit$par_scale))
@@ -170,7 +170,7 @@ test_that("PL80_MVTN reaches a maximum rather than stopping short of one", {
   ## precision, so the finite-difference gradient is noisy and a single
   ## L-BFGS-B run stops at points that are not maxima -- while still
   ## reporting convergence = 0. A derivative-free stage was added between two
-  ## L-BFGS-B runs in 1.2.1; this pins that the returned point cannot be
+  ## L-BFGS-B runs in 1.3.0; this pins that the returned point cannot be
   ## improved by perturbing one parameter at a time.
   for (N in c(40L, 60L)) {
     d <- .cf_panel(seed = 5, N = N, t = 4)
