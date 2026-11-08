@@ -71,14 +71,14 @@ copsfm(formula, data,
   \code{"laplace"} is the symmetric Laplace (double exponential),
   \eqn{f(v) = e^{-|v|/\delta_v} / (2\delta_v)}, with heavier tails than the
   normal. Its scale is also reported as \code{delta_v}: the standard deviation
-  is \eqn{\sqrt{2}\,\delta_v}. New in 1.2.1. Do not confuse it with
+  is \eqn{\sqrt{2}\,\delta_v}. New in 1.3.0. Do not confuse it with
   \code{sfm(model_name = "TSL")}, where the skew-Laplace is the distribution
   of the \emph{inefficiency}.}
 \item{n_nodes}{Gauss--Legendre nodes for the integral over \eqn{u}. For
   \code{vdist = "laplace"} the integral is split at the kink of the noise
   density, \eqn{u = -\varepsilon}, and each of the two pieces gets half the
   nodes.}
-\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data and the quadrature nodes alongside the results.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data and the quadrature nodes alongside the results.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim, start_val, PSopt, optHessian,
   Method, verbose, rand.psoptim}{As in \code{\link{sfm}}.}
 }

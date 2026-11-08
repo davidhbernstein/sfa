@@ -33,7 +33,7 @@ other value is refused with an error rather than quietly optimized without
 them.}
 \item{logit}{Logical, \code{"ZISF_Z"} only. The link from \eqn{z'\gamma} to the probability of full efficiency; see \sQuote{The probability of full efficiency}. Prefer the default, \code{TRUE}.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
-\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.2.1. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}
+\item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}
 \item{rand.psoptim}{Integer. Seed for replication of psoptim. Defaults to \code{NULL}.}
 }
 \details{
