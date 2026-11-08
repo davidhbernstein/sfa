@@ -24,7 +24,11 @@ test_that("the missing parameters are named, with the conditioning", {
   expect_equal(r$n_missing, 2L)
   expect_equal(r$n_par, 6L)
   expect_true(r$indefinite)
-  expect_equal(r$min_eigenvalue, -0.00311802, tolerance = 1e-9)
+  ## LAPACK resolves an eigenvalue to about eps * max|eigenvalue| absolutely,
+  ## ~7e-12 here, which is 2e-9 relative to the smallest. A relative 1e-9
+  ## asked for more than that and failed when the Ubuntu runners' BLAS changed.
+  ev_tol <- 1e3 * .Machine$double.eps * 30578.7
+  expect_lt(abs(r$min_eigenvalue - (-0.00311802)), ev_tol)
   expect_equal(r$max_eigenvalue, 30578.7, tolerance = 1e-9)
   expect_match(r$message, "^ttsfm\\(model_name = \"TTHN\"\\): ")
   expect_match(r$message, "sigma_v, sigma_w", fixed = TRUE)
