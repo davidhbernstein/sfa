@@ -5,7 +5,7 @@
 ## 3 x p and stores t(out), so a branch that forgets the transpose returns an
 ## object on which the documented fit$out[, "par"] fails.
 ##
-## That is not hypothetical: psfm("PL80_MVTN") shipped that way until 1.2.1.
+## That is not hypothetical: psfm("PL80_MVTN") shipped that way until 1.3.0.
 ## It survived because the contract was asserted per entry point, over a
 ## hand-written list of model_names, and PL80_MVTN was on none of them.
 ##

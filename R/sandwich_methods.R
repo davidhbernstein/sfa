@@ -242,7 +242,7 @@ estfun.sfareg <- function(x, ...) {
         } else {
           "  "
         },
-        "Every maximum-likelihood entry point supplies them as of 1.2.1, and ",
+        "Every maximum-likelihood entry point supplies them as of 1.3.0, and ",
         "psfm() supplies them per FIRM. A fit retained by an older version ",
         "must be refit under the current one.",
         call. = FALSE

@@ -33,7 +33,7 @@ tt_boundary_report <- function(object, data = NULL,
   nm <- names(p0)
   i_v <- match("sigma_v", nm)
   if (is.na(i_v)) {
-    stop("This fit does not report a `sigma_v` row. Fits made before 1.2.1 ",
+    stop("This fit does not report a `sigma_v` row. Fits made before 1.3.0 ",
       "labelled it `sigv` and carried it on the LOG scale; refit under the ",
       "current version.",
       call. = FALSE

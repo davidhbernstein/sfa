@@ -42,7 +42,7 @@ test_that("the likelihood returns the penalty rather than erroring on bad input"
   ## handed straight to optim() with no derivative-free stage in front of it,
   ## so L-BFGS-B differences the penalty against an ordinary value;
   ## .Machine$double.xmax overflowed that difference to Inf and aborted the
-  ## fit with "non-finite value supplied by optim" (fixed in 1.2.1).
+  ## fit with "non-finite value supplied by optim" (fixed in 1.3.0).
   expect_equal(sfa:::.pl_mvtn_nll(bad, Y, X, 4), sfa:::.PL_MVTN_PEN())
   expect_lt(sfa:::.PL_MVTN_PEN(), sfa:::.SFA_CONSTANTS$MAX_VALUE)
   ## Differencing it must stay finite, which is the whole point.
