@@ -2972,31 +2972,41 @@
   list(par = c(sv0, o$par), value = o$objective)
 }
 
-## NTN: profile lambda upward from the fit, at fixed lambda (A59).
-## With lambda free the optimizer walks back to the interior.
-## Each rung starts from the last rung AND from the fit: a rung can run mu
-## down the mu -> -Inf ridge, and seeded only from there the rest stay on it.
-.ntn_lambda_ladder <- function(like.fn, par, mults = 10^seq(1, 11, by = 2)) {
+## NTN: profile lambda upward from the fit, at fixed lambda (A59). Each rung
+## starts from the last rung, the fit, and (given X, Y) the fit moved onto the
+## deterministic frontier, and keeps the best; a failed start skips, not stops.
+.ntn_lambda_ladder <- function(like.fn, par, mults = 10^seq(1, 11, by = 2),
+                               X = NULL, Y = NULL, inefdec_n = 1) {
   q0 <- par[-1]
-  q <- q0
   lower <- c(1e-8, rep(-Inf, length(q0) - 1))
+  starts0 <- list(q0)
+  ## Layout (sigma, mu, beta): only the plain model, with an intercept column.
+  if (!is.null(X) && ncol(X) == length(q0) - 2L && all(X[, 1] == 1)) {
+    b <- q0[-(1:2)]
+    eps <- as.numeric(inefdec_n * (Y - X %*% b))
+    qc <- q0
+    qc[3] <- qc[3] + inefdec_n * max(eps)
+    starts0 <- c(starts0, list(qc))
+  }
   climb <- function(start, g) {
-    o <- NULL
+    best_o <- NULL
     for (k in 1:3) {
       o <- tryCatch(stats::nlminb(start, g, lower = lower),
         error = function(e) NULL)
-      if (is.null(o) || !is.finite(o$objective)) return(NULL)
+      if (is.null(o) || !is.finite(o$objective)) break
+      if (is.null(best_o) || o$objective < best_o$objective) best_o <- o
       start <- o$par
     }
-    o
+    best_o
   }
+  q <- q0
   best <- NULL
   for (lam in par[1] * mults) {
     g <- function(th) like.fn(c(lam, th))
-    o <- climb(q, g)
-    o0 <- climb(q0, g)
-    if (is.null(o) || (!is.null(o0) && o0$objective < o$objective)) o <- o0
-    if (is.null(o)) break
+    cands <- lapply(c(list(q), starts0), climb, g = g)
+    cands <- Filter(Negate(is.null), cands)
+    if (!length(cands)) next
+    o <- cands[[which.min(vapply(cands, function(x) x$objective, 0))]]
     q <- o$par
     if (is.null(best) || o$objective < best$value) {
       best <- list(par = c(lam, o$par), value = o$objective)
