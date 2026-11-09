@@ -16,17 +16,36 @@
 
 test_that("NTN flags and warns when sigma_v collapses, and only then", {
   skip_on_cran()
-  ## rand 2, 4, 5, 11 and 12 reach the boundary on this DGP; 1, 3, 6-10 do not.
-  boundary <- c(2L, 4L, 5L, 11L, 12L)
-  interior <- c(1L, 3L, 6L, 7L, 8L, 9L, 10L)
-
-  ratio_of <- function(f) {
-    p <- f$out[, "par"]
-    lam <- p[["lambda"]]; sg <- p[["sigma"]]
-    su <- lam * sg / sqrt(1 + lam^2); sv <- su / lam
-    sv / sqrt(su^2 + sv^2)
+  ## Which seeds reach the corner is where the optimizer lands, and it moved
+  ## when the ladder learned to escape the mu -> -Inf ridge (rand 9 and 10).
+  ## So instead of a list of seeds, check each fit against the exact
+  ## lambda -> Inf limit: a deterministic frontier with u = -eps truncated
+  ## normal, maximised directly.
+  exact_limit <- function(d, start) {
+    X <- cbind(1, d$x1, d$x2)
+    y <- d$y_pcs_tn
+    ## th = (slopes, mu, log sigma_u, log offset): the intercept sits
+    ## exp(offset) above the frontier, so every u = -eps stays >= 0.
+    h <- function(th) {
+      b <- c(0, th[1:2])
+      b[1] <- max(y - X %*% b) + exp(th[5])
+      u <- -(y - X %*% b)
+      s <- exp(th[4])
+      -sum(dnorm((u - th[3]) / s, log = TRUE) - log(s) -
+        pnorm(th[3] / s, log.p = TRUE))
+    }
+    best <- -Inf
+    for (st in list(c(start, -10), c(.5, .5, .5, 0, -10))) {
+      o <- stats::nlminb(st, h)
+      o <- stats::optim(o$par, h, method = "Nelder-Mead",
+        control = list(maxit = 5000, reltol = 1e-12))
+      best <- max(best, -o$value)
+    }
+    best
   }
-  fit <- function(r) {
+
+  n_flag <- 0L
+  for (r in 1:12) {
     d <- data_gen_cs(N = 150, rand = r, cons = .5, beta1 = .5, beta2 = .5,
       sig_u = 1, sig_v = .5, mu = .5, a = 5)
     warned <- FALSE
@@ -36,23 +55,30 @@ test_that("NTN flags and warns when sigma_v collapses, and only then", {
         if (grepl("sigma_v has collapsed", conditionMessage(w))) warned <<- TRUE
         invokeRestart("muffleWarning")
       })
-    list(f = f, warned = warned)
+    p <- f$out[, "par"]
+    su <- p[["lambda"]] * p[["sigma"]] / sqrt(1 + p[["lambda"]]^2)
+    lim <- exact_limit(d, c(p[c("x1", "x2")], p[["mu"]], log(su)))
+    ll <- as.numeric(logLik(f))
+    flag <- isTRUE(f$ntn_sigma_v_at_bound)
+    n_flag <- n_flag + flag
+    info <- paste("rand", r)
+    ## The flag, the warning and the missing SEs travel together.
+    expect_identical(warned, flag, info = info)
+    if (flag) {
+      expect_true(all(is.na(f$out[, "st_err"])), info = info)
+      ## At the corner the ladder's top rung (lambda ~ 1e11) ends in nlminb
+      ## "false convergence"; Ubuntu oldrel stopped 0.0014 below the exact
+      ## limit on rand 9, macOS within 1e-5.
+      expect_lt(abs(ll - lim), 5e-3, label = info)
+    } else {
+      expect_true(all(is.finite(f$out[, "st_err"])), info = info)
+      ## Not flagged means the corner is not higher than the fit.
+      expect_gte(ll, lim - 1e-4, label = info)
+    }
   }
-
-  for (r in boundary) {
-    z <- fit(r)
-    expect_true(isTRUE(z$f$ntn_sigma_v_at_bound), info = paste("rand", r))
-    expect_true(z$warned, info = paste("rand", r))
-    ## The flag has to mean what it says: no standard errors survive here.
-    expect_true(all(is.na(z$f$out[, "st_err"])), info = paste("rand", r))
-  }
-  for (r in interior) {
-    z <- fit(r)
-    expect_false(isTRUE(z$f$ntn_sigma_v_at_bound), info = paste("rand", r))
-    expect_false(z$warned, info = paste("rand", r))
-    ## ... and where it is not set, the fit is ordinary.
-    expect_true(all(is.finite(z$f$out[, "st_err"])), info = paste("rand", r))
-  }
+  ## Both regimes occur on this DGP, so neither branch is vacuous.
+  expect_gte(n_flag, 4L)
+  expect_lte(n_flag, 10L)
 })
 
 test_that("the boundary criterion is not a tuned cut", {
