@@ -159,14 +159,14 @@ zsfm <- function(formula,
       }
 
 
-      like[like == -Inf] <- -sqrt(.Machine$double.xmax / length(like))
-      like[like == Inf] <- -sqrt(.Machine$double.xmax / length(like))
-      like[is.nan(like)] <- -sqrt(.Machine$double.xmax / length(like))
+      like[like == -Inf] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
+      like[like == Inf] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
+      like[is.nan(like)] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
       ## The barrier above leaves NA untouched; per_obs must return one row
       ## per observation, so anything still non-finite is floored here rather
       ## than dropped the way the summed branch drops it.
       if (isTRUE(per_obs)) {
-        like[!is.finite(like)] <- -sqrt(.Machine$double.xmax / length(like))
+        like[!is.finite(like)] <- -.SFA_CONSTANTS$NONFINITE_PENALTY / length(like)
         return(like)
       }
 
