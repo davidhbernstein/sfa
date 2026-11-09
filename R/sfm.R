@@ -1412,10 +1412,32 @@ sfm <- function(formula,
       }
     }
 
+    ## NR's supremum is often the sigma_v -> 0 corner while the fit stops
+    ## inside; adopt the corner only if it is genuinely higher (A27).
+    ## NTN is the same corner reached as lambda -> Inf, by a ladder (A59).
+    ## An adopted corner's stored Hessian belongs to the old point.
+    .corner_adopted <- FALSE
+    if (model_name %in% c("NR", "NTN") && robust == "mle" && is.finite(opt$value)) {
+      .nc <- if (model_name == "NR") {
+        .nr_corner_probe(like.fn, opt$par, as.matrix(data_i_vars), Y, inefdec_n)
+      } else {
+        .ntn_lambda_ladder(like.fn, opt$par)
+      }
+      ## NR's probe is at the corner by construction; NTN's ladder may not be.
+      .at_corner <- !is.null(.nc) && (model_name == "NR" ||
+        .sigma_v_corner(.nc$par[2] / sqrt(1 + .nc$par[1]^2), .nc$par[2]))
+      if (.at_corner && .nc$value < opt$value - 1e-4) {
+        opt$par <- .nc$par
+        opt$value <- .nc$value
+        opt$hessian <- matrix(0, length(opt$par), length(opt$par))
+        .corner_adopted <- TRUE
+      }
+    }
+
     ## optim() can stop with code 0 short of a maximum on a flat ridge (A62).
     stationarity <- NULL
     if (optHessian == TRUE && robust == "mle" && !is.null(opt$hessian) &&
-      all(is.finite(opt$hessian))) {
+      all(is.finite(opt$hessian)) && !.corner_adopted) {
       .sp <- .stationarity_polish(like.fn, opt, lower_bob)
       opt <- .sp$opt
       stationarity <- .sp$info
@@ -1803,6 +1825,21 @@ sfm <- function(formula,
       exp_u_hat <- pmin(exp_u_hat, 1)
     }
 
+    ## NHN_Z/NE_Z/NR: sigma_v on its bound is the deterministic-frontier corner,
+    ## where a polished Hessian still inverts to meaningless SEs (A63, A27).
+    sigma_v_at_bound <- NA
+    if (model_name %in% c("NHN_Z", "NE_Z", "NR")) {
+      .su <- if (model_name == "NR") opt$par[2] else {
+        .z_sigma(as.matrix(data.frame(subset(data, select = z_vars))) %*%
+          opt$par[(n_x_vars + 2):(n_x_vars + n_z_vars + 1)])
+      }
+      sigma_v_at_bound <- .sigma_v_corner(opt$par[1], stats::median(.su))
+      if (sigma_v_at_bound) {
+        out[2:3, ] <- NA_real_
+        .warn_sigma_v_corner(model_name, opt$par[1])
+      }
+    }
+
     if (model_name %in% c("NHN")) {
       robust_c_report <- if (robust == "mle") {
         NA_real_
@@ -1983,13 +2020,18 @@ sfm <- function(formula,
       }
     }
 
+    ## NE_Z's result is built by the fallback block above, so this comes last.
+    if (model_name %in% c("NHN_Z", "NE_Z", "NR")) {
+      results$sigma_v_at_bound <- sigma_v_at_bound
+    }
+
     ## Still not a maximum after the A62 polish, and no boundary flag explains it.
     .st <- stationarity
     if (!is.null(.st)) results$stationarity <- .st
     if (!is.null(.st) && is.finite(.st$decrement) && abs(.st$decrement) > 1e-4 &&
       !(isTRUE(.st$polished) && isTRUE(abs(.st$decrement_after) <= 1e-4)) &&
       !isTRUE(results$sigma_u_at_bound) && !isTRUE(results$ntn_sigma_v_at_bound) &&
-      !isTRUE(results$thn_sigma_u_at_bound)) {
+      !isTRUE(results$sigma_v_at_bound) && !isTRUE(results$thn_sigma_u_at_bound)) {
       .now <- if (isTRUE(.st$polished)) .st$decrement_after else .st$decrement
       ## A NEGATIVE decrement is not a gain: it says the reduced Hessian is
       ## indefinite, which is a stronger statement and gets its own wording.
