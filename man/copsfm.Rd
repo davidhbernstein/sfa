@@ -74,10 +74,11 @@ copsfm(formula, data,
   is \eqn{\sqrt{2}\,\delta_v}. New in 1.3.0. Do not confuse it with
   \code{sfm(model_name = "TSL")}, where the skew-Laplace is the distribution
   of the \emph{inefficiency}.}
-\item{n_nodes}{Gauss--Legendre nodes for the integral over \eqn{u}. For
-  \code{vdist = "laplace"} the integral is split at the kink of the noise
-  density, \eqn{u = -\varepsilon}, and each of the two pieces gets half the
-  nodes.}
+\item{n_nodes}{Accuracy of the integral over \eqn{u}. The nodes are placed
+  per observation (see Details); \code{n_nodes} sets the target error in
+  \eqn{\log f}: about \eqn{10^{-10}} at the default 128, ten times looser for
+  every 32 fewer and ten times tighter for every 32 more. Before 1.3.0 this was
+  the size of one fixed grid.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data and the quadrature nodes alongside the results.}
 \item{maxit.bobyqa, maxit.psoptim, maxit.optim, start_val, PSopt, optHessian,
   Method, verbose, rand.psoptim}{As in \code{\link{sfm}}.}
@@ -97,7 +98,9 @@ In brief:
     \code{copsfm} warns when you pick one.
   \item \eqn{\alpha_v} (\code{vdist = "glogistic"}) is consistent but noisy,
     and below about \eqn{n = 2000} it can return its upper bound.
-  \item Keep \code{n_nodes} at 64 or more. At 32 the estimates are biased.
+  \item The integral over \eqn{u} is accurate to about \eqn{10^{-10}} per
+    observation in \eqn{\log f} at the default \code{n_nodes}, in the tails
+    as well as the bulk.
 }
 Each point is measured in the subsections below.
 
@@ -109,25 +112,35 @@ relaxes that, \emph{and} lets the two marginals vary. Composing over
 \eqn{v = \varepsilon + Su},
 \deqn{f_\varepsilon(\varepsilon) = \int_0^\infty f_V(\varepsilon + Su)\,f_U(u)\,
       c\!\left(F_V(\varepsilon + Su), F_U(u)\right) du,}
-a one-dimensional integral evaluated by Gauss--Legendre quadrature on
-\eqn{u = t/(1-t)} rather than by simulation.
+a one-dimensional integral evaluated by Gauss--Legendre quadrature rather than
+by simulation.
 }
 
 \subsection{Quadrature nodes}{
-Measured against the closed-form
-normal/half-normal density at independence, the largest absolute error in
-\eqn{\log f} is 1.3e-2 at 32 nodes, 2.5e-5 at 64, and 8.2e-14 at 128. Sixty-four
-looks adequate and is not: 1e-5 per observation is 0.02 in a log-likelihood over
-2000 points, which is the scale at which competing modes are compared.
+With a tail-dependent copula (Clayton, Gumbel, Joe, their rotations, and the
+Gaussian) the integrand over \eqn{u} can be a narrow spike where \eqn{F_U(u)}
+matches the noise's tail probability: at \eqn{\varepsilon = -4} with a Clayton
+copula, nearly all of the mass sits near \eqn{u = 10^{-6}}. A
+fixed grid misses it. Up to 1.2.0 the 128 fixed nodes on \eqn{u = t/(1-t)} were
+off by more than \eqn{10^{-6}} per observation in \eqn{\log f} in 232 of 256
+combinations of copula, marginals and orientation at \eqn{\varepsilon} from -6
+to 4, by 0.1 already at \eqn{\varepsilon = 1} with Clayton90, and by up to 35
+further out. The marginal CDFs are also computed in both tails without
+cancellation, since the upper-tail families read \eqn{1 - F}.
 
-\bold{Node counts, measured in paired runs.} Forty datasets sent to every node count,
-so the differences are the quadrature and not the draw. Against the 128-node default,
-the mean difference in \eqn{\hat\rho} is +0.0002 at 256 nodes (\eqn{t = 1.37}) and
-+0.0046 at 64 (\eqn{t = 1.47}) -- neither distinguishable -- but \bold{-0.0783 at 32}
-(\eqn{t = -2.79}, \eqn{p = 0.008}), with per-dataset differences as large as 0.52. So
-the quadrature has converged by 64, and 32 must not be used as a fast option: it is
-biased, not merely noisier. For scale, \eqn{\hat\rho}'s own sampling standard
-deviation is 0.385 at \eqn{n = 600}, which dwarfs every node-count effect here.
+Since 1.3.0 each observation's range of \eqn{u} is cut where the log-odds of
+\eqn{F_U(u)} or of \eqn{F_V(\varepsilon + Su)} cross a fixed set of levels, and
+at the kink of the Laplace density. Every piece is weighed by the integrand at
+its ends; pieces with negligible mass are dropped, and the rest are cut into
+enough equal sub-pieces in \eqn{\log u} that Gauss--Legendre resolves them,
+using a bound on how far the log-integrand can move inside a piece. Against
+\code{integrate()} on a partition fine enough to resolve every spike (two
+references agreeing to \eqn{10^{-13}}), the largest error per observation in
+\eqn{\log f} is \eqn{9 \times 10^{-9}} over every copula, both inefficiency
+distributions, every noise distribution and both orientations at
+\eqn{\varepsilon} from -6 to 4, and \eqn{10^{-7}} over 240 random parameter
+draws. It costs about 190 nodes per observation where the fixed grid used 128,
+and a fit takes about three times as long.
 }
 
 \subsection{Skewed noise, and what it is for}{
@@ -348,8 +361,8 @@ for stochastic frontiers with applications. \emph{Mathematics}, \bold{10}(20),
 \examples{
 \donttest{
 set.seed(4)
-## n_nodes = 64 rather than the default 128: the quadrature is converged by 64
-## (see Details), and this is the slowest entry point in the package.
+## n_nodes = 64 rather than the default 128 loosens the quadrature's target to
+## 1e-8 per observation, ample here, and this is the slowest entry point.
 n   <- 600
 x1  <- rnorm(n); x2 <- rnorm(n)
 z1  <- rnorm(n); z2 <- 0.6 * z1 + sqrt(1 - 0.6^2) * rnorm(n)

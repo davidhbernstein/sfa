@@ -171,6 +171,12 @@ wrong result came without an error or a warning.
 * **`psfm_bootstrap(seed_offset = k)` reused all but one seed of the run at
   `k - 1`.** The default `seed_offset = 0` seeds as before.
 
+* **`copsfm()`'s integral over `u` missed the spike a tail-dependent copula
+  puts in the tails of `eps`**, by up to 30 log units per observation. Nodes
+  are now placed per observation, to about 1e-10. Estimates change for the
+  tail-dependent families, most on data with observations in the tails; fits
+  take three to five times as long.
+
 ## New features
 
 ### Estimators and distributions

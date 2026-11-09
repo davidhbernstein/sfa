@@ -518,7 +518,8 @@ test_that("the Laplace composed density is exact, kink and all (M3)", {
     per_obs = TRUE)
   want <- log(ifelse(e >= 0, exp(-e / b) / (2 * (b + su)),
     exp(e / su) / (2 * (b + su)) + (exp(e / su) - exp(e / b)) / (2 * (su - b))))
-  expect_equal(ll, want, tolerance = 1e-12)
+  ## The quadrature targets 1e-10 per observation since A74 (5e-10 measured).
+  expect_lt(max(abs(ll - want)), 1e-8)
 
   ## With a copula, against integrate(), substituting u = s^2 next to u = 0
   ## where the gaussian and clayton densities are singular.
@@ -575,4 +576,61 @@ test_that("copsfm recovers a Laplace-noise frontier, and prefers it to normal no
   fc <- copsfm(y ~ x, dc, copula = "independent", vdist = "laplace", inefdec = FALSE)
   expect_equal(unname(fc$out["x", "par"]), 0.5, tolerance = 0.05)
   expect_equal(unname(fc$out["sigma_u", "par"]), 0.6, tolerance = 0.25)
+})
+
+test_that("the marginal CDFs keep relative accuracy in both tails (A74)", {
+  ## 2 Phi(x) - 1 and 1 - Phi(z) both lose every digit in the tail a copula
+  ## is most sensitive to.
+  x <- c(1e-14, 1e-9, 1e-4, 0.1, 0.249, 0.251, 2, 9)
+  pq <- sfa:::.cop_u_pq(0.6 * x, 0.6, "hnormal")
+  expect_equal(pq$p, pchisq(x^2, 1), tolerance = 1e-14)
+  expect_equal(pq$q, 2 * pnorm(-x), tolerance = 1e-14)
+  z <- c(-12, -3, 0, 3, 12)
+  pv <- sfa:::.cop_v_pq(0.3 * z, 0.3, 1, "normal")
+  expect_equal(pv$p, pnorm(z), tolerance = 1e-14)
+  expect_equal(pv$q, pnorm(-z), tolerance = 1e-14)
+  ## And at the defaults the copula densities read 1 - w as before.
+  w <- c(0.1, 0.5, 0.9)
+  for (fam in c("gaussian", "gumbel", "joe180", "clayton90")) {
+    expect_equal(.cop_logc_rot(w, rev(w), 2 * (fam != "gaussian") + 0.5 * (fam == "gaussian"), fam),
+      .cop_logc_rot(w, rev(w), 2 * (fam != "gaussian") + 0.5 * (fam == "gaussian"), fam,
+        1 - w, 1 - rev(w)))
+  }
+})
+
+test_that("the u-quadrature matches a tight reference in the tails (A74)", {
+  skip_on_cran()
+  ## Cells where the fixed 128-node grid was off by 1e-3 to 0.37 per
+  ## observation: a tail-dependent copula puts a spike where F_U(u) matches the
+  ## noise's tail probability. The reference is integrate() over log u, on
+  ## pieces 0.05 wide, so no spike can fall between its nodes unseen. This
+  ## asserts the accuracy of the quadrature, not where any fit lands.
+  ref <- function(e, S, ud, vd, cop, cp, av) {
+    f <- function(t) exp(.cop_node_ld(exp(t), e, S, 0.6, 0.3, av, ud, vd, cop, cp) + t - off)
+    cuts <- seq(-40, log(12), by = 0.05)
+    if (e < 0) cuts <- sort(c(cuts, log(-e)))
+    off <- max(.cop_node_ld(exp(cuts), e, S, 0.6, 0.3, av, ud, vd, cop, cp) + cuts)
+    tot <- 0
+    for (j in seq_len(length(cuts) - 1L)) {
+      tot <- tot + integrate(f, cuts[j], cuts[j + 1L], rel.tol = 1e-12,
+        abs.tol = 0, stop.on.error = FALSE)$value
+    }
+    log(tot) + off
+  }
+  cells <- list(
+    list(-4, 1, "hnormal", "normal", "clayton", 2, 1),
+    list(-2, 1, "hnormal", "normal", "clayton", 2, 1),
+    list(-4, -1, "hnormal", "normal", "clayton180", 2, 1),
+    list(-4, -1, "hnormal", "logistic", "clayton90", 2, 1),
+    list(-5, 1, "hnormal", "laplace", "gumbel", 2, 1),
+    list(-2.5, 1, "exponential", "laplace", "clayton180", 2, 1),
+    list(3.25, 1, "exponential", "normal", "gaussian", 0.5, 1),
+    list(3.25, -1, "hnormal", "glogistic", "clayton270", 2, 1.4)
+  )
+  for (cl in cells) {
+    got <- .cop_log_dens(cl[[1]], cl[[2]], 0.6, 0.3, cl[[7]], cl[[3]], cl[[4]],
+      cl[[5]], cl[[6]])
+    want <- do.call(ref, list(cl[[1]], cl[[2]], cl[[3]], cl[[4]], cl[[5]], cl[[6]], cl[[7]]))
+    expect_lt(abs(got - want), 1e-7, label = paste(unlist(cl), collapse = " "))
+  }
 })
