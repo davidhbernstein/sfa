@@ -253,10 +253,11 @@ wrong result came without an error or a warning.
 * **A negative variance estimate was reported as a standard error of 0**,
   with a t-value of `Inf`. It is now `NA`.
 
-* **`zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()`, `ttsfm()` and
-  `psfm()` could report `NaN` standard errors without a warning**, and a
-  singular Hessian discarded a finished fit. Both cases are now caught and
-  reported in `$se_unresolved`.
+* **`sfm()`, `zsfm()`, `lcsfm()`, `copsfm()`, `ivsfm()`, `selsfm()`,
+  `ttsfm()` and `psfm()` could report `NaN` standard errors without a
+  warning**, and a singular Hessian discarded a finished fit. Both cases are
+  now caught and reported in `$se_unresolved`, unless a boundary flag already
+  explains the missing standard errors.
 
 * **`vcov()` returned matrices on the estimation scale under reported
   names.** This affected `ttsfm()`, `copsfm()`, `ivsfm()` and `psfm()`'s
