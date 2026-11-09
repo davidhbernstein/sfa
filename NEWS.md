@@ -274,6 +274,11 @@ wrong result came without an error or a warning.
   zero**, as happens when a scale is flat at its bound. Only a Hessian that is
   missing, non-finite or entirely zero now does that.
 
+* **`ttsfm(model_name = "TTHN")` standard errors depended on which optimizer
+  stage won a tie.** A substituted stage now takes its Hessian from
+  `optim()`'s own estimator, or `optim()`'s Hessian itself when the points
+  coincide. The same rule covers the final-stage substitution in every model.
+
 * **A badly scaled Hessian no longer stops `vcov()` or the `sandwich`
   methods.** The Hessian is equilibrated before inversion. When no inverse
   exists, the error names the parameter responsible.

@@ -118,21 +118,23 @@
   ## par/fval/feval/ierr/msg and psoptim() gives par/value/counts/convergence/
   ## message. Neither carries a hessian. Returning one of them raw is gap A50.
   ## See notes/code_history/ttsfm.md.
-  list(opt = .tt_as_optim(cands[[k]], fn, vals[[k]], names(cands)[k], optHessian),
+  list(opt = .tt_as_optim(cands[[k]], fn, vals[[k]], names(cands)[k], optHessian,
+                          ref = if (!is.na(ko)) cands[[ko]]),
        which = names(cands)[k], values = vals)
 }
 
 ## Put a non-optim stage into optim()'s shape, with a Hessian of its own so the
 ## reported standard errors describe the point actually being reported -- the
 ## same requirement opt.optim()'s A42 guard imposes on its substitution.
-.tt_as_optim <- function(z, fn, val, stage, optHessian) {
+## The Hessian comes from optim()'s own estimator, or is optim()'s at a tie (A53).
+.tt_as_optim <- function(z, fn, val, stage, optHessian, ref = NULL) {
   if (identical(stage, "optim")) {
     return(z)
   }
   h <- NULL
   if (isTRUE(optHessian)) {
-    h <- tryCatch(numDeriv::hessian(fn, z$par), error = function(e) NULL)
-    if (is.null(h) || !all(is.finite(h))) {
+    h <- .sfa_substitute_hessian(fn, z$par, ref = ref)
+    if (is.null(h)) {
       h <- matrix(NA_real_, length(z$par), length(z$par))
     }
   }
