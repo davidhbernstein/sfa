@@ -1421,7 +1421,8 @@ sfm <- function(formula,
       .nc <- if (model_name == "NR") {
         .nr_corner_probe(like.fn, opt$par, as.matrix(data_i_vars), Y, inefdec_n)
       } else {
-        .ntn_lambda_ladder(like.fn, opt$par)
+        .ntn_lambda_ladder(like.fn, opt$par, X = as.matrix(data_i_vars), Y = Y,
+          inefdec_n = inefdec_n)
       }
       ## NR's probe is at the corner by construction; NTN's ladder may not be.
       .at_corner <- !is.null(.nc) && (model_name == "NR" ||
