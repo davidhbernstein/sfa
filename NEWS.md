@@ -175,7 +175,7 @@ wrong result came without an error or a warning.
   puts in the tails of `eps`**, by up to 30 log units per observation. Nodes
   are now placed per observation, to about 1e-10. Estimates change for the
   tail-dependent families, most on data with observations in the tails; fits
-  take about three times as long.
+  take three to five times as long.
 
 ## New features
 
