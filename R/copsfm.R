@@ -26,7 +26,9 @@
 ## Only families whose density can be written down exactly and checked are
 ## included. Each is verified in the tests two ways: it integrates to 1 over
 ## [0,1]^2, and at the independence parameter it returns exactly 1.
-.cop_logc <- function(w1, w2, par, family) {
+## q1, q2 are 1 - w1, 1 - w2 computed without cancellation; the upper-tail
+## families need them, since 1 - w is only good to 1e-16 absolute (A74).
+.cop_logc <- function(w1, w2, par, family, q1 = 1 - w1, q2 = 1 - w2) {
   switch(family,
     independent = rep(0, length(w1)),
     gaussian = {
@@ -34,8 +36,8 @@
       ##   c = (1-rho^2)^-1/2 exp{ [2 rho a b - rho^2 (a^2 + b^2)] / [2(1-rho^2)] }
       rho <- par
       if (abs(rho) >= 1) return(rep(NA_real_, length(w1)))
-      a <- stats::qnorm(w1)
-      b <- stats::qnorm(w2)
+      a <- stats::qnorm(pmin(w1, q1)); a[w1 >= 0.5] <- -a[w1 >= 0.5]
+      b <- stats::qnorm(pmin(w2, q2)); b[w2 >= 0.5] <- -b[w2 >= 0.5]
       om <- 1 - rho^2
       -0.5 * log(om) + (2 * rho * a * b - rho^2 * (a^2 + b^2)) / (2 * om)
     },
@@ -71,11 +73,10 @@
       if (!is.finite(th) || th <= 0) {
         return(if (isTRUE(all.equal(th, 0))) rep(0, length(w1)) else rep(NA_real_, length(w1)))
       }
-      z <- w1^(-th) + w2^(-th) - 1
-      ok <- is.finite(z) & z > 0
-      out <- rep(NA_real_, length(w1))
-      out[ok] <- log1p(th) - (1 + th) * (log(w1[ok]) + log(w2[ok])) -
-        (2 + 1 / th) * log(z[ok])
+      l1 <- log(w1); l2 <- log(w2)
+      z <- exp(-th * l1) + exp(-th * l2) - 1
+      out <- log1p(th) - (1 + th) * (l1 + l2) - (2 + 1 / th) * log(z)
+      out[!(is.finite(z) & z > 0)] <- NA_real_
       out
     },
     ## Gumbel: upper-tail dependence, theta >= 1, independence at theta = 1.
@@ -83,7 +84,8 @@
       th <- par
       if (!is.finite(th) || th < 1) return(rep(NA_real_, length(w1)))
       if (abs(th - 1) < 1e-12) return(rep(0, length(w1)))
-      x <- -log(w1); y <- -log(w2)
+      x <- -log(w1); h <- w1 >= 0.5; x[h] <- -log1p(-q1[h])
+      y <- -log(w2); h <- w2 >= 0.5; y[h] <- -log1p(-q2[h])
       A <- (x^th + y^th)^(1 / th)
       ok <- is.finite(A) & A > 0 & x > 0 & y > 0
       out <- rep(NA_real_, length(w1))
@@ -97,12 +99,12 @@
       th <- par
       if (!is.finite(th) || th < 1) return(rep(NA_real_, length(w1)))
       if (abs(th - 1) < 1e-12) return(rep(0, length(w1)))
-      a <- (1 - w1)^th; b <- (1 - w2)^th
+      a <- q1^th; b <- q2^th
       z <- a + b - a * b
       ok <- is.finite(z) & z > 0
       out <- rep(NA_real_, length(w1))
       out[ok] <- (1 / th - 2) * log(z[ok]) +
-        (th - 1) * (log1p(-w1[ok]) + log1p(-w2[ok])) +
+        (th - 1) * (log(q1[ok]) + log(q2[ok])) +
         log(th - 1 + z[ok])
       out
     },
@@ -124,13 +126,13 @@
 
 .cop_base <- function(family) sub("(90|180|270)$", "", family)
 
-.cop_logc_rot <- function(w1, w2, par, family) {
+.cop_logc_rot <- function(w1, w2, par, family, q1 = 1 - w1, q2 = 1 - w2) {
   rot <- .COP_ROT[[family]]
   base <- .cop_base(family)
-  if (is.null(rot) || is.na(rot) || rot == 0) return(.cop_logc(w1, w2, par, base))
-  if (rot == 90) return(.cop_logc(1 - w1, w2, par, base))
-  if (rot == 180) return(.cop_logc(1 - w1, 1 - w2, par, base))
-  .cop_logc(w1, 1 - w2, par, base)
+  if (is.null(rot) || is.na(rot) || rot == 0) return(.cop_logc(w1, w2, par, base, q1, q2))
+  if (rot == 90) return(.cop_logc(q1, w2, par, base, w1, q2))
+  if (rot == 180) return(.cop_logc(q1, q2, par, base, w1, w2))
+  .cop_logc(w1, q2, par, base, q1, w2)
 }
 
 ## Independence value of each family's parameter, and its admissible range.
@@ -257,9 +259,26 @@
   }
 }
 
-.cop_u_p <- function(u, su, udist) {
-  if (identical(udist, "exponential")) -expm1(-u / su) else 2 * stats::pnorm(u / su) - 1
+## (F_U, 1 - F_U), each computed without cancellation. 2 Phi(x) - 1 keeps
+## only absolute accuracy near 0, where a lower-tail copula is most sensitive,
+## so below x = 0.25 the erf series is used; and 1 - F is never formed by
+## subtraction, because the upper-tail families need it to relative accuracy
+## and 1 - w is good only to 1e-16 absolute (A74).
+.cop_u_pq <- function(u, su, udist) {
+  x <- u / su
+  if (identical(udist, "exponential")) return(list(p = -expm1(-x), q = exp(-x)))
+  q <- 2 * stats::pnorm(-x)
+  p <- 1 - q
+  sm <- which(x < 0.25)
+  if (length(sm)) {
+    xs <- x[sm]; t <- xs * xs / 2
+    p[sm] <- sqrt(2 / pi) * xs * (1 + t * (-1 / 3 + t * (1 / 10 + t * (-1 / 42 +
+      t * (1 / 216 + t * (-1 / 1320 + t * (1 / 9360 + t * (-1 / 75600))))))))
+  }
+  list(p = p, q = q)
 }
+.cop_u_p <- function(u, su, udist) .cop_u_pq(u, su, udist)$p
+.cop_u_q <- function(u, su, udist) .cop_u_pq(u, su, udist)$q
 
 .cop_v_ld <- function(v, sv, av, vdist) {
   switch(vdist,
@@ -269,13 +288,21 @@
   )
 }
 
-.cop_v_p <- function(v, sv, av, vdist) {
-  switch(vdist,
-    normal = stats::pnorm(v / sv),
-    laplace = ifelse(v < 0, 0.5 * exp(-abs(v) / sv), 1 - 0.5 * exp(-abs(v) / sv)),
-    exp(.gl_lp(v, av, sv))
-  )
+## (F_V, 1 - F_V), likewise: the smaller tail is computed, the other is its
+## complement.
+.cop_v_pq <- function(v, sv, av, vdist) {
+  if (!(vdist %in% c("normal", "laplace"))) {
+    lp <- .gl_lp(v, av, sv)
+    return(list(p = exp(lp), q = -expm1(lp)))
+  }
+  r <- if (identical(vdist, "normal")) stats::pnorm(-abs(v) / sv) else 0.5 * exp(-abs(v) / sv)
+  p <- r; q <- 1 - r
+  up <- which(v > 0)
+  p[up] <- q[up]; q[up] <- r[up]
+  list(p = p, q = q)
 }
+.cop_v_p <- function(v, sv, av, vdist) .cop_v_pq(v, sv, av, vdist)$p
+.cop_v_q <- function(v, sv, av, vdist) .cop_v_pq(v, sv, av, vdist)$q
 
 ## Moments the starting values need: the coefficient of sigma_u^3 in the third
 ## central moment of -u, the coefficient of sigma_u^2 in Var(u), E[u]/sigma_u,
@@ -284,6 +311,242 @@
 .cop_u_v2 <- function(udist) if (identical(udist, "exponential")) 1 else 1 - 2 / pi
 .cop_u_m1 <- function(udist) if (identical(udist, "exponential")) 1 else sqrt(2 / pi)
 .cop_v_v2 <- function(vdist) switch(vdist, normal = 1, laplace = 2, pi^2 / 3)
+
+## ---------------------------------------------------------------------------
+## The integral over u (A74). See notes/code_history/copsfm.md.
+## ---------------------------------------------------------------------------
+
+## Log integrand of f_eps at nodes U, one eps per node. NULL when the copula
+## density is not computable at the parameter.
+.cop_node_ld <- function(U, eps, S, su, sv, av, udist, vdist, copula, cpar,
+                         parts = FALSE) {
+  vv <- S * (eps + U)
+  lv <- .cop_v_ld(vv, sv, av, vdist)
+  lu <- .cop_u_ld(U, su, udist)
+  if (identical(copula, "independent") || is.null(cpar) || is.na(cpar)) {
+    return(if (parts) list(lv = lv, lu = lu, lc = 0 * lu) else lv + lu)
+  }
+  cl <- function(w) { w[w < 1e-12] <- 1e-12; w[w > 1 - 1e-12] <- 1 - 1e-12; w }
+  a <- .cop_v_pq(vv, sv, av, vdist)
+  b <- .cop_u_pq(U, su, udist)
+  lc <- .cop_logc_rot(cl(a$p), cl(b$p), cpar, copula, cl(a$q), cl(b$q))
+  if (any(!is.finite(lc))) return(NULL)
+  if (parts) list(lv = lv, lu = lu, lc = lc) else lv + lu + lc
+}
+
+## Log-odds of the marginals, used only to place breakpoints.
+.cop_u_lo <- function(u, su, udist) {
+  x <- u / su
+  lq <- if (identical(udist, "exponential")) -x else log(2) + stats::pnorm(-x, log.p = TRUE)
+  log(.cop_u_p(u, su, udist)) - lq
+}
+.cop_v_lo <- function(v, sv, av, vdist) {
+  switch(vdist,
+    normal = stats::pnorm(v / sv, log.p = TRUE) - stats::pnorm(-v / sv, log.p = TRUE),
+    laplace = {
+      x <- -abs(v) / sv
+      sign(v) * (log1p(-0.5 * exp(x)) - log(0.5) - x)
+    },
+    {
+      lp <- .gl_lp(v, av, sv)
+      lp - log(-expm1(lp))
+    }
+  )
+}
+
+## Breakpoint levels, in log-odds. Dense where a marginal's bulk is, sparse in
+## its tails, and +-27.63 is where the copula arguments are clamped at 1e-12.
+.COP_LEV <- local({
+  k <- log(1e-12) - log1p(-1e-12)
+  l <- c(1, 2.5, 4.5, 7, 10, 14, 19, 24, -k, 34)
+  c(rev(-l), 0, l)
+})
+
+.COP_REL <- c(1, 2.5, 4.5, 7, 10, 14, 19, 24, 34)
+
+## u (resp. v) at which the log-odds of F_U (resp. F_V) equal each level.
+.cop_u_at_lev <- function(su, udist) {
+  a <- .COP_LEV
+  if (identical(udist, "exponential")) return(su * ifelse(a > 30, a, log1p(exp(a))))
+  lp <- stats::plogis(a, log.p = TRUE); lq <- stats::plogis(-a, log.p = TRUE)
+  su * sqrt(ifelse(a < 0, stats::qchisq(lp, 1, log.p = TRUE),
+    stats::qchisq(lq, 1, lower.tail = FALSE, log.p = TRUE)))
+}
+.cop_v_at_lev <- function(sv, av, vdist, b = .COP_LEV) {
+  lp <- stats::plogis(b, log.p = TRUE); lq <- stats::plogis(-b, log.p = TRUE)
+  switch(vdist,
+    normal = sv * ifelse(b < 0, stats::qnorm(lp, log.p = TRUE), -stats::qnorm(lq, log.p = TRUE)),
+    laplace = sv * ifelse(b < 0, log(2) + lp, ifelse(b == 0, 0, -(log(2) + lq))),
+    {
+      x <- -lp / av
+      sv * (-ifelse(x > 30, x + log1p(-exp(-x)), log(expm1(x))) - (digamma(av) - digamma(1)))
+    }
+  )
+}
+
+## How fast the log copula density can change per unit of log-odds of either
+## argument; it sets how finely a piece is cut.
+.cop_kappa <- function(copula, cpar) {
+  if (identical(copula, "independent") || is.null(cpar) || is.na(cpar)) return(0)
+  switch(.cop_base(copula),
+    gaussian = 2 * abs(cpar) / (1 - cpar^2),
+    fgm = 1,
+    frank = abs(cpar) / 2,
+    clayton = 1 + cpar,
+    cpar
+  )
+}
+
+## Gauss-Legendre on (0, 1) for any n, including the 2- and 3-point rules
+## .gauss_legendre_01() does not serve.
+.cop_gl01 <- function(n) {
+  if (n >= 5L) return(.gauss_legendre_01(as.integer(n)))
+  x <- switch(n, 0, c(-1, 1) / sqrt(3), c(-1, 0, 1) * sqrt(3 / 5),
+    c(-1, -1, 1, 1) * sqrt(3 / 7 + c(2, -2, -2, 2) / 7 * sqrt(6 / 5)))
+  w <- switch(n, 2, c(1, 1), c(5, 8, 5) / 9,
+    (18 + c(-1, 1, 1, -1) * sqrt(30)) / 36)
+  o <- order(x)
+  list(nodes = (x[o] + 1) / 2, weights = w[o] / 2)
+}
+
+## Nodes and log weights for the integral over u, per observation. The range
+## (0, Inf) is cut at the u where either marginal's log-odds cross a level in
+## .COP_LEV; each piece is weighed by the integrand at its ends, dropped if its
+## mass is negligible, and otherwise split into enough equal sub-pieces in
+## log u that m-point Gauss-Legendre resolves it. Returns long vectors with
+## the observation index `row`, and an offset per row for the log-sum.
+.cop_quad <- function(eps, S, su, sv, av, udist, vdist, copula, cpar,
+                      tol = 1e-10, uA = .cop_u_at_lev(su, udist), m = 8L) {
+  n <- length(eps)
+  L <- .COP_LEV; nl <- length(L)
+  vB <- .cop_v_at_lev(sv, av, vdist)
+  UB <- outer(-eps, S * vB, "+")
+  ## Where the noise at u = 0 is already past the last level, its density
+  ## falls by about one log unit per unit of log-odds, so the same steps are
+  ## taken from where it starts.
+  B0 <- .cop_v_lo(S * eps, sv, av, vdist)
+  far <- which(abs(B0) > 30)
+  RL <- matrix(NA_real_, n, length(.COP_REL))
+  if (length(far)) RL[far, ] <- outer(B0[far], S * .COP_REL, "+")
+  UR <- matrix(Inf, n, length(.COP_REL))
+  if (length(far)) UR[far, ] <- S * .cop_v_at_lev(sv, av, vdist, RL[far, ]) - eps[far]
+  UB <- cbind(UB, UR)
+  BR <- cbind(matrix(uA, n, nl, byrow = TRUE), UB)
+  Aval <- cbind(matrix(L, n, nl, byrow = TRUE), matrix(NA_real_, n, ncol(UB)))
+  Bval <- cbind(matrix(NA_real_, n, nl), matrix(L, n, nl, byrow = TRUE), RL)
+  pos <- is.finite(UB) & UB > 0
+  Aval[, nl + seq_len(ncol(UB))][pos] <- .cop_u_lo(UB[pos], su, udist)
+  Bval[, seq_len(nl)] <- .cop_v_lo(S * (eps + BR[, seq_len(nl)]), sv, av, vdist)
+  BR[!(BR > 0)] <- Inf
+  K <- ncol(BR)
+  rr <- rep(seq_len(n), K)
+  o <- order(rr, as.vector(BR))
+  BR <- matrix(as.vector(BR)[o], n, K, byrow = TRUE)
+  Aval <- pmin(pmax(matrix(as.vector(Aval)[o], n, K, byrow = TRUE), -1e100), 1e100)
+  Bval <- pmin(pmax(matrix(as.vector(Bval)[o], n, K, byrow = TRUE), -1e100), 1e100)
+  fin <- is.finite(BR)
+  ## Scout: the integrand, per unit of log u, at every breakpoint.
+  sc <- matrix(-Inf, n, K)
+  ld <- .cop_node_ld(BR[fin], matrix(eps, n, K)[fin], S, su, sv, av, udist,
+    vdist, copula, cpar, parts = TRUE)
+  if (is.null(ld)) return(NULL)
+  sc[fin] <- ld$lv + ld$lu + ld$lc + log(BR[fin])
+  sc[is.nan(sc)] <- -Inf
+  ## Each component at each breakpoint, for the variation inside a piece.
+  cmp <- lapply(list(ld$lv, ld$lu, ld$lc, log(BR[fin])), function(x) {
+    out <- matrix(0, n, K); out[fin] <- x; out[!is.finite(out)] <- 0; out })
+  ## Interior pieces.
+  j1 <- seq_len(K - 1L); j2 <- j1 + 1L
+  ok <- fin[, j2, drop = FALSE]
+  lo <- log(BR[, j1, drop = FALSE]); wd <- log(BR[, j2, drop = FALSE]) - lo
+  ok <- ok & wd > 0
+  A1 <- Aval[, j1, drop = FALSE]; A2 <- Aval[, j2, drop = FALSE]
+  B1 <- Bval[, j1, drop = FALSE]; B2 <- Bval[, j2, drop = FALSE]
+  dAB <- abs(A2 - A1) + abs(B2 - B1)
+  ## A copula ridge lies along A = B or A = -B; a piece that crosses one can
+  ## hide a peak that neither end shows.
+  cross <- (A1 - B1) * (A2 - B2) <= 0 | (A1 + B1) * (A2 + B2) <= 0 |
+    pmin(abs(A1 - B1), abs(A2 - B2), abs(A1 + B1), abs(A2 + B2)) < 2
+  ## Monotone components that move in opposite directions can peak inside a
+  ## piece by up to the smaller of their total rise and total fall.
+  up <- 0; dn <- 0
+  for (x in cmp) {
+    d <- x[, j2, drop = FALSE] - x[, j1, drop = FALSE]
+    up <- up + pmax(d, 0); dn <- dn - pmin(d, 0)
+  }
+  lam <- abs(sc[, j2, drop = FALSE] - sc[, j1, drop = FALSE]) +
+    2 * pmin(up, dn) + dAB * .cop_kappa(copula, cpar) * cross
+  lam[!is.finite(lam)] <- 80
+  score <- pmax(sc[, j1, drop = FALSE], sc[, j2, drop = FALSE]) + log(wd)
+  score[!ok] <- -Inf
+  ## Head piece (0, b_1) and tail piece (b_last, Inf); both in the deep tail
+  ## of F_U, so a single piece each.
+  nfin <- rowSums(fin)
+  b1 <- BR[, 1L]
+  bL <- BR[cbind(seq_len(n), nfin)]
+  sL <- sc[cbind(seq_len(n), nfin)]
+  hL <- pmin(if (identical(udist, "exponential")) rep_len(su, n) else su^2 / bL, sv)
+  M <- pmax(apply(score, 1L, max), sc[, 1L], sL + log(hL / bL))
+  M[!is.finite(M)] <- 0
+  ## Prune, then cut. m-point Gauss-Legendre on exp(c x), x in (-1, 1), has
+  ## relative error 2^(2m+1) (m!)^4 c^(2m+1) / ((2m+1) ((2m)!)^3). Each piece
+  ## gets the rule and number of equal sub-pieces that bring that below tol
+  ## over its share of the row's mass at the fewest nodes, so a piece holding
+  ## 1e-20 of the mass costs two nodes.
+  rowk <- (seq_along(score) - 1L) %% n + 1L
+  lp <- pmin(score - M[rowk], 0)
+  keep <- which(ok & lp + lam - abs(sc[, j2, drop = FALSE] - sc[, j1, drop = FALSE]) > -40)
+  lp <- lp[keep]; lmk <- lam[keep]
+  ms <- sort(unique(c(2L, 3L, 5L, m)))
+  cost <- vapply(ms, function(mm) {
+    lk <- log(2 * mm + 1) + 3 * lfactorial(2 * mm) - (2 * mm + 1) * log(2) - 4 * lfactorial(mm)
+    Lam <- 2 * exp((log(tol) - lp + lk) / (2 * mm + 1))
+    pmin(pmax(ceiling(lmk / Lam), 1), 1e6) * mm
+  }, numeric(length(keep)))
+  cost <- matrix(cost, ncol = length(ms))
+  pick <- max.col(-cost, ties.method = "first")
+  kk <- pmin(cost[cbind(seq_along(keep), pick)] / ms[pick], 64)
+  row <- rowk[keep]
+  Ul <- list(); LWl <- list(); Rl <- list()
+  for (g in unique(pick)) {
+    sel <- which(pick == g)
+    mm <- ms[g]
+    gl <- .cop_gl01(mm)
+    sub <- rep(sel, kk[sel])
+    hw <- wd[keep][sub] / kk[sub]
+    slo <- lo[keep][sub] + (sequence(kk[sel]) - 1) * hw
+    T <- outer(hw, gl$nodes) + slo
+    Ul[[g]] <- as.vector(exp(T))
+    LWl[[g]] <- as.vector(outer(log(hw), log(gl$weights), "+") + T)
+    Rl[[g]] <- rep(row[sub], mm)
+  }
+  U <- unlist(Ul); LW <- unlist(LWl); R <- unlist(Rl)
+  gl <- .gauss_legendre_01(as.integer(m))
+  ## Head and tail pieces: m nodes each.
+  Uh <- outer(b1, gl$nodes); LWh <- log(outer(b1, gl$weights))
+  tt <- gl$nodes / (1 - gl$nodes)
+  Ut <- bL + outer(hL, tt); LWt <- log(outer(hL, gl$weights / (1 - gl$nodes)^2))
+  list(U = c(as.vector(U), as.vector(Uh), as.vector(Ut)),
+    LW = c(as.vector(LW), as.vector(LWh), as.vector(LWt)),
+    row = c(R, rep(seq_len(n), 2L * m)), M = M)
+}
+
+## log f_eps by .cop_quad(); with `parts = TRUE`, also the nodes and their
+## normalized weights, for the efficiency predictors.
+.cop_log_dens <- function(eps, S, su, sv, av, udist, vdist, copula, cpar,
+                          tol = 1e-10, uA = .cop_u_at_lev(su, udist), parts = FALSE) {
+  n <- length(eps)
+  q <- .cop_quad(eps, S, su, sv, av, udist, vdist, copula, cpar, tol, uA)
+  if (is.null(q)) return(NULL)
+  ld <- .cop_node_ld(q$U, eps[q$row], S, su, sv, av, udist, vdist, copula, cpar)
+  if (is.null(ld)) return(NULL)
+  lg <- ld + q$LW
+  lg[is.nan(lg)] <- -Inf
+  s <- rowsum(exp(lg - q$M[q$row]), q$row, reorder = TRUE)[, 1L]
+  out <- log(s) + q$M
+  if (!parts) return(out)
+  list(logf = out, U = q$U, row = q$row, w = exp(lg - out[q$row]))
+}
 
 copsfm <- function(formula,
                    data,
@@ -353,81 +616,17 @@ copsfm <- function(formula,
   S <- if (isTRUE(inefdec)) 1 else -1
   cs <- if (has_cop) .cop_spec(copula) else NULL
 
-  ## Gauss-Legendre nodes on (0, 1), mapped to u in (0, Inf) by u = t/(1-t).
-  ## The map is chosen so the integrand's mass -- which sits at moderate u --
-  ## lands in the middle of the node range rather than in a tail.
-  ##
-  ## 128 nodes, not 64. Measured against the closed-form normal/half-normal
-  ## density at independence, the maximum absolute error in log f is 1.3e-2 at
-  ## 32 nodes, 2.5e-5 at 64 and 8.2e-14 at 128. 64 looks adequate and is not:
-  ## an error of 1e-5 per observation is an error of 0.02 in a log-likelihood
-  ## over 2000 points, which is the scale at which modes are being compared.
-  gl <- .gauss_legendre_01(as.integer(n_nodes))
-  tt <- gl$nodes
-  wt <- gl$weights
-  uu <- tt / (1 - tt)
-  jac <- 1 / (1 - tt)^2
-
-  ## Nodes and log weights per observation. Laplace noise has a kink at v = 0,
-  ## i.e. at u = -eps, which costs fixed nodes three orders of accuracy (M3), so
-  ## its integral is split there and each smooth piece gets half the nodes --
-  ## 64 per piece already reaches machine precision.
-  if (identical(vdist, "laplace")) {
-    gl <- .gauss_legendre_01(as.integer(ceiling(n_nodes / 2)))
-    tt <- gl$nodes; wt <- gl$weights
-    uu <- tt / (1 - tt); jac <- 1 / (1 - tt)^2
-  }
-  .u_grid <- function(eps, su) {
-    lw <- log(wt) + log(jac)
-    if (!identical(vdist, "laplace")) {
-      return(list(
-        U = matrix(uu, nrow = length(eps), ncol = length(uu), byrow = TRUE),
-        LW = matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE)
-      ))
-    }
-    ## Where eps >= 0 there is no kink and the split is at sigma_u instead, so
-    ## every row gets the first piece's grading: u = k t^2 on (0, k), toward
-    ## u = 0, where the gaussian and clayton copula densities are singular.
-    kk <- ifelse(eps < 0, -eps, su)
-    list(
-      U = cbind(outer(kk, tt^2), outer(kk, uu, "+")),
-      LW = cbind(outer(log(kk), log(2 * tt * wt), "+"),
-        matrix(lw, nrow = length(eps), ncol = length(uu), byrow = TRUE))
-    )
-  }
-
-  ## The per-node log joint density, rows observations and columns quadrature
-  ## nodes. Shared by the likelihood and by the efficiency predictors, so the
-  ## objective and the prediction cannot come to disagree about the model.
-  ##
-  ## `eps` is S * (y - Xb), which is distributed as (S v) - u. Adding back the
-  ## node therefore recovers S*v, and the NOISE ITSELF is S times that. That
-  ## last multiplication is not cosmetic: for a cost frontier the sign-
-  ## normalized error is (-v) - u, and a SKEWED v does not survive the
-  ## reflection the way a normal one does. The same reflection is why F_V is
-  ## evaluated at the actual v -- so that a positive dependence parameter means
-  ## the same thing, association between the real v and the real u, in both
-  ## orientations.
-  .node_lg <- function(eps, su, sv, av, cpar, U, LW) {
-    vv <- S * (eps + U)
-    lg <- .cop_v_ld(vv, sv, av, vdist) + .cop_u_ld(U, su, udist)
-    if (has_cop && !is.null(cpar)) {
-      ## Marginal CDFs, clamped off the endpoints: qnorm(0) is -Inf.
-      w1 <- pmin(pmax(.cop_v_p(vv, sv, av, vdist), 1e-12), 1 - 1e-12)
-      w2 <- pmin(pmax(.cop_u_p(U, su, udist), 1e-12), 1 - 1e-12)
-      lc <- .cop_logc_rot(as.numeric(w1), as.numeric(w2), cpar, copula)
-      if (any(!is.finite(lc))) return(NULL)
-      lg <- lg + matrix(lc, nrow = nrow(lg))
-    }
-    lg + LW
-  }
-
-  ## log f_eps(eps_i), the composed density, by quadrature over u.
-  .log_dens <- function(eps, su, sv, av, cpar) {
-    g <- .u_grid(eps, su)
-    lg <- .node_lg(eps, su, sv, av, cpar, g$U, g$LW)
-    if (is.null(lg)) return(rep(NA_real_, length(eps)))
-    .log_row_sum_exp(lg)
+  ## The integral over u is by Gauss-Legendre on pieces placed per
+  ## observation (.cop_quad(), A74). n_nodes sets the target error in log f:
+  ## 1e-10 at the default 128, tenfold looser or tighter per 32 nodes.
+  q_tol <- min(max(1e-10 * 10^((128 - n_nodes) / 32), 1e-14), 1e-6)
+  cA <- .cop_u_at_lev(1, udist)
+  .log_dens <- function(eps, su, sv, av, cpar, parts = FALSE) {
+    out <- .cop_log_dens(eps, S, su, sv, av, udist, vdist,
+      if (has_cop) copula else "independent", cpar, q_tol, uA = su * cA,
+      parts = parts)
+    if (is.null(out)) return(if (parts) NULL else rep(NA_real_, length(eps)))
+    out
   }
 
   ## Starting values: OLS plus Olson's moments, independence for the copula and
@@ -576,15 +775,12 @@ copsfm <- function(formula,
   ## The efficiency predictors, by the same quadrature -- and from the same
   ## closure -- that the likelihood used.
   eps <- S * as.numeric(y - X %*% th[i_b])
-  g <- .u_grid(eps, su)
-  Um <- g$U
-  lg <- .node_lg(eps, su, sv, av, cpar, Um, g$LW)
-  wts <- exp(lg - .log_row_sum_exp(lg))
-  jlms <- as.numeric(rowSums(wts * Um))
+  qp <- .log_dens(eps, su, sv, av, if (has_cop) cpar else NULL, parts = TRUE)
+  jlms <- as.numeric(rowsum(qp$w * qp$U, qp$row, reorder = TRUE))
   ## Battese-Coelli, E[exp(-u) | eps]. Free here, and it is the quantity the
   ## copula literature reports; exp(-jlms) is kept as `efficiency` because that
   ## is what this function has always returned under that name.
-  exp_u_hat <- as.numeric(rowSums(wts * exp(-Um)))
+  exp_u_hat <- as.numeric(rowsum(qp$w * exp(-qp$U), qp$row, reorder = TRUE))
 
   results <- list(
     t(out), c(opt), End.Time, start_v, "COP", formula, copula, cpar,
