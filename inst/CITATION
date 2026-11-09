@@ -1,16 +1,15 @@
 citHeader("To cite sfa in publications use:")
 
-bibentry(bibtype = "Article",
-         title = "Stochastic Frontier Analysis: The sfa Package",
-         author = c(person("David H. Bernstein"),
-                             person("Christopher F. Parmeter"),
-                             person("Alexander D. Stead")),
-         journal      = "Working Paper",
-         year         = "2026",
-         
-         textVersion = 
-         paste("David H. Bernstein, Christopher F. Parmeter, and Alexander D Stead (2026).",
-               "Stochastic Frontier Analysis: The sfa Package.",
-               "Working Paper.")
-)
+bibentry(bibtype = "Unpublished",
+         title = "Stochastic Frontier Analysis in R: The sfa Package",
+         author = c(person("David H.", "Bernstein"),
+                    person("Christopher F.", "Parmeter"),
+                    person("Alexander D.", "Stead")),
+         note = "Working paper",
+         year = "2026",
 
+         textVersion =
+         paste("David H. Bernstein, Christopher F. Parmeter, and Alexander D. Stead (2026).",
+               "Stochastic Frontier Analysis in R: The sfa Package.",
+               "Working paper.")
+)
