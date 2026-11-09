@@ -101,7 +101,8 @@ wrong result came without an error or a warning.
 * **`"NR"`, `"NTN"` and `"NHN_Z"` handle the `sigma_v -> 0` corner.** On some
   samples the likelihood is highest where the noise vanishes. `"NR"` and
   `"NTN"` now probe that corner and move there only when the likelihood is
-  higher by more than 1e-4. A fit on the corner is flagged
+  higher by more than 1e-4. `"NTN"`'s probe also starts from the fit moved
+  onto the frontier, so it does not depend on where the interior fit stopped. A fit on the corner is flagged
   (`$sigma_v_at_bound`, or `$ntn_sigma_v_at_bound` for `"NTN"`), reports `NA`
   standard errors and gives a warning. Interior fits are unchanged.
 
