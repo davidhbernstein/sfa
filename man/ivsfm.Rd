@@ -47,7 +47,7 @@ ivsfm(formula, endogenous, instruments, data,
   optimizer stages. Ignored by \code{"C2SLS"}, which is closed-form.}
 \item{start_val}{Name the starting-value vector in the returned object.}
 \item{PSopt}{Run the particle-swarm stage between BOBYQA and \code{optim}.}
-\item{optHessian}{Compute the Hessian, and with it the standard errors.}
+\item{optHessian}{Compute the Hessian, and with it the standard errors. With \code{FALSE} the final \code{optim} stage is not run at all, so the estimates reported are the preceding stage's and can differ from the default fit's wherever that stage had not already converged.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
 and upper bounds this package uses to keep scale parameters positive, and any

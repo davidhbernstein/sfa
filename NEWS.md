@@ -132,7 +132,8 @@ wrong result came without an error or a warning.
   estimates.** The final stage could stop just short of the maximum on a flat
   ridge. On `USUtilities`, Windows stopped at a log-likelihood of 575.9013 and
   macOS reached 575.9059. The fit now runs the same stationarity check and
-  polish as `sfm()`, and both platforms reach 575.9059.
+  polish as `sfm()`, records it in `$stationarity`, and both platforms reach
+  575.9059.
 
 * **`"GTRE"` by simulated ML averaged its antithetic draws on the log scale.**
   That is a geometric mean, so the log-likelihood was biased down: by 0.23 on a
@@ -390,6 +391,9 @@ wrong result came without an error or a warning.
 
 ## Documentation
 
+* `optHessian = FALSE` is now documented as also skipping the final `optim()`
+  stage, so the estimates are the previous stage's, in all seven entry points
+  that take it.
 * The README has a "Which model should I use?" table and a "Troubleshooting"
   section (issue #3).
 * `?psfm` explains that `rand.gtre` changes the simulated likelihood, so it is

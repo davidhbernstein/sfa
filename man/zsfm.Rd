@@ -24,7 +24,7 @@ keep_objective = FALSE,rand.psoptim = NULL)}
 \item{REPORT, trace, pgtol, upper}{Accepted but not used by \code{zsfm()}: the optimizer's own tracing is controlled by \code{verbose}, and its bounds are set internally.}
 \item{start_val}{\code{FALSE} (the default) to build starting values from the data, or a numeric vector giving them directly, in the order of the rows of \code{out}.}
 \item{PSopt}{Logical. Run the particle-swarm stage (\code{pso::psoptim}) between bobyqa and \code{optim}? Defaults to \code{FALSE}.}
-\item{optHessian}{Logical. Finish with \code{optim()} and a numerically differentiated Hessian? Standard errors and t-values require \code{TRUE}, the default.}
+\item{optHessian}{Logical. Finish with \code{optim()} and a numerically differentiated Hessian? Standard errors and t-values require \code{TRUE}, the default. With \code{FALSE} the final \code{optim} stage is not run at all, so the estimates reported are the preceding stage's and can differ from the default fit's wherever that stage had not already converged.}
 \item{inefdec}{Logical. \code{TRUE} (the default) for a production frontier, \eqn{\varepsilon = v - u}; \code{FALSE} for a cost frontier, \eqn{\varepsilon = v + u}.}
 \item{Method}{Method passed to \code{optim} for the final stage. Must be
 \code{"L-BFGS-B"}: it is the only \code{optim} method that applies the lower
