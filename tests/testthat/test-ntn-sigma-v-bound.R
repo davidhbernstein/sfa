@@ -106,3 +106,18 @@ test_that("the boundary criterion is not a tuned cut", {
   expect_lt(max(lo), 1e-5)
   expect_gt(min(hi), 1e-1)
 })
+
+test_that("the lambda ladder reaches the corner from a start on the mu ridge", {
+  skip_on_cran()
+  ## The CI failures on Ubuntu R oldrel were the ladder stuck on the
+  ## mu -> -Inf ridge. Its frontier seed does not depend on that start.
+  d <- data_gen_cs(N = 150, rand = 9, cons = .5, beta1 = .5, beta2 = .5,
+    sig_u = 1, sig_v = .5, mu = .5, a = 5)
+  f <- suppressWarnings(sfm(y_pcs_tn ~ x1 + x2, data = d, model_name = "NTN",
+    keep_objective = TRUE))
+  X <- cbind(1, d$x1, d$x2)
+  p <- f$opt$par
+  p[1:3] <- c(4, 26, -1555)
+  b <- sfa:::.ntn_lambda_ladder(f$objective, p, X = X, Y = d$y_pcs_tn)
+  expect_lt(abs(-b$value - (-178.2144)), 5e-3)
+})
