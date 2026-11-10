@@ -412,6 +412,10 @@ wrong result came without an error or a warning.
   that take it.
 * The README has a "Which model should I use?" table and a "Troubleshooting"
   section (issue #3).
+* `?sfm` and `?psfm` open with a table of the models they fit, and their
+  discussion is split into titled subsections instead of one long run of
+  text (issue #3). The numerical narratives move to a new vignette,
+  `vignette("sfa_numerical_notes")`.
 * `?psfm` explains that `rand.gtre` changes the simulated likelihood, so it is
   not a multistart. To measure the resulting variation, use `simulation_se()`.
 * `?ttsfm` documents the `"TTHN"` boundary, where `sigma_v` collapses when
