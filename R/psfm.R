@@ -688,10 +688,6 @@ psfm <- function(formula,
 
     ## TE Measurements : GTRE
     if (model_name == "GTRE") {
-      ## mvtnorm::pmvnorm() integrates by randomized quasi-Monte Carlo: fix its draws
-      ## and restore the caller's stream (notes/code_history/psfm.md, gap A23).
-      .rng_state <- .rng_snapshot()
-      set.seed(20260914L)
       beta <- opt$par[-c(1:4)]
       lamb <- opt$par[1]
       sig <- opt$par[2]
@@ -700,100 +696,17 @@ psfm <- function(formula,
       sig_r <- opt$par[3]
       sig_h <- opt$par[4]
 
+      ## Residuals per firm, oriented and clamped as this branch always has.
+      ## The clamp ties a share of observations at exactly zero; it is left
+      ## alone here so that moving this block into .gtre_csn_te() changes no
+      ## GTRE number.
       e_i <- as.list(rep(0, N))
-      A <- as.list(rep(0, N))
-      SIG <- as.list(rep(0, N))
-      VEE <- as.list(rep(0, N))
-      LAM <- as.list(rep(0, N))
-      ARR <- as.list(rep(0, N))
-      n <- sum(t)
-      U <- rep(0, n)
-
-      ## Lambda_i/ARR_i via .safe_linear_combo() (matrix_utils.R).
       for (i in seq_len(N)) {
         e_i[[i]] <- pmin(inefdec_n * (Y[[i]][, 1] - rowSums(t(t(data_i_vars[[i]]) * beta))), Y[[i]][, 1] * 0)
-        A[[i]] <- -cbind(rep(1, t[i]), diag(t[i]))
-        SIG[[i]] <- sig_v^2 * diag(t[i]) + sig_r^2 * rep(1, t[i]) %*% t(rep(1, t[i]))
-        VEE[[i]] <- rbind(c(sig_h^2, rep(0, t[i])), cbind(rep(0, t[i]), sig_u^2 * diag(t[i])))
-        lc <- .safe_linear_combo(VEE_i = VEE[[i]], A_i = A[[i]], SIG_i = SIG[[i]])
-        LAM[[i]] <- lc$LAM
-        ARR[[i]] <- lc$ARR
       }
-
-      res_d_fn <- function(i) {
-        mvtnorm::pmvnorm(
-          lower = rep(0, t[i] + 1), upper = rep(Inf, t[i] + 1),
-          mean = as.numeric(ARR[[i]] %*% e_i[[i]]),
-          sigma = LAM[[i]]
-        )[1]
-      }
-
-      res_n_fn <- function(i) {
-        mvtnorm::pmvnorm(
-          lower = rep(0, t[i] + 1), upper = rep(Inf, t[i] + 1),
-          mean = as.numeric(ARR[[i]] %*% e_i[[i]] + LAM[[i]] %*% c(-1, rep(0, t[i]))),
-          sigma = LAM[[i]]
-        )[1]
-      }
-
-      res_d <- lapply(seq(1, N, 1), res_d_fn)
-      res_n <- lapply(seq(1, N, 1), res_n_fn)
-
-      H_fn <- function(i) {
-        (max(res_n[[i]], .SFA_CONSTANTS$MIN_POSITIVE) / max(res_d[[i]], .SFA_CONSTANTS$MIN_POSITIVE)) *
-          exp(t(c(-1, rep(0, t[i]))) %*% ARR[[i]] %*% e_i[[i]] + 0.5 * t(c(-1, rep(0, t[i]))) %*% LAM[[i]] %*% c(-1, rep(0, t[i])))
-      }
-
-      H <- unlist(lapply(seq(1, N, 1), H_fn))
-      H <- pmin(H, rep(1, length(H)))
-
-      new_t_exp <- as.list(rep(0, n))
-
-      for (i in seq_len(N)) {
-        for (j in seq_len(t[i])) {
-          h <- cumsum(t)[i] - t[i] + j
-          new_t <- rep(0, t[i] + 1)
-          new_t[j + 1] <- -1
-          new_t_exp[[h]] <- new_t
-        }
-      }
-
-
-      t_cum <- c(cumsum(t))
-      t_exp <- e_i_exp <- A_exp <- SIG_exp <- VEE_exp <- LAM_exp <- ARR_exp <- res_d_exp <- as.list(rep(0, n))
-
-      for (m in seq_len(N)) {
-        B <- t_cum[m]
-        A <- B + 1 - t[m]
-        t_exp[A:B] <- rep(t[m], t[m])
-        e_i_exp[A:B] <- rep(e_i[m], t[m])
-        A_exp[A:B] <- rep(A[m], t[m])
-        SIG_exp[A:B] <- rep(SIG[m], t[m])
-        VEE_exp[A:B] <- rep(VEE[m], t[m])
-        LAM_exp[A:B] <- rep(LAM[m], t[m])
-        ARR_exp[A:B] <- rep(ARR[m], t[m])
-        res_d_exp[A:B] <- rep(res_d[m], t[m])
-      }
-
-      res_n_t_fn <- function(i) {
-        mvtnorm::pmvnorm(
-          lower = rep(0, t_exp[[i]] + 1), upper = rep(Inf, t_exp[[i]] + 1),
-          mean = as.numeric(ARR_exp[[i]] %*% e_i_exp[[i]] + LAM_exp[[i]] %*% new_t_exp[[i]]),
-          sigma = LAM_exp[[i]]
-        )[1]
-      }
-
-      res_n_t <- lapply(seq(1, n, 1), res_n_t_fn)
-
-
-      U_fn <- function(i) {
-        (max(res_n_t[[i]], .SFA_CONSTANTS$MIN_POSITIVE) / max(res_d_exp[[i]], .SFA_CONSTANTS$MIN_POSITIVE)) *
-          exp(t(new_t_exp[[i]]) %*% ARR_exp[[i]] %*% e_i_exp[[i]] + 0.5 * t(new_t_exp[[i]]) %*% LAM_exp[[i]] %*% new_t_exp[[i]])
-      }
-
-      U <- unlist(lapply(seq(1, n, 1), U_fn))
-      U <- pmin(U, rep(1, length(U)))
-      .rng_restore(.rng_state)
+      .te <- .gtre_csn_te(e_i, t, sig_u, sig_v, sig_r, sig_h)
+      H <- .te$H
+      U <- .te$U
     }
     ## TE Measurements : TRE
     if (model_name == "TRE") {
@@ -2114,19 +2027,25 @@ psfm <- function(formula,
     sig_h <- opt$par[np - 1]
     sig_u <- opt$par[np]
     eps <- as.numeric(Y_vec - opt$par[1] - X_s %*% opt$par[2:(1 + Kx)])
-    s2u <- sig_u^2
-    s2v <- sig_v^2
-    U <- .te_battese_coelli(
-      mu_star = -eps * s2u / (s2u + s2v),
-      sigma_star = sig_u * sig_v / sqrt(s2u + s2v)
-    )
-    e_bar <- as.numeric(.gsum(eps, gid, N)) / BigT
-    s2h <- sig_h^2
-    s2r <- sig_r^2 + s2v / BigT
-    H <- .te_battese_coelli(
-      mu_star = -e_bar * s2h / (s2h + s2r),
-      sigma_star = sig_h * sqrt(s2r) / sqrt(s2h + s2r)
-    )
+    ## Both efficiencies come from the SAME closed-skew-normal posterior the
+    ## simulated-likelihood route uses (Colombi et al. 2014), so the two
+    ## estimators of this model report the same estimand.
+    ##
+    ## Until 2026-11-12 the transient term here was .te_battese_coelli() -- the
+    ## TWO-component normal/half-normal posterior -- applied to `eps`, the raw
+    ## residual, which still carries alpha_i and h_i. Neither sigma_r nor
+    ## sigma_h entered it, so persistent inefficiency was charged to the
+    ## transient term. On the benchmark's GTRE design that showed up as
+    ## TE RMSE 0.237 against the simulated route's 0.156, about sixteen Monte
+    ## Carlo standard errors apart at near-identical parameter estimates, and
+    ## npsf's independent four-component fit sits with the simulated route.
+    ##
+    ## `fiml` requires a balanced panel, so every firm has BigT periods.
+    eps_i <- split(as.numeric(inefdec_n * eps), gid)
+    e_i <- lapply(eps_i, function(z) pmin(z, 0))
+    .te <- .gtre_csn_te(e_i, rep(BigT, N), sig_u, sig_v, sig_r, sig_h)
+    U <- .te$U
+    H <- .te$H
     names(H) <- indiv
 
     results <- list(

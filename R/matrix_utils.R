@@ -3537,3 +3537,81 @@
     moments = c(m1 = m1, m2 = s2, m3 = mean((eps - mean(eps))^3))
   )
 }
+
+## Closed-skew-normal posterior efficiencies for the four-component panel
+## model, following Colombi, Kumbhakar, Martini and Vittadini (2014).
+##
+## Extracted from psfm()'s "GTRE" branch so that BOTH routes to the
+## four-component model can use it. Before this, estimator = "fiml"
+## (model_name "GTRE_FML") predicted transient efficiency with
+## .te_battese_coelli() -- the TWO-component normal/half-normal posterior --
+## applied to the raw residual, which still carries the persistent components.
+## It therefore charged persistent inefficiency to the transient term and
+## reported a different estimand from the one the model defines, with neither
+## sigma_r nor sigma_h entering the calculation at all.
+##
+## The caller supplies the residuals it already uses, so each branch keeps its
+## own sign and clamping conventions, and extraction leaves "GTRE" numerically
+## unchanged.
+##
+##   e_i    list of length N: firm i's residuals, already oriented for
+##          production/cost and clamped as that branch clamps them
+##   t      per-firm number of periods (length N)
+##   sig_u, sig_v, sig_r, sig_h   on the natural (standard-deviation) scale
+##
+## Returns list(H = one persistent efficiency per FIRM,
+##              U = one transient efficiency per OBSERVATION), each capped at 1.
+.gtre_csn_te <- function(e_i, t, sig_u, sig_v, sig_r, sig_h) {
+  N <- length(e_i)
+  n <- sum(t)
+  ## mvtnorm::pmvnorm() integrates by randomized quasi-Monte Carlo: fix its
+  ## draws and restore the caller's stream (notes/code_history/psfm.md, A23).
+  .rng_state <- .rng_snapshot()
+  on.exit(.rng_restore(.rng_state), add = TRUE)
+  set.seed(20260914L)
+
+  A <- SIG <- VEE <- LAM <- ARR <- vector("list", N)
+  for (i in seq_len(N)) {
+    A[[i]]   <- -cbind(rep(1, t[i]), diag(t[i]))
+    SIG[[i]] <- sig_v^2 * diag(t[i]) + sig_r^2 * rep(1, t[i]) %*% t(rep(1, t[i]))
+    VEE[[i]] <- rbind(c(sig_h^2, rep(0, t[i])),
+                      cbind(rep(0, t[i]), sig_u^2 * diag(t[i])))
+    lc <- .safe_linear_combo(VEE_i = VEE[[i]], A_i = A[[i]], SIG_i = SIG[[i]])
+    LAM[[i]] <- lc$LAM
+    ARR[[i]] <- lc$ARR
+  }
+
+  orthant <- function(i, shift) {
+    mvtnorm::pmvnorm(
+      lower = rep(0, t[i] + 1), upper = rep(Inf, t[i] + 1),
+      mean = as.numeric(ARR[[i]] %*% e_i[[i]] + if (is.null(shift)) 0 else LAM[[i]] %*% shift),
+      sigma = LAM[[i]]
+    )[1]
+  }
+  ratio <- function(num, den, sel, i) {
+    (max(num, .SFA_CONSTANTS$MIN_POSITIVE) / max(den, .SFA_CONSTANTS$MIN_POSITIVE)) *
+      exp(t(sel) %*% ARR[[i]] %*% e_i[[i]] + 0.5 * t(sel) %*% LAM[[i]] %*% sel)
+  }
+
+  res_d <- vapply(seq_len(N), function(i) orthant(i, NULL), numeric(1))
+
+  ## Persistent: the selector picks the FIRST element of (h_i, u_i1..u_iT).
+  H <- vapply(seq_len(N), function(i) {
+    sel <- c(-1, rep(0, t[i]))
+    as.numeric(ratio(orthant(i, sel), res_d[i], sel, i))
+  }, numeric(1))
+  H <- pmin(H, 1)
+
+  ## Transient: one selector per observation, picking that period's u.
+  U <- numeric(n)
+  t_cum <- cumsum(t)
+  for (i in seq_len(N)) {
+    base <- t_cum[i] - t[i]
+    for (j in seq_len(t[i])) {
+      sel <- rep(0, t[i] + 1); sel[j + 1] <- -1
+      U[base + j] <- as.numeric(ratio(orthant(i, sel), res_d[i], sel, i))
+    }
+  }
+  U <- pmin(U, 1)
+  list(H = H, U = U)
+}

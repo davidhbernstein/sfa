@@ -128,6 +128,20 @@ wrong result came without an error or a warning.
 
 ### `psfm()`
 
+* **`"GTRE"` with the default `estimator = "fiml"` predicted the wrong
+  quantity as transient efficiency.** It applied the two-component
+  normal--half normal posterior to the raw residual, which in this model still
+  carries the individual effect and the persistent inefficiency, so persistent
+  inefficiency was charged to the transient term; `sigma_r` and `sigma_h` did
+  not enter the calculation at all. Both routes to the four-component model
+  now use the closed-skew-normal posterior of Colombi, Kumbhakar, Martini and
+  Vittadini (2014), which `estimator = "sml"` already used, so the two report
+  the same quantity. On a benchmark design the default's efficiency RMSE was
+  0.237 against the simulated route's 0.156 at near-identical parameter
+  estimates. **Re-run any `estimator = "fiml"` efficiency prediction made with
+  1.2.0.** Parameter estimates, standard errors and log-likelihoods are
+  unaffected; `estimator = "sml"` is unchanged to the last bit.
+
 * **`"GTRE"` (default `estimator = "fiml"`) gave platform-dependent
   estimates.** The final stage could stop just short of the maximum on a flat
   ridge. On `USUtilities`, Windows stopped at a log-likelihood of 575.9013 and
