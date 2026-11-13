@@ -13,7 +13,7 @@ the fit, else whatever the fit's \code{call} names.}
 \item{test}{\code{"ks"}, \code{"chisq"}, or both.}
 \item{null}{\code{"bootstrap"} for the parametric bootstrap of Wang, Amsler
 and Schmidt, or \code{"asymptotic"}.}
-\item{B}{Bootstrap replications. Each one refits the model.}
+\item{B}{Bootstrap replications. Each one refits the model. A bootstrap p-value can only take the values \eqn{(1+k)/(B+1)}, so choose \code{B} such that the level you intend to test at lies on that grid: the default 199 puts 0.05 and 0.10 on it, while \code{B = 49} does not reach 0.05 and turns a 5\% rule into a 4\% one.}
 \item{cells}{Number of equiprobable cells for the chi-square test.}
 \item{seed}{Optional seed for the bootstrap.}
 }
@@ -53,26 +53,31 @@ minimum-chi-square estimator. There is no asymptotic KS p-value here: with
 rather than a number that would look valid.
 
 \bold{Size and power.} Measured in this package over 200 replications with
-\code{B = 49}, half-normal data fitted as half-normal for size and
+\code{B = 999}, half-normal data fitted as half-normal for size and
 exponential data fitted as half-normal for power:
 
 \tabular{lrrrrr}{
  \tab \eqn{n} \tab KS .10 \tab KS .05 \tab chi2 .10 \tab chi2 .05 \cr
-size \tab 200 \tab 0.065 \tab 0.025 \tab 0.085 \tab 0.065 \cr
-size \tab 800 \tab 0.070 \tab 0.040 \tab 0.065 \tab 0.010 \cr
-power \tab 200 \tab 0.505 \tab 0.395 \tab 0.235 \tab 0.145 \cr
-power \tab 800 \tab 0.985 \tab 0.965 \tab 0.810 \tab 0.655 \cr
-power \tab 2000 \tab 1.000 \tab 1.000 \tab 0.990 \tab 0.985
+size \tab 200 \tab 0.100 \tab 0.030 \tab 0.135 \tab 0.065 \cr
+size \tab 800 \tab 0.090 \tab 0.045 \tab 0.090 \tab 0.035 \cr
+power \tab 200 \tab 0.580 \tab 0.425 \tab 0.295 \tab 0.145 \cr
+power \tab 800 \tab 0.995 \tab 0.975 \tab 0.855 \tab 0.720 \cr
+power \tab 2000 \tab 1.000 \tab 1.000 \tab 1.000 \tab 0.990
 }
 
-Both tests hold their size, mildly conservatively. \bold{The KS test
-dominates the chi-square test at every sample size}, which is the paper's own
-conclusion and the reason it is the better default: the chi-square statistic
-discards the within-cell information that KS uses. Power against the
-half-normal/exponential pair -- one of the harder distinctions, since both
-are one-parameter and similarly shaped -- is about 0.4 at \eqn{n = 200} and
-essentially 1 by \eqn{n = 800}, so a failure to reject in a small sample is
-weak evidence.
+Both tests hold their size: every figure above is within one Monte Carlo
+standard error of nominal (200 replications give 0.015 at the 5\% level and
+0.021 at the 10\% level). \bold{The KS test dominates the chi-square test at
+every sample size}, which is the paper's own conclusion and the reason it is
+the better default: the chi-square statistic discards the within-cell
+information that KS uses. Power against the half-normal/exponential pair --
+one of the harder distinctions, since both are one-parameter and similarly
+shaped -- is about 0.4 at \eqn{n = 200} and essentially 1 by \eqn{n = 800},
+so a failure to reject in a small sample is weak evidence.
+
+Before 1.3.0 this table was measured with \code{B = 49} and described both
+tests as mildly conservative. That reading was an artifact of the attainable
+p-value grid described under \code{B}, not a property of either test.
 }
 \references{
 Wang, W. S., Amsler, C. and Schmidt, P. (2011). Goodness of fit tests in
