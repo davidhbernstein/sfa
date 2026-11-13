@@ -165,6 +165,20 @@ wrong result came without an error or a warning.
   relative terms, and each fit advanced the caller's random-number stream.
   Both problems are fixed.
 
+* **`"LS"` reported standard errors that were far too small.** `beta` is
+  estimated from `y - delta_t * alpha_i`, so its variance must be built on `X`
+  orthogonalized against the factor's own derivatives (`delta_t` for
+  `alpha_i`, `alpha_i` for `delta_t`). It was built on the raw `X` instead, as
+  though the factor were not in the model, which understates it whenever `X`
+  and the factor share any variation. On the convergence design the average
+  reported standard error was 0.40 of the actual spread of the estimates, so a
+  nominal 95% confidence interval covered 56% of the time. It is now 1.01 and
+  95%. Coefficients, `delta`, the firm effects and the inefficiency scores are
+  unchanged to the last bit; only the standard errors, the t-values and
+  anything derived from them move. **Re-run any inference on a `"LS"` fit.**
+  `"CSS"` was never affected -- it already residualized on each firm's
+  `(1, t, t^2)`.
+
 ### Other entry points
 
 * **`ivsfm(model_name = "IVLIML")`, the default estimator, could converge to
