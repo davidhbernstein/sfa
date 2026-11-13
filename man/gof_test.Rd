@@ -65,9 +65,9 @@ power \tab 800 \tab 0.995 \tab 0.975 \tab 0.855 \tab 0.720 \cr
 power \tab 2000 \tab 1.000 \tab 1.000 \tab 1.000 \tab 0.990
 }
 
-Both tests hold their size: every figure above is within one Monte Carlo
-standard error of nominal (200 replications give 0.015 at the 5\% level and
-0.021 at the 10\% level). \bold{The KS test dominates the chi-square test at
+Both tests hold their size: every figure above is within 1.7 Monte Carlo
+standard errors of nominal (200 replications give 0.015 at the 5\% level and
+0.021 at the 10\% level), and the deviations run in both directions. \bold{The KS test dominates the chi-square test at
 every sample size}, which is the paper's own conclusion and the reason it is
 the better default: the chi-square statistic discards the within-cell
 information that KS uses. Power against the half-normal/exponential pair --
