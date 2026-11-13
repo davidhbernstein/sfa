@@ -435,6 +435,11 @@ wrong result came without an error or a warning.
 * `?ttsfm` documents the `"TTHN"` boundary, where `sigma_v` collapses when
   `sigma_u` and `sigma_w` are close.
 * `?endogeneity_test` gives a size and power table, from n = 500 to 4000.
+* `?gof_test`'s size and power table is re-measured with `B = 999`; it was
+  previously measured with `B = 49`, which does not put the nominal 5% level
+  on the grid of attainable bootstrap p-values and so made both tests look
+  conservative. The `B` argument now explains how to choose it for the level
+  being tested.
 * `DESCRIPTION` now names the model families, with references. The data sets,
   `sfm()` and `psfm()` have descriptive titles.
 
