@@ -208,6 +208,11 @@ sfma <- function(formula, data,
     u_by_model = R,
     fits = fits,
     models = names(fits),
+    ## The REQUESTED set, kept because print.sfma() reported "k of k" -- it
+    ## built both sides of the "of" from the surviving list, so a run that
+    ## dropped a specification printed as though nothing had been dropped,
+    ## which is the one thing that line exists to say (gap A82).
+    models_requested = models,
     k = k, logLik = ll, nobs = n,
     weight_type = weights,
     criterion = crit,
@@ -222,9 +227,21 @@ print.sfma <- function(x, ...) {
   cat("\nStochastic frontier model averaging over inefficiency distributions\n")
   cat("Parmeter, Wan & Zhang (2019), J Prod Anal 51:91-103\n\n")
   cat("  weighting : ", x$weight_type, "\n", sep = "")
-  cat("  candidates: ", length(x$models), " of ",
-    length(x$models), " fitted\n", sep = ""
-  )
+  ## An sfma object made before models_requested existed cannot say how many
+  ## were asked for, so it reports the surviving count alone rather than
+  ## inventing a denominator.
+  .req <- x$models_requested
+  if (is.null(.req)) {
+    cat("  candidates: ", length(x$models), " fitted\n", sep = "")
+  } else {
+    cat("  candidates: ", length(x$models), " of ", length(.req),
+      " fitted\n", sep = ""
+    )
+    .drop <- setdiff(.req, x$models)
+    if (length(.drop)) {
+      cat("  dropped   : ", paste(.drop, collapse = ", "), "\n", sep = "")
+    }
+  }
   cat("  obs       : ", x$nobs, "\n\n", sep = "")
   d <- data.frame(
     model = x$models,
