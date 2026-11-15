@@ -22,7 +22,16 @@
   ## The equality with vcov() * N holds because psfm()'s simulated-ML
   ## models report what they estimate; bread() is on the ESTIMATION scale
   ## and the two coincide only then. See test-vcov-types.R.
-  expect_equal(bread.sfareg(fit), stats::vcov(fit) * N)
+  ##
+  ## It holds only WHERE vcov() ANSWERS. vcov()'s default path withholds a
+  ## parameter's row and column wherever the fit reports no standard error
+  ## (A77), while bread() answers for every parameter -- it serves the
+  ## sandwich estimator, which A77 deliberately left alone. Comparing the full
+  ## matrices asserted an identity the package no longer claims.
+  .V <- suppressWarnings(stats::vcov(fit)) * N
+  .ok <- is.finite(.V)
+  expect_true(any(.ok))
+  expect_equal(suppressWarnings(bread.sfareg(fit))[.ok], .V[.ok])
   V <- stats::vcov(fit, type = "bhhh")
   expect_true(all(is.finite(V)))
   if (requireNamespace("sandwich", quietly = TRUE)) {
