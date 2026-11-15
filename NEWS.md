@@ -373,6 +373,18 @@ wrong result came without an error or a warning.
 
 ### Errors and failures
 
+* **`texreg` never actually worked on a fit.** `NAMESPACE` carried
+  `S3method(texreg::extract, sfareg)`, but `texreg::extract` is an **S4**
+  generic and `S3method()` writes into the S3 methods table, which S4 dispatch
+  never consults -- so the registration was inert and
+  `texreg::screenreg(list(fit))` reported "Neither texreg nor broom supports
+  models of class sfareg". The method is now registered with
+  `methods::setMethod()` in `.onLoad()`, and `setOldClass("sfareg")` declares
+  the S3 class to the S4 system. The test that was supposed to guard this
+  grepped `NAMESPACE` for the literal registration line, so it passed
+  throughout; it now hands `screenreg()` a fit and looks for the coefficients
+  in the output, which is the only form of it that can fail.
+
 * **`psfm()`'s default model `"TRE_Z"`, and `"FD"`, failed on a formula with
   no `|` segment.** An omitted segment now means `| 1`.
 
