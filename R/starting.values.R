@@ -150,7 +150,15 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     }
     start_v <- start_v_nez
     out <- matrix(0, nrow = 3, ncol = length(start_v))
-    colnames(out) <- c("sigma_v", c(names(plm_lm$coefficients)), z_vars)
+    ## The z segment parameterises sigma_u and carries its OWN intercept, so
+    ## with a homoskedastic z the raw names gave two rows both called
+    ## "(Intercept)" -- one from the frontier, one from the sigma_u equation --
+    ## which print(), summary() and a texreg table could not tell apart, and
+    ## which made any name-based lookup on $out self-match silently (gap A80).
+    ## The "Zu." prefix is the convention het.R:213 and sfm.R:345 already use
+    ## for 1.3.0's heteroskedasticity, and the one A20 adopted for ttsfm().
+    colnames(out) <- c("sigma_v", c(names(plm_lm$coefficients)),
+                       paste0("Zu.", z_vars))
     lower_bob <- c(.Machine$double.eps, rep(-.Machine$double.xmax^.1, length(start_v[-c(1)])))
   }
   ## LATENT CLASS. Unlike every other model here the parameter vector has no
@@ -264,7 +272,12 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
     }
     start_v <- start_v_zisfz
     out <- matrix(0, nrow = 3, ncol = length(start_v))
-    colnames(out) <- c("sigv", "sigu", c(names(plm_lm$coefficients)), z_vars)
+    ## Same collision as NHN_Z/NE_Z above (gap A80). ZISF_Z's z block
+    ## parameterises the MIXING rather than a variance -- it is what replaces
+    ## ZISF's scalar `gamma`, see the layout note in zsfm.R -- so the prefix
+    ## names the gamma equation rather than a sigma one.
+    colnames(out) <- c("sigv", "sigu", c(names(plm_lm$coefficients)),
+                       paste0("Zgamma.", z_vars))
     lower_bob <- c(rep(.Machine$double.eps, 2), rep(-Inf, n_x_vars + n_z_vars))
   }
   ## "NB" is estimated by corrected OLS only (Carree 2002), so it never reaches

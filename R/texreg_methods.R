@@ -21,9 +21,21 @@
   "sigmaSq_uv", "sigmaSq_hr"
 )
 
+## The prefixed names 1.3.0 introduced for variance and mixing determinants --
+## het.R:213's Zv./Zu./Zmu./scale., sfm.R:345's shape., ttsfm()'s Zu./Zw. and
+## the Zu./Zgamma. of gap A80 -- are NOT matched by the patterns above, because
+## they start with the prefix and not with "sigma". So every one of them was
+## classified as a FRONTIER coefficient: a texreg table of an `sfm(vhet = ~z)`
+## fit put Zv.(Intercept) and Zv.z in the body beside x1 and x2, and
+## include.scales = FALSE did not drop them, although it correctly drops
+## `lambda` and `sigma` from a plain NHN fit (gap A84). The prefix test is
+## anchored, so a user covariate genuinely called "scaled_input" is unaffected.
+.sfa_var_prefixes <- c("Zv", "Zu", "Zw", "Zmu", "Zgamma", "scale", "shape")
+
 .sfa_is_scale <- function(nm) {
   nm %in% .sfa_scale_names |
-    grepl("^(sigma|sig|lambda|gamma|delta_|rho_|logit|theta|nu|shape)", nm)
+    grepl("^(sigma|sig|lambda|gamma|delta_|rho_|logit|theta|nu|shape)", nm) |
+    grepl(paste0("^(", paste(.sfa_var_prefixes, collapse = "|"), ")\\."), nm)
 }
 
 extract.sfareg <- function(model,
