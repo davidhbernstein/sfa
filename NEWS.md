@@ -343,6 +343,19 @@ wrong result came without an error or a warning.
 
 ### Efficiency prediction
 
+* `efficiency()` now answers for the `psfm()` GTRE/TRE family and for
+  `esfm()`. Its fallback chain ended at `$efficiency`, so the specifications
+  that store the score elsewhere -- `$U` and `$H` for the four-component panel
+  models, `$Efficiency` for `esfm()` -- were refused outright, while
+  `predict(type = "efficiency")` answered them: two generics disagreeing about
+  whether a GTRE fit has an efficiency measure at all. A new `component`
+  argument selects the transient (default, matching `predict()`) or the
+  persistent score on a fit that reports both. A fit with no persistent
+  component now errors rather than returning the transient one under that
+  name, `logDepVar = FALSE` is refused for a per-firm score, and a refusal
+  names a `type` the fit can actually answer rather than advising one that
+  cannot.
+
 * **`efficiency_ci()` could report the wrong estimator, or the wrong
   observations.** When a fit had lost `$exp_u_hat`, its fallback reported
   `exp(-E[u|e])` in place of the Battese-Coelli score. It also accepted stored
