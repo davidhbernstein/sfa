@@ -65,6 +65,63 @@ coef.sfareg <- function(object, ...) {
   V
 }
 
+## The fit's own verdict on whether a standard error exists outranks anything
+## re-derived from the stored Hessian. These two flags mark the sites where
+## sfm() declares that NO finite standard error exists -- sigma_v on its lower
+## bound, where the likelihood is flat in lambda and the boundary IS the
+## maximum -- and null every standard-error entry in $out accordingly. The
+## Hessian polished at that point still inverts, so each accessor has to be
+## told rather than left to re-derive. notes/code_history/sfm.md.
+.sfa_se_void <- function(object) {
+  if (isTRUE(object$sigma_v_at_bound)) {
+    return("$sigma_v_at_bound")
+  }
+  if (isTRUE(object$ntn_sigma_v_at_bound)) {
+    return("$ntn_sigma_v_at_bound")
+  }
+  NULL
+}
+
+## Positions at which the fit reports no standard error, whatever the reason --
+## a boundary corner, $se_at_bound, or an entry the Hessian returned as a
+## negative variance ($se_unresolved). Read off $out, the documented source of
+## truth, with $std.errors as the fallback.
+.sfa_na_se_index <- function(object, p) {
+  se <- NULL
+  if (is.matrix(object$out) && "st_err" %in% colnames(object$out)) {
+    se <- object$out[, "st_err"]
+  } else if (!is.null(object$std.errors)) {
+    se <- object$std.errors
+  }
+  if (is.null(se) || length(se) != p) {
+    return(integer(0))
+  }
+  which(!is.finite(as.numeric(se)))
+}
+
+## Blank row j and column j for every parameter whose standard error the fit
+## withheld. A variance the fit refused to report cannot be reinstated by
+## re-inverting the same Hessian through a different accessor, and a zero
+## off-diagonal is as much of a claim as a non-zero one. Applied to the
+## Hessian path only, for the reason given at that path.
+.sfa_mask_vcov <- function(V, object, p, nm, what) {
+  j <- .sfa_na_se_index(object, p)
+  if (!length(j)) {
+    return(V)
+  }
+  V[j, ] <- NA_real_
+  V[, j] <- NA_real_
+  warning(what, ": this fit reports no standard error for ",
+    paste(if (is.null(nm)) j else nm[j], collapse = ", "), " (", length(j),
+    " of ", p, "), so that row and column are NA here too. The stored Hessian ",
+    "inverts at this point but the fit did not accept the result; inspect ",
+    "$se_unresolved, $se_at_bound and the boundary flags, or try ",
+    "vcov(type = \"bhhh\"), which needs no Hessian.",
+    call. = FALSE
+  )
+  V
+}
+
 vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "clustered"),
                         cluster = NULL, ...) {
   type <- match.arg(type)
@@ -194,6 +251,26 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
     ))
   }
 
+  ## The default path, and so the one every generic reaches: coeftest(),
+  ## confint(), bread.sfareg() and sandwich::sandwich() all arrive here. The
+  ## boundary check is deliberately NOT applied to the three types above.
+  ## Those are alternative estimators the caller asked for by name, defined
+  ## where this one is not, which is the reason they exist and what the
+  ## advice in their own error messages rests on -- whether either is
+  ## meaningful AT a boundary is a separate question from this one.
+  .void <- .sfa_se_void(object)
+  if (!is.null(.void)) {
+    warning("vcov(): this fit sits on the boundary recorded in ", .void,
+      ", where no finite standard error exists for any coefficient -- which is ",
+      "why the fit reports NA for every one. Returning a matrix of NAs rather ",
+      "than the inverse of a Hessian that happens to be invertible there. ",
+      "For an alternative estimator, ask for one by name; see ?sfm and ",
+      "?vcov.sfareg.",
+      call. = FALSE
+    )
+    return(matrix(NA_real_, p, p, dimnames = list(nm, nm)))
+  }
+
   if (!is.null(object$opt) && !is.null(object$opt$hessian)) {
     V <- .sfa_solve_equilibrated(object$opt$hessian)
     if (!is.null(V)) {
@@ -201,7 +278,7 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
         .sfa_map_vcov(V, object$par_index, object$par_scale, p, nm, "vcov()"),
         error = function(e) NULL
       )
-      if (!is.null(V)) return(V)
+      if (!is.null(V)) return(.sfa_mask_vcov(V, object, p, nm, "vcov()"))
     }
     warning("Hessian stored on this fit could not be inverted; falling back to a diagonal approximation built from the reported standard errors.", call. = FALSE)
   }
@@ -209,7 +286,7 @@ vcov.sfareg <- function(object, type = c("hessian", "bhhh", "sandwich", "cluster
   if (!is.null(object$std.errors) && !all(is.na(object$std.errors))) {
     V <- diag(object$std.errors^2, nrow = p)
     dimnames(V) <- list(nm, nm)
-    return(V)
+    return(.sfa_mask_vcov(V, object, p, nm, "vcov()"))
   }
 
   warning("No Hessian or standard errors are available on this fit (was optHessian = FALSE?); returning a matrix of NAs.", call. = FALSE)
