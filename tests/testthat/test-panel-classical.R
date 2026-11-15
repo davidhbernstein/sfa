@@ -205,3 +205,94 @@ test_that("SSCRE's balanced-panel variance components are the no-Mundlak Swamy-A
   e0 <- plm::ercomp(y ~ x1 + x2, d, effect = "individual", index = "name")
   expect_equal(cre$ercomp$sigma2, e0$sigma2, tolerance = 1e-10)
 })
+
+## ---------------------------------------------------------------------------
+## LS standard errors. beta is estimated from y - delta_t * alpha_i, so its
+## variance is built on X orthogonalized against the factor's own derivatives.
+## Until 2026-11-12 .fit_ls93() used the raw crossprod(X), which understates
+## it: measured at mean(se)/sd = 0.40 and 56% coverage of a nominal 95%
+## interval. These assert the algebra and the inequality it guarantees, not a
+## number a fit has to land on.
+## ---------------------------------------------------------------------------
+
+## Hand-built factor, no fitting: the two-pass sweep must agree with forming
+## the whole Jacobian and letting qr() find its rank.
+test_that(".ls93_resid_factor matches a brute-force dummy projection", {
+  set.seed(404)
+  for (cfg in list(c(12, 5), c(25, 4), c(8, 7), c(30, 3))) {
+    N <- cfg[1]; Tn <- cfg[2]; n <- N * Tn
+    id <- factor(rep(seq_len(N), each = Tn))
+    tf <- factor(rep(seq_len(Tn), N))
+    alpha <- rnorm(N, 1, 1)
+    delta <- c(1, rnorm(Tn - 1L, 1, 0.4))
+    ## Second column deliberately shares variation with the firm effect; with
+    ## an orthogonal X the bug would be invisible and so would a wrong fix.
+    W <- cbind(a = rnorm(n), b = rnorm(n) + 0.5 * alpha[as.integer(id)])
+    idx <- split(seq_len(n), id, drop = TRUE)
+
+    fast <- sfa:::.ls93_resid_factor(W, id, tf, alpha, delta, idx)
+    Zi <- model.matrix(~ id - 1) * delta[as.integer(tf)]
+    Zt <- model.matrix(~ tf - 1) * alpha[as.integer(id)]
+    slow <- qr.resid(qr(cbind(Zi, Zt)), W)
+
+    expect_equal(unname(fast), unname(slow), tolerance = 1e-9)
+  }
+})
+
+## alpha -> c*alpha, delta -> delta/c leaves delta_t*alpha_i alone, so the
+## projection must not move -- including when the rescaling changes which
+## delta column is the largest, and hence which one is dropped.
+test_that(".ls93_resid_factor does not depend on the alpha/delta scale split", {
+  set.seed(405)
+  N <- 20; Tn <- 6; n <- N * Tn
+  id <- factor(rep(seq_len(N), each = Tn))
+  tf <- factor(rep(seq_len(Tn), N))
+  alpha <- rnorm(N, 1, 1)
+  delta <- c(1, rnorm(Tn - 1L, 1, 0.5))
+  W <- cbind(a = rnorm(n), b = rnorm(n) + 0.5 * alpha[as.integer(id)])
+  idx <- split(seq_len(n), id, drop = TRUE)
+
+  base <- sfa:::.ls93_resid_factor(W, id, tf, alpha, delta, idx)
+  for (cc in c(0.25, 3, -2)) {
+    expect_equal(
+      sfa:::.ls93_resid_factor(W, id, tf, alpha * cc, delta / cc, idx),
+      base,
+      tolerance = 1e-9
+    )
+  }
+
+  ## It is a projection: the factor's own columns have nothing left.
+  Zi <- model.matrix(~ id - 1) * delta[as.integer(tf)]
+  gone <- sfa:::.ls93_resid_factor(Zi, id, tf, alpha, delta, idx)
+  expect_lt(max(abs(gone)), 1e-9)
+})
+
+## The defect guard. X'X >= X'MX in the matrix sense, so the reported standard
+## error can never be SMALLER than the raw-X one, and must be strictly larger
+## wherever X and the factor share variation. This fails if the raw crossprod
+## ever comes back.
+test_that("LS standard errors exceed the raw-X formula they replaced", {
+  skip_on_cran()
+  d <- .cl_panel(N = 40, Tt = 6, seed = 11)
+  N <- max(d$name)
+  ai <- rnorm(N, 0, 0.5)
+  delta_true <- c(1, 1.15, 1.3, 1.1, 0.95, 1.2)
+  ## x2 correlated with the firm effect, which is where the fault bites.
+  d$x2 <- d$x2 + 0.8 * ai[d$name]
+  d$y <- 0.6 * d$x1 + 0.3 * d$x2 +
+    ai[d$name] * delta_true[d$t] + rnorm(nrow(d), 0, 0.2)
+
+  g <- psfm(y ~ x1 + x2, model_name = "LS", data = d,
+    individual = "name", time = "year")
+
+  X <- model.matrix(y ~ x1 + x2, data = d)
+  X <- X[, setdiff(colnames(X), "(Intercept)"), drop = FALSE]
+  raw_se <- sqrt(diag(g$sigma_v^2 * solve(crossprod(X))))
+
+  expect_true(all(g$std.errors >= raw_se * (1 - 1e-8)))
+  ## x2 shares variation with the factor, so its SE must move materially.
+  expect_gt(g$std.errors[["x2"]] / raw_se[["x2"]], 1.1)
+  expect_true(all(is.finite(g$std.errors)))
+  ## The fix touches only the variance.
+  expect_true(all(abs(coef(g) - c(0.6, 0.3)) < 4 * g$std.errors))
+})

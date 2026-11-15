@@ -115,6 +115,47 @@
        sigma2 = s2, residuals = r - alpha_it)
 }
 
+## Residualize W on the LS factor's own derivatives, delta_t for alpha_i and
+## alpha_i for delta_t: the matrix beta's variance is built on, since beta is
+## estimated from y - delta_t * alpha_i. One delta column comes out for the
+## scale redundancy -- the largest, which stays correct under .fit_ls93()'s
+## norm-constraint fallback. Two sweeps, not N + T dummy columns. See
+## notes/code_history/panel_classical.md.
+.ls93_resid_factor <- function(W, id, tf, alpha, delta, idx) {
+  W <- as.matrix(W)
+  d_i <- delta[as.integer(tf)]
+  a_i <- alpha[as.integer(id)]
+
+  ## Firm i contributes a SINGLE column of Z, delta on its own rows, so the
+  ## firm block is a projection on one vector per firm.
+  sweep_firm <- function(M) {
+    for (ii in idx) {
+      d  <- d_i[ii]
+      dd <- sum(d * d)
+      if (!is.finite(dd) || dd <= .SFA_CONSTANTS$MIN_POSITIVE) next
+      M[ii, ] <- M[ii, , drop = FALSE] -
+        outer(d, colSums(d * M[ii, , drop = FALSE]) / dd)
+    }
+    M
+  }
+
+  ti   <- as.integer(tf)
+  keep <- seq_len(nlevels(tf))[-which.max(abs(delta))]
+  Zt   <- matrix(0, nrow(W), length(keep))
+  for (k in seq_along(keep)) {
+    sel <- ti == keep[k]
+    Zt[sel, k] <- a_i[sel]
+  }
+
+  MW  <- sweep_firm(W)
+  MZt <- sweep_firm(Zt)
+  Q   <- qr(MZt)
+  r   <- if (isTRUE(Q$rank > 0L)) qr.resid(Q, MW) else MW
+  if (is.null(dim(r))) r <- matrix(r, ncol = ncol(W))
+  colnames(r) <- colnames(W)
+  r
+}
+
 ## Lee and Schmidt (1993): one COMMON temporal pattern, scaled per firm --
 ## alpha_it = delta_t * alpha_i. Far more parsimonious than CSS (N + T - 1
 ## parameters rather than 3N), and it forbids crossover: every firm's
@@ -204,7 +245,17 @@
   ## N + T - 1 free factor parameters after the scale normalization.
   df <- n - K - (nlevels(id) + Tn - 1L)
   s2 <- sum(resid^2) / max(df, 1L)
-  vc <- tryCatch(s2 * solve(crossprod(X)), error = function(e) NULL)
+
+  ## On the residualized X, not the raw one: crossprod(X) understates these
+  ## badly (measured at mean(se)/sd = 0.40 before 1.3.0). .fit_css90() above
+  ## does the same against each firm's (1, t, t^2).
+  MX <- tryCatch(
+    .ls93_resid_factor(X, id, tf, alpha, delta, setup$idx),
+    error = function(e) NULL
+  )
+  vc <- if (is.null(MX)) NULL else {
+    tryCatch(s2 * solve(crossprod(MX)), error = function(e) NULL)
+  }
   se <- if (is.null(vc)) rep(NA_real_, K) else .sfa_se_from_var(diag(vc))
   names(b) <- colnames(X)
 
