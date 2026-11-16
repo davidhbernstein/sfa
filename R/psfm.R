@@ -50,11 +50,42 @@ psfm <- function(formula,
                  sim_prime = NULL,
                  uhet = NULL,
                  hhet = NULL,
-                 scaling = NULL) {
+                 scaling = NULL,
+                 vhet = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+
+  ## HETEROSKEDASTIC NOISE, for "FD" only.
+  ##
+  ## Wang and Ho (2010) first-difference the model, so the noise reaches the
+  ## likelihood as Var(D v_i) = D diag(sigma_v,it^2) D' -- a tridiagonal
+  ## matrix rather than sigma_v^2 times a fixed one. That generalisation is
+  ## exact and is what the FD branch below now builds. The simulated-ML
+  ## families have no such closed form once the noise varies within firm, and
+  ## the moment-based and fixed-effects estimators have no sigma_v to
+  ## parameterize at all, so this refuses rather than quietly ignoring the
+  ## argument.
+  ##
+  ## WITH `vhet` NULL NOTHING CHANGES ANYWHERE IN THIS FILE.
+  if (!is.null(vhet)) {
+    if (!inherits(vhet, "formula")) {
+      stop("psfm(): `vhet` must be a one-sided formula, e.g. ~ z1 + z2.",
+        call. = FALSE
+      )
+    }
+    if (!identical(model_name, "FD")) {
+      stop("psfm(): `vhet` is implemented for model_name \"FD\" only, not ",
+        dQuote(model_name), ". The first-difference likelihood carries the ",
+        "noise as a covariance matrix that can be built from per-observation ",
+        "variances; the simulated-ML families have no closed form once the ",
+        "noise varies within a firm, and the moment-based and fixed-effects ",
+        "estimators have no sigma_v in an objective at all.",
+        call. = FALSE
+      )
+    }
+  }
 
   .validate_sfa_call(formula, data, "psfm",
     maxit = list(
@@ -2467,6 +2498,45 @@ psfm <- function(formula,
   if (model_name == "FD") {
     Start.Time <- start.time()
 
+    ## The sigma_v design, and its per-firm slices. Intercept-only when
+    ## `vhet` is NULL, which is the homoskedastic case.
+    ##
+    ## THE BLOCK PARAMETERIZES THE VARIANCE, sigma_v,it^2 = exp(zv'delta_v),
+    ## not the standard deviation. That is the slot's existing meaning here --
+    ## the homoskedastic parameter is `sig_v2` -- and it is also psfm()'s
+    ## family convention, the one GTRE_Z and TRE_Z already use. ttsfm() and
+    ## zsfm() put their `vhet` block on the log-SD scale because THEIR slots
+    ## hold standard deviations; the three agree with their own neighbours
+    ## rather than with each other, which is the existing inconsistency
+    ## CLAUDE.md records, not a new one.
+    Zv <- .het_design(vhet, data, "vhet", caller = "psfm")
+    n_zv_vars <- ncol(Zv)
+    .fd_sv2 <- function(d) {
+      exp(pmin(as.numeric(Zv %*% d), .SFA_CONSTANTS$EXP_CLIP_UPPER))
+    }
+
+    ## Var(D v_i) for one firm, from that firm's per-period noise variances.
+    ## (D v)_t = v_{t+1} - v_t, so the diagonal is sv2[t+1] + sv2[t] and the
+    ## first off-diagonal is -sv2[t+1]; everything else is zero. With sv2
+    ## constant this is exactly sigma_v^2 * SIGMA[[i]], the matrix the
+    ## homoskedastic path builds, which is the check that the generalisation
+    ## is the right one.
+    .fd_dvar <- function(sv2) {
+      m <- length(sv2) - 1L
+      S <- matrix(0, m, m)
+      diag(S) <- sv2[-1L] + sv2[-length(sv2)]
+      if (m > 1L) {
+        off <- -sv2[2:m]
+        S[cbind(seq_len(m - 1L), 2:m)] <- off
+        S[cbind(2:m, seq_len(m - 1L))] <- off
+      }
+      S
+    }
+
+    ## The sigma_v block's starting value: the moment estimate of sigma_v^2 on
+    ## the block's intercept, slopes at zero, so the fit begins from the
+    ## homoskedastic model.
+    .sv2_block <- NULL
     if (isTRUE(is.numeric(start_val))) {
       start_v <- start_val
     } else {
@@ -2483,13 +2553,22 @@ psfm <- function(formula,
       sigmaSq_v <- sigma_v^2
       mu <- 0.1
       delta <- rep(0.1, length(z_vars))
-      start_v <- unname(c(sigmaSq_u, sigmaSq_v, mu, beta_hat, delta))
+      .sv2_block <- if (is.null(vhet)) {
+        sigmaSq_v
+      } else {
+        ## log(sigma_v^2) on the intercept, because this block IS the
+        ## variance (see the note where Zv is built).
+        .het_block_start(Zv, sqrt(sigmaSq_v), "var")
+      }
+      start_v <- unname(c(sigmaSq_u, .sv2_block, mu, beta_hat, delta))
     }
 
 
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     rownames(out) <- c("par", "st_err", "t-val")
-    colnames(out) <- c("sig_u2", "sig_v2", "mu", x_vars_vec, z_vars)
+    colnames(out) <- c("sig_u2",
+      if (is.null(vhet)) "sig_v2" else paste0("Zv.", colnames(Zv)),
+      "mu", x_vars_vec, z_vars)
 
 
     indiv <- noquote(as.vector(unique(data[, c(individual)])))
@@ -2502,9 +2581,12 @@ psfm <- function(formula,
     data_i_vars_diff <- as.list(rep(0, N))
     SIGMA <- as.list(rep(0, N))
     data_z_vars <- as.list(rep(0, N))
+    Zv_i <- as.list(rep(0, N))
 
     for (ii in seq_len(N)) {
-      data_i[[ii]] <- data[which(data[, c(individual)] == indiv[ii]), ]
+      .rows <- which(data[, c(individual)] == indiv[ii])
+      Zv_i[[ii]] <- Zv[.rows, , drop = FALSE]
+      data_i[[ii]] <- data[.rows, ]
       t[ii] <- nrow(data_i[[ii]])
       Y[[ii]] <- as.numeric(data_i[[ii]][, y_var])
       ## Precomputed once.
@@ -2528,8 +2610,13 @@ psfm <- function(formula,
     }
 
     like.fd <- function(x, per_obs = FALSE) {
+      ## Width of the sigma_v block; 1 unless `vhet` was given. The layout is
+      ## (sigma_u^2, <sigma_v block>, mu, beta, delta), so everything after
+      ## the block shifts by nzv - 1 and by nothing at all when it is absent.
+      nzv <- n_zv_vars
+      .mu <- x[2L + nzv]
       for (q in seq_len(n_x_vars)) {
-        v <- q + 3
+        v <- q + 2L + nzv
         x_x_vec[q] <- x[v]
       }
 
@@ -2537,6 +2624,9 @@ psfm <- function(formula,
         m <- v + qq
         z_z_vec[qq] <- x[m]
       }
+
+      ## The firm's noise variances, once per likelihood evaluation.
+      .sv2 <- if (is.null(vhet)) NULL else .fd_sv2(x[1L + seq_len(nzv)])
 
       fn1 <- function(i) {
         ## Y_diff[[i]]/data_i_vars_diff[[i]] precomputed once above.
@@ -2552,17 +2642,31 @@ psfm <- function(formula,
 
         eps_h <- diff(exp(eps_h), lag = 1)
         eps_t <- eps_t * inefdec_n ## not exactly sure if this is sufficient for cost
-        SIG <- x[2] * SIGMA[[i]]
+        SIG <- if (is.null(vhet)) {
+          x[2] * SIGMA[[i]]
+        } else {
+          .fd_dvar(.sv2[which(data[, c(individual)] == indiv[i])])
+        }
         sig_star2 <- (t(eps_h) %*% qr.solve(SIG) %*% eps_h + (1 / x[1]))^-1
-        mu_star <- ((x[3] / x[1]) - t(eps_t) %*% qr.solve(SIG) %*% eps_h) * sig_star2
+        mu_star <- ((.mu / x[1]) - t(eps_t) %*% qr.solve(SIG) %*% eps_h) * sig_star2
 
         l1 <- -0.5 * (t[i] - 1) * log(2 * pi)
-        l2 <- -0.5 * log(t[i])
-        l3 <- -0.5 * (t[i] - 1) * log(x[2])
+        ## l2 + l3 is -0.5 log det(SIG). In the homoskedastic case that
+        ## factorises -- det(sigma_v^2 * SIGMA_i) = (sigma_v^2)^(T-1) * T --
+        ## and the two terms below ARE that factorisation, kept verbatim so a
+        ## homoskedastic fit is not moved by a single bit. With a `vhet` there
+        ## is no factorisation and the determinant is taken directly.
+        if (is.null(vhet)) {
+          l2 <- -0.5 * log(t[i])
+          l3 <- -0.5 * (t[i] - 1) * log(x[2])
+        } else {
+          l2 <- -0.5 * as.numeric(determinant(SIG, logarithm = TRUE)$modulus)
+          l3 <- 0
+        }
         l4 <- -0.5 * t(eps_t) %*% qr.solve(SIG) %*% eps_t
-        l5 <- 0.5 * ((mu_star^2 / sig_star2) - ((x[3]^2) / x[1]))
+        l5 <- 0.5 * ((mu_star^2 / sig_star2) - ((.mu^2) / x[1]))
         l6 <- log(sqrt(sig_star2) * max(pnorm(mu_star / sqrt(sig_star2)), .SFA_CONSTANTS$MIN_POSITIVE))
-        l7 <- -log(sqrt(x[1]) * max(pnorm(x[3] / sqrt(x[1])), .SFA_CONSTANTS$MIN_POSITIVE))
+        l7 <- -log(sqrt(x[1]) * max(pnorm(.mu / sqrt(x[1])), .SFA_CONSTANTS$MIN_POSITIVE))
 
 
         prod_vec_n <- sum(l1, l2, l3, l4, l5, l6, l7)
@@ -2580,10 +2684,29 @@ psfm <- function(formula,
       return(sum(fn1_apply[is.finite(fn1_apply)]))
     }
 
+    ## Lower bounds. The homoskedastic sigma_v^2 slot is bounded positive
+    ## because it IS a variance; the block holds a log-scale linear predictor,
+    ## which is unbounded by construction, so its bound is dropped rather than
+    ## widened. psoptim() needs FINITE bounds, hence the second form.
+    .fd_lower <- function(free) {
+      c(0.000001,
+        if (is.null(vhet)) 0.000001 else rep(free, n_zv_vars),
+        rep(-Inf, n_x_vars + 1), rep(-Inf, length(z_vars)))
+    }
+    .fd_lower_ps <- function(differ) {
+      c(.SFA_CONSTANTS$MIN_POSITIVE,
+        if (is.null(vhet)) {
+          .SFA_CONSTANTS$MIN_POSITIVE
+        } else {
+          start_v[1L + seq_len(n_zv_vars)] - differ
+        },
+        start_v[-seq_len(1L + n_zv_vars)] - differ)
+    }
+
     differ <- 2
 
     Opt.Bobyqa <- opt.bobyqa(
-      fn = like.fd, start_v = start_v, lower.bobyqa = c(rep(0.000001, 2), rep(-Inf, n_x_vars + 1), rep(-Inf, length(z_vars))),
+      fn = like.fd, start_v = start_v, lower.bobyqa = .fd_lower(-Inf),
       maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose
     )
     start_v <- Opt.Bobyqa$start_v
@@ -2591,7 +2714,7 @@ psfm <- function(formula,
     bob1 <- Opt.Bobyqa$bob1
 
     Opt.Psoptim <- opt.psoptim(
-      fn = like.fd, start_v = start_v, lower.psoptim = c(rep(.SFA_CONSTANTS$MIN_POSITIVE, 2), start_v[-c(1:2)] - differ),
+      fn = like.fd, start_v = start_v, lower.psoptim = .fd_lower_ps(differ),
       rand.psoptim = rand.psoptim,
       upper.psoptim = c(start_v + differ), maxit.psoptim, psopt.TF = PSopt, verbose = verbose
     )
@@ -2600,7 +2723,7 @@ psfm <- function(formula,
     opt00 <- Opt.Psoptim$opt00
 
     Opt.Optim <- opt.optim(
-      fn = like.fd, start_v = start_v, lower.optim = c(rep(0.000001, 2), rep(-Inf, n_x_vars + 1), rep(-Inf, length(z_vars))),
+      fn = like.fd, start_v = start_v, lower.optim = .fd_lower(-Inf),
       upper.optim = c(start_v + differ), maxit.optim = maxit.optim, opt.TF = optHessian, method = Method, optHessian = optHessian, verbose = verbose
     )
     start_v <- Opt.Optim$start_v
@@ -2620,14 +2743,16 @@ psfm <- function(formula,
     }
 
     ## TE Measurements: ui's
-    NX <- n_x_vars + 3
-    NZ1 <- n_x_vars + 4
-    NZ2 <- n_x_vars + n_z_vars + 3
-    beta <- opt$par[c(4:NX)]
-    delta <- opt$par[c(NZ1:NZ2)]
+    .nzv <- n_zv_vars
+    NX <- n_x_vars + 2L + .nzv
+    NZ1 <- NX + 1L
+    NZ2 <- NX + n_z_vars
+    beta <- opt$par[(2L + .nzv) + seq_len(n_x_vars)]
+    delta <- opt$par[NZ1:NZ2]
     sigu2 <- opt$par[1]
-    sigv2 <- opt$par[2]
-    mu <- opt$par[3]
+    sigv2 <- if (is.null(vhet)) opt$par[2] else NA_real_
+    .sv2_hat <- if (is.null(vhet)) NULL else .fd_sv2(opt$par[1L + seq_len(.nzv)])
+    mu <- opt$par[2L + .nzv]
     u_hat <- rep(0, sum(t))
     h_hat <- exp(as.matrix(data.frame(subset(data, select = z_vars))) %*% delta)
 
@@ -2635,20 +2760,43 @@ psfm <- function(formula,
     ## (only the final u_hat[num] line does, via h_hat[num]).
     for (i in seq_len(N)) {
       eps_t <- Y_diff[[i]]
-      eps_h <- rep(0, t[i] - 1)
 
+      ## `beta` and `delta` are the SAME vectors h_hat is built from, rather
+      ## than a second set of positional indices into opt$par. Two
+      ## independent index expressions for one quantity is how this loop came
+      ## to read the wrong slots -- see below.
       for (qq in seq_len(n_x_vars)) {
-        m <- 3 + qq
-        eps_t <- eps_t - opt$par[m] * data_i_vars_diff[[i]][, qq]
+        eps_t <- eps_t - beta[qq] * data_i_vars_diff[[i]][, qq]
       }
 
+      ## eps_h is diff(exp(z'delta)), formed EXACTLY as like.fd() forms it.
+      ##
+      ## Two defects are fixed here, both of which left the fit itself --
+      ## coefficients, standard errors, log-likelihood -- untouched and moved
+      ## only u_hat/exp_u_hat, because nothing in this loop feeds back into
+      ## the optimisation.
+      ##
+      ##  (1) the delta slice was `opt$par[3 + length(n_x_vars) + qq]`, and
+      ##      `n_x_vars` is a COUNT, so `length(n_x_vars)` is 1 whatever the
+      ##      model: with two or more regressors the loop read a beta where a
+      ##      delta belongs. like.fd() uses `n_x_vars + 3 + qq` and is right;
+      ##      the two sites disagreed.
+      ##  (2) the scaling function was applied as diff(z'delta) rather than
+      ##      diff(exp(z'delta)). h = exp(z'delta) is the Wang and Ho (2010)
+      ##      scaling function, which `h_hat` immediately above forms
+      ##      correctly, so this site was the only one missing the exp().
+      eps_h <- rep(0, t[i])
       for (qq in seq_len(n_z_vars)) {
-        m <- 3 + length(n_x_vars) + qq
-        eps_h <- eps_h + opt$par[m] * diff(as.numeric(data_z_vars[[i]][, qq]), lag = 1)
+        eps_h <- eps_h + delta[qq] * as.numeric(data_z_vars[[i]][, qq])
       }
+      eps_h <- diff(exp(eps_h), lag = 1)
 
       eps_t <- eps_t * inefdec_n
-      SIG <- sigv2 * SIGMA[[i]]
+      SIG <- if (is.null(vhet)) {
+        sigv2 * SIGMA[[i]]
+      } else {
+        .fd_dvar(.sv2_hat[which(data[, c(individual)] == indiv[i])])
+      }
       sig_star2 <- (t(eps_h) %*% qr.solve(SIG) %*% eps_h + (1 / sigu2))^-1
       mu_star <- ((mu / sigu2) - t(eps_t) %*% qr.solve(SIG) %*% eps_h) * sig_star2
 
@@ -2694,6 +2842,13 @@ psfm <- function(formula,
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "total_time", "start_v", "model_name", "formula", "u_hat", "h_hat", "exp_u_hat", "data", "coefficients", "std.errors", "t.values", "call")
     results$inefdec <- isTRUE(inefdec)
+    ## With `vhet` given there is no single sig_v2 row in out[, "par"], so the
+    ## fitted per-observation noise scale is stored rather than left to be
+    ## rebuilt from the deltas.
+    if (!is.null(vhet)) {
+      results$vhet <- vhet
+      results$sigma_v <- sqrt(.sv2_hat)
+    }
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm

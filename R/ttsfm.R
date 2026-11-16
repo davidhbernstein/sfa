@@ -171,8 +171,14 @@
 ## The t-value stays par/se, as everywhere else in the package. Note that a
 ## t-statistic on a scale parameter is testing a BOUNDARY null and is not a
 ## conventional test; ?ttsfm says so.
+## `zv_names` is NULL in the homoskedastic case and holds the sigma_v design's
+## column names when `vhet` was given. It does double duty: it says how wide
+## the sigma_v block is and whether there is a single sigma_v to report on its
+## natural scale at all. With a `vhet` there is not -- those rows stay
+## COEFFICIENTS and take a Zv. prefix, exactly as the u and w blocks already do
+## when they carry determinants.
 .tt_report <- function(par, se, nr, nzu, nzw, x_vars_vec, z_vars, zp_vars,
-                       z_link = "sd") {
+                       z_link = "sd", zv_names = NULL) {
   zs <- if (identical(z_link, "sd")) {
     function(e) exp(e)
   } else {
@@ -181,9 +187,10 @@
   ## d sigma / d eta is sigma under the "sd" link and sigma/2 under "var".
   dfac <- if (identical(z_link, "sd")) 1 else 0.5
 
-  i_v <- nr + 1L
-  i_u <- (nr + 2L):(nr + nzu + 1L)
-  i_w <- (nr + nzu + 2L):(nr + nzu + nzw + 1L)
+  nzv <- if (is.null(zv_names)) 1L else length(zv_names)
+  i_v <- nr + seq_len(nzv)
+  i_u <- nr + nzv + seq_len(nzu)
+  i_w <- nr + nzv + nzu + seq_len(nzw)
 
   p2 <- par
   s2 <- se
@@ -191,10 +198,13 @@
   ## standard errors it scales so the two cannot drift apart: vcov(type =
   ## "bhhh") applies exactly this vector to the OPG.
   jac <- rep(1, length(par))
-  sv <- exp(par[i_v])
-  p2[i_v] <- sv
-  s2[i_v] <- sv * se[i_v]
-  jac[i_v] <- sv
+  hom_v <- is.null(zv_names)
+  if (hom_v) {
+    sv <- exp(par[i_v])
+    p2[i_v] <- sv
+    s2[i_v] <- sv * se[i_v]
+    jac[i_v] <- sv
+  }
 
   hom_u <- nzu == 1L && identical(as.character(z_vars), "(Intercept)")
   hom_w <- nzw == 1L && identical(as.character(zp_vars), "(Intercept)")
@@ -213,7 +223,8 @@
 
   list(
     par = p2, se = s2, tval = p2 / s2, jac = jac,
-    names = c(x_vars_vec, "sigma_v",
+    names = c(x_vars_vec,
+      if (hom_v) "sigma_v" else paste0("Zv.", zv_names),
       if (hom_u) "sigma_u" else paste0("Zu.", z_vars),
       if (hom_w) "sigma_w" else paste0("Zw.", zp_vars)
     )
@@ -242,7 +253,8 @@ ttsfm <- function(formula,
                   keep_objective = FALSE,
                   rand.psoptim = NULL,
                   uhet = NULL,
-                  whet = NULL) {
+                  whet = NULL,
+                  vhet = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -267,6 +279,37 @@ ttsfm <- function(formula,
   z_link <- match.arg(z_link)
   .z_sigma <- if (identical(z_link, "sd")) function(eta) exp(eta) else function(eta) sqrt(exp(eta))
 
+  ## HETEROSKEDASTIC NOISE. sigma_v may be driven by its own covariates,
+  ## through a named argument rather than a further pipe segment -- the
+  ## decision sfm() already made for `vhet`, for the reason recorded in
+  ## notes/SIGMA_V_DESIGN_PROPOSAL.md: a pipe POSITION already means two
+  ## different things across the entry points and a fourth would make it
+  ## three.
+  ##
+  ## Both closed-form two-tier likelihoods are written elementwise in e, with
+  ## sigma_v the only scalar left in them, so this changes what sigma_v IS and
+  ## nothing about how either density is formed.
+  ##
+  ## WITH `vhet` NULL NOTHING BELOW CHANGES. The sigma_v block is then the
+  ## single log-scale slot it has always been, reached by the identical
+  ## expressions, so an existing call cannot be moved by this feature.
+  if (!is.null(vhet)) {
+    if (!inherits(vhet, "formula")) {
+      stop("ttsfm(): `vhet` must be a one-sided formula, e.g. ~ z1 + z2.",
+        call. = FALSE
+      )
+    }
+    if (identical(model_name, "TTNLS")) {
+      stop("ttsfm(): `vhet` has no meaning for model_name \"TTNLS\". That ",
+        "estimator is nonlinear least squares on E[e] = sigma_u - sigma_w, ",
+        "and sigma_v never enters its objective -- there is nothing for ",
+        "`vhet` to parameterize. Use \"TTNE\" or \"TTHN\", whose ",
+        "likelihoods do carry sigma_v.",
+        call. = FALSE
+      )
+    }
+  }
+
   .validate_sfa_call(formula, data, "ttsfm",
     maxit = list(
       maxit.bobyqa = maxit.bobyqa, maxit.psoptim = maxit.psoptim,
@@ -287,6 +330,10 @@ ttsfm <- function(formula,
                                      "ttsfm")
   .check_model_formula_pipes(formula, model_name)
   .check_optim_method(Method)
+
+  ## Complete cases over `vhet` BEFORE data_proc(), so its row bookkeeping
+  ## and the Zv design cannot fall out of step -- same ordering as sfm().
+  if (!is.null(vhet)) data <- .het_prefilter(data, list(vhet))
 
   DR1 <- data_proc(formula, data, model_name, individual = NULL, inefdec)
 
@@ -350,22 +397,6 @@ ttsfm <- function(formula,
   ## than at 0.2 -- four times the truth on the package's own TTHN design.
   sigma_v <- log(0.2)
 
-  ## Starting vector
-  if (isTRUE(is.numeric(start_val))) {
-    start_v <- start_val
-  } else {
-    start_v <- if (is.na(beta_0_st)) {
-      unname(c(beta_hat, sigma_v, delta, delta_p))
-    } else {
-      unname(c(beta_0, beta_hat, sigma_v, delta, delta_p))
-    }
-  }
-
-  ## Output label matrix
-  out <- matrix(0, nrow = 3, ncol = length(start_v))
-  rownames(out) <- c("par", "st_err", "t-val")
-  colnames(out) <- c(x_vars_vec, "sigv", z_vars, zp_vars)
-
   DR2 <- data_proc2(data, data_x, fancy_vars, fancy_vars_z, data_z, y_var, x_vars_vec, halton_num = NA, individual = NA, N, model_name, rand.gtre = NULL)
 
   data <- DR2$data
@@ -374,6 +405,69 @@ ttsfm <- function(formula,
   data_i_vars <- DR2$data_i_vars
   data_z_vars <- as.matrix(data.frame(subset(data, select = z_vars)))
   data_zp_vars <- as.matrix(data.frame(subset(data, select = zp_vars)))
+
+  ## The sigma_v design. Intercept-only when `vhet` is NULL, which IS the
+  ## homoskedastic case: one column of ones times one coefficient is the
+  ## single slot the likelihood has always read, so both cases are one code
+  ## path rather than two that have to be kept in step.
+  ##
+  ## Built here, after data_proc2(), because that is the step that settles
+  ## which rows survive; building it from the pre-processed frame would give a
+  ## design matrix with more rows than Y.
+  Zv <- .het_design(vhet, data, "vhet", caller = "ttsfm")
+  n_zv_vars <- ncol(Zv)
+
+  ## sigma_v from its block, for both likelihoods and both metric functions.
+  ##
+  ## With `vhet` NULL, Zv is one column of ones and `Zv %*% d` is d exactly
+  ## -- multiplying by 1 is exact in floating point -- so this is the same
+  ## exp(p[nr + 1]) the branches below have always formed, returned as a
+  ## length-n vector of one repeated value. Every expression that consumes it
+  ## is elementwise, so it treats that vector exactly as it treated the scalar.
+  ##
+  ## `clip` is passed by the TTHN branch only, because that branch clips its
+  ## predictor and the TTNE branch does not. Clipping where TTNE never did
+  ## would change which draws it refuses, so the asymmetry is deliberate.
+  .tt_sigv <- function(d, clip = FALSE) {
+    eta <- as.numeric(Zv %*% d)
+    if (isTRUE(clip)) eta <- pmin(eta, .SFA_CONSTANTS$EXP_CLIP_UPPER)
+    if (is.null(vhet)) exp(eta) else .z_sigma(eta)
+  }
+
+  ## The starting vector and the label matrix are built HERE rather than above
+  ## because both now depend on Zv.
+  ##
+  ## The sigma_v block occupies the slot the single `sigv` parameter used to,
+  ## so every index below shifts by n_zv_vars - 1 and by nothing at all in the
+  ## homoskedastic case.
+  sigma_v_block <- if (is.null(vhet)) {
+    sigma_v
+  } else {
+    ## A given `vhet` puts the block on `z_link`'s scale, like `uhet` and
+    ## `whet`; the NULL case keeps log(sigma_v) whatever `z_link` says,
+    ## because that is what the homoskedastic parameterization has always
+    ## been and changing it would move existing fits.
+    .het_block_start(Zv, exp(sigma_v), z_link)
+  }
+
+  if (isTRUE(is.numeric(start_val))) {
+    start_v <- start_val
+  } else {
+    start_v <- if (is.na(beta_0_st)) {
+      unname(c(beta_hat, sigma_v_block, delta, delta_p))
+    } else {
+      unname(c(beta_0, beta_hat, sigma_v_block, delta, delta_p))
+    }
+  }
+
+  ## Output label matrix
+  out <- matrix(0, nrow = 3, ncol = length(start_v))
+  rownames(out) <- c("par", "st_err", "t-val")
+  colnames(out) <- c(
+    x_vars_vec,
+    if (is.null(vhet)) "sigv" else paste0("Zv.", colnames(Zv)),
+    z_vars, zp_vars
+  )
 
 
   if (model_name == "TTNE") {
@@ -386,9 +480,10 @@ ttsfm <- function(formula,
       nzu <- n_z_vars ## number of determinants for u component
       nzw <- n_zp_vars ## number of determinants for w component
 
-      sigv <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-      sigu <- .z_sigma((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]))
-      sigw <- .z_sigma((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      nzv <- n_zv_vars ## width of the sigma_v block; 1 unless `vhet` was given
+      sigv <- .tt_sigv(p[nr + seq_len(nzv)])
+      sigu <- .z_sigma((data_z_vars %*% p[nr + nzv + seq_len(nzu)]))
+      sigw <- .z_sigma((data_zp_vars %*% p[nr + nzv + nzu + seq_len(nzw)]))
 
       # if (sigv<= 1e-6){stop("Variance too small")}
 
@@ -425,7 +520,7 @@ ttsfm <- function(formula,
     ## Bounds: .generate_sfa_bounds() returns one lower bound per beta/delta/
     ## delta_p slot.
     lower.BOB0 <- .generate_sfa_bounds(formula, prep)[-c(1:2)]
-    lower.BOB <- append(lower.BOB0, -Inf, after = n_x_vars)
+    lower.BOB <- append(lower.BOB0, rep(-Inf, n_zv_vars), after = n_x_vars)
 
 
     ## ---- Stage 1: bobyqa
@@ -445,8 +540,9 @@ ttsfm <- function(formula,
     ## ---- Stage 2: psoptim Every OTHER parameter's window here is
     ## [min(start_v of all other slots) - differ, start_v[j] + differ].
     differ <- 10
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Psoptim <- opt.psoptim(
       fn = fn,
@@ -465,8 +561,9 @@ ttsfm <- function(formula,
 
     ## ---- Stage 3: optim
     differ <- 1
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Optim <- opt.optim(
       fn = fn,
@@ -538,7 +635,8 @@ ttsfm <- function(formula,
     }
     ## Natural scale and distinct names; see .tt_report() above.
     RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
-      x_vars_vec, z_vars, zp_vars, z_link
+      x_vars_vec, z_vars, zp_vars, z_link,
+      zv_names = if (is.null(vhet)) NULL else colnames(Zv)
     )
     colnames(out) <- RP$names
     t_val <- RP$tval
@@ -562,9 +660,10 @@ ttsfm <- function(formula,
         }
 
 
-        sig.v <- exp(p[nr + 1]) ## Assume homoscedastic two sided component
-        sig.u <- .z_sigma((zu %*% p[(nr + 2):(nr + nzu + 1)]))
-        sig.w <- .z_sigma((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+        nzv <- n_zv_vars
+        sig.v <- .tt_sigv(p[nr + seq_len(nzv)])
+        sig.u <- .z_sigma((zu %*% p[nr + nzv + seq_len(nzu)]))
+        sig.w <- .z_sigma((zw %*% p[nr + nzv + nzu + seq_len(nzw)]))
       } else {
         ep.hat <- e
 
@@ -653,6 +752,19 @@ ttsfm <- function(formula,
     ## stored beside it and reused verbatim by vcov(); there is no second copy
     ## of the transform to fall out of step.
     results$par_scale <- RP$jac
+    ## Provenance for a heteroskedastic-noise fit, and the fitted vector
+    ## itself. With `vhet` given there is no single sigma_v row in
+    ## out[, "par"] for a downstream tool to read -- those rows are
+    ## COEFFICIENTS -- so the per-observation scale is stored here rather than
+    ## left to be reconstructed from the deltas, which is where a link
+    ## convention gets misremembered.
+    if (!is.null(vhet)) {
+      results$vhet <- vhet
+      results$sigma_v <- as.numeric(
+        .tt_sigv(opt$par[n_x_vars + seq_len(n_zv_vars)],
+                 clip = identical(model_name, "TTHN"))
+      )
+    }
     if (isTRUE(keep_objective)) results$objective <- fn
     return(.sfa_keep_data(results, data_supplied))
   } else if (model_name == "TTHN") {
@@ -672,9 +784,10 @@ ttsfm <- function(formula,
       ## it became NaN -- reaching the objective as a fabricated number rather
       ## than as a refusal.
       ec <- .SFA_CONSTANTS$EXP_CLIP_UPPER
-      sigv <- exp(min(p[nr + 1], ec)) ## Assume homoscedastic two sided component
-      sigu <- .z_sigma(pmin((data_z_vars %*% p[(nr + 2):(nr + nzu + 1)]), ec))
-      sigw <- .z_sigma(pmin((data_zp_vars %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]), ec))
+      nzv <- n_zv_vars ## width of the sigma_v block; 1 unless `vhet` was given
+      sigv <- .tt_sigv(p[nr + seq_len(nzv)], clip = TRUE)
+      sigu <- .z_sigma(pmin((data_z_vars %*% p[nr + nzv + seq_len(nzu)]), ec))
+      sigw <- .z_sigma(pmin((data_zp_vars %*% p[nr + nzv + nzu + seq_len(nzw)]), ec))
 
       ## Numerical safety, same rationale as the analogous fix in the TTNE
       ## branch above: theta1/theta2/omega1/omega2 below divide by sigv.
@@ -749,7 +862,7 @@ ttsfm <- function(formula,
     names(prep) <- c("n_x_vars", "n_z_vars", "n_zp_vars")
 
     lower.BOB0 <- .generate_sfa_bounds(formula, prep)[-c(1:2)]
-    lower.BOB <- append(lower.BOB0, -Inf, after = n_x_vars)
+    lower.BOB <- append(lower.BOB0, rep(-Inf, n_zv_vars), after = n_x_vars)
 
 
     ## ---- Stage 1: bobyqa
@@ -768,8 +881,9 @@ ttsfm <- function(formula,
 
     ## ---- Stage 2: psoptim
     differ <- 10
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Psoptim <- opt.psoptim(
       fn = fn,
@@ -788,8 +902,9 @@ ttsfm <- function(formula,
 
     ## ---- Stage 3: optim
     differ <- 1
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Optim <- opt.optim(
       fn = fn,
@@ -866,7 +981,8 @@ ttsfm <- function(formula,
     }
     ## Natural scale and distinct names; see .tt_report() above.
     RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
-      x_vars_vec, z_vars, zp_vars, z_link
+      x_vars_vec, z_vars, zp_vars, z_link,
+      zv_names = if (is.null(vhet)) NULL else colnames(Zv)
     )
     colnames(out) <- RP$names
     t_val <- RP$tval
@@ -887,7 +1003,8 @@ ttsfm <- function(formula,
         ep.hat <- e
       }
 
-      sig.v <- exp(p[nr + 1])
+      nzv <- n_zv_vars
+      sig.v <- .tt_sigv(p[nr + seq_len(nzv)])
       sig.u <- .z_sigma((zu %*% p[(nr + 2):(nr + nzu + 1)]))
       sig.w <- .z_sigma((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
 
@@ -987,6 +1104,19 @@ ttsfm <- function(formula,
     ## stored beside it and reused verbatim by vcov(); there is no second copy
     ## of the transform to fall out of step.
     results$par_scale <- RP$jac
+    ## Provenance for a heteroskedastic-noise fit, and the fitted vector
+    ## itself. With `vhet` given there is no single sigma_v row in
+    ## out[, "par"] for a downstream tool to read -- those rows are
+    ## COEFFICIENTS -- so the per-observation scale is stored here rather than
+    ## left to be reconstructed from the deltas, which is where a link
+    ## convention gets misremembered.
+    if (!is.null(vhet)) {
+      results$vhet <- vhet
+      results$sigma_v <- as.numeric(
+        .tt_sigv(opt$par[n_x_vars + seq_len(n_zv_vars)],
+                 clip = identical(model_name, "TTHN"))
+      )
+    }
     if (isTRUE(keep_objective)) results$objective <- fn
     return(.sfa_keep_data(results, data_supplied))
   } else if (model_name == "TTNLS") {
@@ -1033,7 +1163,7 @@ ttsfm <- function(formula,
     names(prep) <- c("n_x_vars", "n_z_vars", "n_zp_vars")
 
     lower.BOB0 <- .generate_sfa_bounds(formula, prep)[-c(1:2)]
-    lower.BOB <- append(lower.BOB0, -Inf, after = n_x_vars)
+    lower.BOB <- append(lower.BOB0, rep(-Inf, n_zv_vars), after = n_x_vars)
 
     ## ---- Stage 1: bobyqa
     Opt.Bobyqa <- opt.bobyqa(
@@ -1051,8 +1181,9 @@ ttsfm <- function(formula,
 
     ## ---- Stage 2: psoptim
     differ <- 10
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Psoptim <- opt.psoptim(
       fn = fn,
@@ -1071,8 +1202,9 @@ ttsfm <- function(formula,
 
     ## ---- Stage 3: optim
     differ <- 1
-    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-c(n_x_vars + 1)]) - differ)[-c(1:2)]
-    lower1 <- append(lower1_0, start_v[n_x_vars + 1] - differ, after = n_x_vars)
+    .iv_s <- n_x_vars + seq_len(n_zv_vars)
+    lower1_0 <- .generate_sfa_bounds(formula, prep, inf_sub = min(start_v[-.iv_s]) - differ)[-c(1:2)]
+    lower1 <- append(lower1_0, start_v[.iv_s] - differ, after = n_x_vars)
 
     Opt.Optim <- opt.optim(
       fn = fn,
@@ -1161,7 +1293,8 @@ ttsfm <- function(formula,
 
     ## Natural scale and distinct names; see .tt_report() above.
     RP <- .tt_report(opt$par, st_err, n_x_vars, n_z_vars, n_zp_vars,
-      x_vars_vec, z_vars, zp_vars, z_link
+      x_vars_vec, z_vars, zp_vars, z_link,
+      zv_names = if (is.null(vhet)) NULL else colnames(Zv)
     )
     colnames(out) <- RP$names
     t_val <- RP$tval
