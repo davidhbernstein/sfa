@@ -71,12 +71,27 @@ test_that("a moment-based fit renders without a log-likelihood row", {
   expect_silent(invisible(texreg::screenreg(list(tr))))
 })
 
-test_that("the extract method is REGISTERED for texreg's generic", {
-  ## Same defect the sandwich methods shipped with: defined but unregistered,
-  ## which load_all() masks because it exports everything. texreg is in
-  ## Suggests, so its generic does not exist at load time and only the
-  ## `texreg::extract` form works.
-  ns <- readLines(system.file("NAMESPACE", package = "sfa"), warn = FALSE)
-  if (!length(ns)) ns <- readLines(testthat::test_path("..", "..", "NAMESPACE"), warn = FALSE)
-  expect_match(paste(ns, collapse = "\n"), "S3method\\(texreg::extract, *sfareg\\)")
+test_that("texreg DISPATCHES on a fit, not just on an extracted object", {
+  ## This test used to grep NAMESPACE for the literal
+  ## S3method(texreg::extract, sfareg) and assert the line was present. The
+  ## line WAS present and registered nothing: texreg::extract is an S4
+  ## generic, S3method() writes into the S3 methods table, and S4 dispatch
+  ## never reads it (gap A79). So the assertion passed for a full release
+  ## while texreg::screenreg(list(fit)) reported "Neither texreg nor broom
+  ## supports models of class sfareg".
+  ##
+  ## The only form of this test that can fail when dispatch is broken is to
+  ## hand screenreg() a FIT and look for the coefficients in the output.
+  ## Everything else -- the NAMESPACE line, existsMethod(), or passing an
+  ## already-extracted object as the tests above do -- passes either way.
+  ## existsMethod("extract", "sfareg", where = asNamespace("texreg")) is in
+  ## particular NOT a usable check: it reads FALSE on a build where dispatch
+  ## demonstrably works, because .onLoad() registers against the generic
+  ## rather than into texreg's own table.
+  skip_if_no_texreg()
+  f <- tex_fit()
+  out <- capture.output(texreg::screenreg(list(f)))
+  expect_true(any(grepl("x1", out, fixed = TRUE)))
+  expect_true(any(grepl("x2", out, fixed = TRUE)))
+  expect_false(any(grepl("does not support|Neither texreg", out)))
 })

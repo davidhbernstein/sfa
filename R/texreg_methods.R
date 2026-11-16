@@ -5,11 +5,12 @@
 ## assembling a paper table formats `$out` by hand, which is where transcription
 ## errors come from.
 ##
-## Registered with the `texreg::extract` form in NAMESPACE rather than a plain
-## S3method(), because texreg is in Suggests and its generic does not exist when
-## sfa loads. The sandwich methods were defined without that and were
-## unreachable in an installed package for a full release; the same mistake is
-## not worth making twice.
+## Registered with methods::setMethod() in .onLoad(), NOT with NAMESPACE's
+## S3method(): texreg::extract is an S4 generic and S3 registration is invisible
+## to S4 dispatch. The header used to claim the NAMESPACE form was what made
+## this work, and it registered nothing for a full release (gap A79) -- the same
+## mistake the sandwich methods made, which the paragraph it replaced said was
+## "not worth making twice". See notes/code_history/texreg_methods.md.
 
 ## Which rows of `out` are frontier coefficients rather than variance or shape
 ## parameters. A regression table wants the former in the body and the latter
