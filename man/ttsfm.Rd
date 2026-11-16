@@ -15,7 +15,8 @@ maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0, start_val = FALSE, PSopt = FALSE,
 optHessian = TRUE, inefdec = TRUE, upper = NA,
 Method = "L-BFGS-B", logit = TRUE, verbose = FALSE,
-keep_objective = FALSE, rand.psoptim = NULL, uhet = NULL, whet = NULL)}
+keep_objective = FALSE, rand.psoptim = NULL, uhet = NULL, whet = NULL,
+                    vhet = NULL)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. Use \code{y ~ x | zu | zw} to allow determinants \code{zu} of the first one-sided component and \code{zw} of the second.}
 \item{model_name}{\code{"TTNE"}, \code{"TTHN"} or \code{"TTNLS"}; see \sQuote{Description}. Matching ignores case, so \code{"ttne"} and \code{"TTNE"} are the same choice.}
@@ -40,6 +41,7 @@ them.}
 \item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}
 \item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}. The same block as the formula's first pipe segment, writing the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
 \item{whet}{Optional one-sided formula for the determinants of \eqn{\sigma_w}, the SECOND one-sided component. The same block as the formula's second pipe segment. Usable on its own, in which case \eqn{\sigma_u} stays homoskedastic exactly as \code{y ~ x | 1 | zp} means. New in 1.3.0.}
+\item{vhet}{Optional one-sided formula for the determinants of \eqn{\sigma_v}, the NOISE scale, as in \code{vhet = ~ zv}. There is no pipe segment for this block and deliberately so: a fourth segment would give one character a third meaning in one formula. The predictor is on the log standard-deviation scale, \eqn{\sigma_{v,i} = \exp(z_v'\delta_v)}, matching the slot it replaces rather than \code{z_link}. Implemented for \code{model_name} \code{"TTNE"} and \code{"TTHN"}; \code{"TTNLS"} is refused, since nonlinear least squares targets \eqn{E[e] = \sigma_u - \sigma_w} and \eqn{\sigma_v} never enters its objective. With \code{vhet} given there is no single \eqn{\sigma_v} to report, so those rows become coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
 }
 \details{
 \subsection{The model}{
