@@ -60,6 +60,22 @@ back to a diagonal matrix built from the reported standard errors
 fit that stores no Hessian. With neither it returns a matrix of \code{NA}s
 with a warning. The other three types are described below.
 
+The default path reports no standard error the fit itself withheld. Where the
+fit reports \code{NA} for a parameter's standard error -- a boundary corner,
+an entry \code{$se_at_bound} or \code{$se_unresolved} records as
+unresolved -- that parameter's row and column of the returned matrix are
+\code{NA} too, with a warning naming it; and on a fit flagged
+\code{$sigma_v_at_bound} or \code{$ntn_sigma_v_at_bound}, where
+\code{sigma_v} sits on its lower bound and no finite standard error exists
+for any coefficient, the whole matrix is \code{NA}. A Hessian polished at
+such a point often still inverts, so without this the generics built on
+\code{vcov} -- \code{confint}, \code{bread}, \code{lmtest::coeftest} --
+reported exactly the standard errors the fit had declared not to exist, while
+\code{summary} printed \code{NA} for the same coefficient. The check is
+deliberately confined to this path: \code{"bhhh"}, \code{"sandwich"} and
+\code{"clustered"} are alternative estimators requested by name, and what
+they do on such a fit is described under their own headings.
+
 \code{logLik.sfareg} returns the maximized log-likelihood as a
 \code{"logLik"} object whose \code{"df"} and \code{"nobs"} attributes make
 \code{AIC()} and \code{BIC()} work; see \sQuote{Two quantities that are easy

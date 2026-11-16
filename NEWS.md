@@ -301,6 +301,19 @@ wrong result came without an error or a warning.
   outright. `vcov()` now applies the fit's Jacobian, and `influence_sfa()` is
   fixed with it.
 
+* **`vcov()` handed back standard errors the fit had refused to report.**
+  Where `sfm()` nulls every standard error because `sigma_v` sits on its lower
+  bound (`$sigma_v_at_bound`, `$ntn_sigma_v_at_bound`), the Hessian stored at
+  that point still inverts, so `vcov()` re-derived the withheld numbers and
+  `lmtest::coeftest()` reported a z-value of 1.97e6 on a fit whose own
+  `summary()` printed `NA`. `vcov()` now reports `NA` wherever the fit does:
+  the whole matrix at those two boundaries, and otherwise the row and column
+  of any parameter whose standard error is `NA`, including the
+  `$se_unresolved` and `$se_at_bound` cases. `confint()`, `bread()` and
+  `sandwich::sandwich()` inherit the correction. `vcov(type = "bhhh")`,
+  `"sandwich"` and `"clustered"` are unchanged: they are alternative
+  estimators asked for by name.
+
 * **`ttsfm(model_name = "TTNLS")` standard errors omitted the residual
   variance.** Without determinants they now equal `lm()`'s.
 
