@@ -5,14 +5,18 @@
 
 ## Build one variance-determinant design matrix. NULL means intercept-only,
 ## i.e. the homoskedastic case, which keeps a single code path for both.
-.het_design <- function(f, data, label) {
+## `caller` names the entry point in the error messages. It defaults to
+## "sfm" because that is where this engine started; ttsfm(), zsfm() and
+## psfm("FD") pass their own name so a user is not told to fix a call they
+## did not make.
+.het_design <- function(f, data, label, caller = "sfm") {
   n <- nrow(data)
   if (is.null(f)) {
     return(matrix(1, nrow = n, ncol = 1L, dimnames = list(NULL, "(Intercept)")))
   }
   tt <- tryCatch(stats::delete.response(stats::terms(stats::as.formula(f), data = data)),
     error = function(e) {
-      stop("sfm(): `", label, "` could not be interpreted as a formula: ",
+      stop(caller, "(): `", label, "` could not be interpreted as a formula: ",
         conditionMessage(e),
         call. = FALSE
       )
@@ -20,7 +24,7 @@
   )
   miss <- setdiff(all.vars(tt), names(data))
   if (length(miss)) {
-    stop("sfm(): `", label, "` refers to ",
+    stop(caller, "(): `", label, "` refers to ",
       if (length(miss) > 1L) "variables " else "variable ",
       paste(sQuote(miss), collapse = ", "), " not found in `data`.",
       call. = FALSE
@@ -29,12 +33,26 @@
   mf <- stats::model.frame(tt, data = data, na.action = stats::na.pass)
   X <- stats::model.matrix(tt, mf)
   if (nrow(X) != n || anyNA(X)) {
-    stop("sfm(): `", label, "` has missing values on rows that the frontier ",
-      "formula keeps. Drop those rows before calling sfm().",
+    stop(caller, "(): `", label, "` has missing values on rows that the ",
+      "frontier formula keeps. Drop those rows before calling ", caller, "().",
       call. = FALSE
     )
   }
   X
+}
+
+## The starting value for one variance-determinant block: put the moment
+## estimate on the block's INTERCEPT and leave the slopes at zero, so the fit
+## begins from the homoskedastic model rather than asserting a direction.
+## `~ 0 + z` has no intercept, hence the fallback to column one.
+##
+## Shared by every entry point that grew a `vhet` block, so the three cannot
+## drift apart on what log(sigma) versus log(sigma^2) means.
+.het_block_start <- function(Z, sigma, z_link = "sd") {
+  d <- rep(0, ncol(Z))
+  j <- match("(Intercept)", colnames(Z), nomatch = 1L)
+  d[j] <- if (identical(z_link, "sd")) log(sigma) else log(sigma^2)
+  d
 }
 
 ## Complete-case filter over the het formulas, applied BEFORE data_proc() so

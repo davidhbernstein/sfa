@@ -17,12 +17,33 @@ zsfm <- function(formula,
                  verbose = FALSE,
                  keep_objective = FALSE,
                  rand.psoptim = NULL,
-                 ghet = NULL) {
+                 ghet = NULL,
+                 vhet = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
   data_supplied <- if (!missing(data)) data
   model_name <- .match_model_name(model_name, eval(formals()$model_name))
+
+  ## HETEROSKEDASTIC NOISE, as a named argument rather than a further pipe
+  ## segment. In zsfm() the reason is sharper than elsewhere: the second pipe
+  ## part of ZISF_Z is the MIXING PROBABILITY's linear predictor, not a
+  ## variance at all, so a reader cannot be asked to tell sigma_v from the
+  ## regime link by position.
+  ##
+  ## Both branches of the mixture are already written elementwise in eps --
+  ## the efficient regime is N(0, sigma_v^2) and the inefficient one is the
+  ## ordinary normal/half-normal composite -- so sigma_v varying by
+  ## observation changes what it IS and nothing about how either density is
+  ## formed. The mixing probability is untouched: `ghet` and `vhet` are
+  ## different blocks and may be given together.
+  ##
+  ## WITH `vhet` NULL NOTHING BELOW CHANGES.
+  if (!is.null(vhet) && !inherits(vhet, "formula")) {
+    stop("zsfm(): `vhet` must be a one-sided formula, e.g. ~ z1 + z2.",
+      call. = FALSE
+    )
+  }
 
   .validate_sfa_call(formula, data, "zsfm",
     maxit = list(
@@ -44,6 +65,10 @@ zsfm <- function(formula,
                                      "zsfm")
   .check_model_formula_pipes(formula, model_name)
   .check_optim_method(Method)
+
+  ## Complete cases over `vhet` BEFORE data_proc(), so its row bookkeeping and
+  ## the Zv design cannot fall out of step -- same ordering as sfm().
+  if (!is.null(vhet)) data <- .het_prefilter(data, list(vhet))
 
   DR1 <- data_proc(formula, data, model_name, individual = NULL, inefdec)
 
@@ -105,6 +130,56 @@ zsfm <- function(formula,
   Y <- DR2$Y
   data_i_vars <- DR2$data_i_vars
 
+  ## The sigma_v design. Intercept-only when `vhet` is NULL, which is the
+  ## homoskedastic case. Built after data_proc2(), the step that settles which
+  ## rows survive.
+  Zv <- .het_design(vhet, data, "vhet", caller = "zsfm")
+  n_zv_vars <- ncol(Zv)
+
+  ## sigma_v and its square from the block.
+  ##
+  ## The NULL branch reproduces the ORIGINAL expressions, x[i]^2 then sqrt(),
+  ## rather than the algebraically equal abs(x[i]). sqrt(x^2) and abs(x) are
+  ## not the same floating-point computation, and an existing fit must not
+  ## move by a single bit because this argument was added.
+  ##
+  ## A given `vhet` puts the block on the LOG-SD scale, exp(z'delta). zsfm()
+  ## has no `z_link` argument -- its one determinant block is the mixing
+  ## probability, which is a logit, not a variance -- so there is no
+  ## package-level link convention here to honour, and the log-SD form is the
+  ## one sfm()'s default and ttsfm() both use.
+  .zi_sigv <- function(d) {
+    if (is.null(vhet)) {
+      sigvsq <- d[1L]^2
+      list(sigv = sqrt(sigvsq), sigvsq = sigvsq)
+    } else {
+      sv <- exp(pmin(as.numeric(Zv %*% d), .SFA_CONSTANTS$EXP_CLIP_UPPER))
+      list(sigv = sv, sigvsq = sv^2)
+    }
+  }
+
+  ## Where the sigma_v block sits: ZISF's layout is (gamma, sigv, sigu, beta),
+  ## ZISF_Z's is (sigv, sigu, beta, gamma-block). sigma_u follows the block.
+  .i_sv <- if (identical(model_name, "ZISF")) 2L else 1L
+  .i_su <- .i_sv + n_zv_vars
+
+  ## Splice the block into the layout start_cs() built. Done HERE, not in
+  ## start_cs(), because that helper is shared with sfm() and every other
+  ## cross-sectional model; widening one slot there would reach models that
+  ## have no `vhet`.
+  if (!is.null(vhet)) {
+    .nm0 <- colnames(out)
+    .blk <- .het_block_start(Zv, start_v[.i_sv], "sd")
+    .splice <- function(v, new) append(v[-.i_sv], new, after = .i_sv - 1L)
+    start_v <- .splice(start_v, .blk)
+    ## The homoskedastic slot was bounded positive because it held sigma_v
+    ## directly. The block holds a log-scale linear predictor, which is
+    ## unbounded by construction, so the bound is dropped rather than widened.
+    lower_bob <- .splice(lower_bob, rep(-Inf, n_zv_vars))
+    out <- matrix(0, nrow = 3, ncol = length(start_v))
+    colnames(out) <- .splice(.nm0, paste0("Zv.", colnames(Zv)))
+    rownames(out) <- c("par", "st_err", "t-val")
+  }
 
   if (model_name %in% c("ZISF", "ZISF_Z")) {
     ## `per_obs = TRUE` returns the vector of per-observation log-likelihood
@@ -112,11 +187,14 @@ zsfm <- function(formula,
     ## estfun.sfareg() differences to build the score matrix behind
     ## vcov(type = "bhhh"). The optimizers call this with one argument.
     like.fn <- function(x, per_obs = FALSE) {
+      ## Width of the sigma_v block; 1 unless `vhet` was given, in which case
+      ## every index after it shifts by nzv - 1.
+      nzv <- n_zv_vars
       if (model_name %in% c("ZISF")) {
-        x_x_vec <- x[4:as.numeric(n_x_vars + 3)]
+        x_x_vec <- x[(nzv + 2L) + seq_len(n_x_vars)]
       }
       if (model_name %in% c("ZISF_Z")) {
-        x_x_vec <- x[3:as.numeric(n_x_vars + 2)]
+        x_x_vec <- x[(nzv + 1L) + seq_len(n_x_vars)]
       }
 
       eps <- (inefdec_n * (Y - as.matrix(data_i_vars) %*% x_x_vec))
@@ -126,9 +204,10 @@ zsfm <- function(formula,
         ## exp(-|gamma|), so the likelihood is EXACTLY symmetric in gamma and
         ## the optimizer may legitimately return either sign.
         prob <- exp(-abs(gamma))
-        sigvsq <- x[2]^2
-        sigusq <- x[3]^2
-        sigv <- sqrt(sigvsq)
+        .sv <- .zi_sigv(x[1L + seq_len(nzv)])
+        sigv <- .sv$sigv
+        sigvsq <- .sv$sigvsq
+        sigusq <- x[1L + nzv + 1L]^2
         sigu <- sqrt(sigusq)
 
         lambda <- sigu / sigv
@@ -142,7 +221,7 @@ zsfm <- function(formula,
       }
 
       if (model_name == "ZISF_Z") {
-        gamma <- x[(n_x_vars + 3):(n_x_vars + 2 + n_z_vars)] ## lets put gammas last
+        gamma <- x[(nzv + 1L + n_x_vars) + seq_len(n_z_vars)] ## lets put gammas last
 
         ## plogis(), not exp(eta)/(1+exp(eta)): the explicit form overflows to
         ## Inf/Inf = NaN once eta passes ~710.
@@ -155,9 +234,10 @@ zsfm <- function(formula,
           prob <- pnorm(data_z %*% gamma) / (1 + pnorm(data_z %*% gamma))
         }
 
-        sigvsq <- x[1]^2
-        sigusq <- x[2]^2
-        sigv <- sqrt(sigvsq)
+        .sv <- .zi_sigv(x[seq_len(nzv)])
+        sigv <- .sv$sigv
+        sigvsq <- .sv$sigvsq
+        sigusq <- x[nzv + 1L]^2
         sigu <- sqrt(sigusq)
 
         lambda <- sigu / sigv
@@ -233,7 +313,7 @@ zsfm <- function(formula,
     ## about 40 log-likelihood units low (gap A31). Try several link intercepts
     ## with zero slopes, polish the best three, keep the best.
     if (identical(model_name, "ZISF_Z") && isFALSE(is.numeric(start_val))) {
-      .gi <- (n_x_vars + 3):(n_x_vars + 2 + n_z_vars)
+      .gi <- (n_zv_vars + 1L + n_x_vars) + seq_len(n_z_vars)
       .zz_cand <- lapply(c(-2, -0.4, 0.4, 2), function(g0) {
         replace(start_v, .gi, c(g0, rep(0, length(.gi) - 1L)))
       })
@@ -263,7 +343,29 @@ zsfm <- function(formula,
     start_feval <- Opt.Bobyqa$start_feval
     bob1 <- Opt.Bobyqa$bob1
 
-    Lower.Start <- lower.start(start_v, model_name, differ = 1)
+    ## lower.start() lays its bound vectors out from the HOMOSKEDASTIC
+    ## parameter order: it bounds two adjacent slots positive, because in that
+    ## order they are sigma_v and sigma_u. With a sigma_v BLOCK in place of
+    ## the first, both bounds land on the wrong slots -- the positive one on a
+    ## LOG-scale predictor, which may legitimately be negative, and none at
+    ## all on sigma_u.
+    ##
+    ## Pinning a log-scale slot at >= 1e-7 holds sigma_v at about 1 whatever
+    ## the data says. That is not hypothetical: it is what the first run of
+    ## this feature did, and it drove the mixing parameter to its boundary and
+    ## left sigma_u with a standard error of 21.
+    .ls_het <- function(differ) {
+      lo <- start_v - differ
+      lo[.i_su] <- .0000001
+      up <- start_v + differ
+      list(lower1 = lo, upper1 = up,
+           upper1_open = replace(up, .i_su, Inf))
+    }
+    Lower.Start <- if (is.null(vhet)) {
+      lower.start(start_v, model_name, differ = 1)
+    } else {
+      .ls_het(1)
+    }
 
     Opt.Psoptim <- opt.psoptim(
       fn = like.fn, start_v, lower.psoptim = Lower.Start$lower1, rand.psoptim = rand.psoptim,
@@ -273,7 +375,11 @@ zsfm <- function(formula,
     start_feval <- Opt.Psoptim$start_feval
     opt00 <- Opt.Psoptim$opt00
 
-    Lower.Start <- lower.start(start_v, model_name, differ = 0.5)
+    Lower.Start <- if (is.null(vhet)) {
+      lower.start(start_v, model_name, differ = 0.5)
+    } else {
+      .ls_het(0.5)
+    }
     Opt.Optim <- opt.optim(
       fn = like.fn, start_v = start_v, lower.optim = Lower.Start$lower1,
       upper.optim = Lower.Start$upper1_open, maxit.optim = maxit.optim, opt.TF = optHessian, method = Method, optHessian = TRUE, verbose = verbose
@@ -323,20 +429,22 @@ zsfm <- function(formula,
     ## JLMS
     if (model_name %in% c("ZISF", "ZISF_Z")) {
       ## Branch on the MODEL, not on is.na(n_z_vars).
+      nzv <- n_zv_vars
       if (model_name == "ZISF") {
-        beta <- opt$par[-c(1:3)]
+        beta <- opt$par[-seq_len(nzv + 2L)]
         z <- 1
         gamma <- opt$par[1]
         ## exp(-|gamma|), matching the likelihood that was actually maximised.
         prob <- exp(-abs(gamma))
 
-        sigvsq <- opt$par[2]^2
-        sigusq <- opt$par[3]^2
+        .sv <- .zi_sigv(opt$par[1L + seq_len(nzv)])
+        sigvsq <- .sv$sigvsq
+        sigusq <- opt$par[1L + nzv + 1L]^2
       }
 
       if (model_name == "ZISF_Z") {
-        beta <- opt$par[3:sum(n_x_vars, 2)]
-        gamma <- opt$par[(n_x_vars + 3):(n_x_vars + 2 + n_z_vars)] ## lets put gammas last
+        beta <- opt$par[(nzv + 1L) + seq_len(n_x_vars)]
+        gamma <- opt$par[(nzv + 1L + n_x_vars) + seq_len(n_z_vars)] ## lets put gammas last
 
         if (logit) {
           prob <- plogis(data_z %*% gamma)
@@ -345,12 +453,13 @@ zsfm <- function(formula,
           prob <- pnorm(data_z %*% gamma) / (1 + pnorm(data_z %*% gamma))
         }
 
-        sigvsq <- opt$par[1]^2
-        sigusq <- opt$par[2]^2
+        .sv <- .zi_sigv(opt$par[seq_len(nzv)])
+        sigvsq <- .sv$sigvsq
+        sigusq <- opt$par[nzv + 1L]^2
       }
 
       eps <- (inefdec_n * (Y - as.matrix(data_i_vars) %*% beta))
-      sigv <- sqrt(sigvsq)
+      sigv <- .sv$sigv
       sigu <- sqrt(sigusq)
 
       ## Reparametrize the log-likelihood function
@@ -395,6 +504,13 @@ zsfm <- function(formula,
       ## Optionally retain the objective, so estfun()/vcov(type = "bhhh") and
       ## sfa_diagnostics() can difference it after the fact.
       if (isTRUE(keep_objective)) results$objective <- like.fn
+      ## With `vhet` given there is no single sigma_v row in out[, "par"] --
+      ## those rows are COEFFICIENTS -- so the fitted per-observation scale is
+      ## stored rather than left to be rebuilt from the deltas.
+      if (!is.null(vhet)) {
+        results$vhet <- vhet
+        results$sigma_v <- as.numeric(sigv)
+      }
     }
     return(.sfa_keep_data(results, data_supplied))
   } else {
