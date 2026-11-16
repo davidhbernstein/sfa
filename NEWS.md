@@ -48,6 +48,33 @@ results**.
 Each fix below changes estimates on at least some data. Before the fix, the
 wrong result came without an error or a warning.
 
+### Panel efficiency scores
+
+* **`psfm("FD")` reported the wrong efficiency scores.** The fit itself --
+  coefficients, standard errors, log-likelihood -- was correct and is
+  unchanged; `u_hat` and `exp_u_hat` were not, because the loop that builds
+  them re-derived the composed residual with its own indices instead of
+  reusing the ones the likelihood had already resolved. Two things were wrong
+  in it, and nothing fed back into the optimisation, so neither could show up
+  as a convergence problem.
+
+  First, the scaling function's coefficients were read from
+  `opt$par[3 + length(n_x_vars) + qq]`. `n_x_vars` is a *count*, so
+  `length(n_x_vars)` is `1` whatever the model: with two or more regressors
+  the loop read a frontier slope where a scaling coefficient belongs. The
+  likelihood uses `n_x_vars + 3 + qq` and was right; the two sites disagreed.
+  Second, the scaling function was applied as `diff(z'delta)` rather than
+  `diff(exp(z'delta))`, although `h = exp(z'delta)` is the Wang and Ho (2010)
+  scaling function that the same function's `h_hat` forms correctly.
+
+  Both are fixed by forming the quantity exactly as the likelihood forms it,
+  from the same `beta` and `delta` vectors `h_hat` uses, so the two cannot
+  drift apart again. On a 80-firm, 6-period design with two regressors this
+  moves mean `exp_u_hat` from 0.413 to 0.303 and the standard deviation of
+  `u_hat` from 0.36 to 0.89. The new values agree with an independent
+  computation of the Wang and Ho posterior mean to 2.7e-15; the old ones
+  differed from it by up to 5.4.
+
 ### Cost frontiers
 
 * **`copsfm(inefdec = FALSE)` maximised the density of `v - u` instead of
@@ -206,6 +233,45 @@ wrong result came without an error or a warning.
   take three to five times as long.
 
 ## New features
+
+### Heteroskedastic noise beyond `sfm()`
+
+* **`vhet` now exists in `ttsfm()`, `zsfm()` and `psfm("FD")`**, so the noise
+  variance can depend on covariates in those families as it already could in
+  `sfm()`:
+
+  ```r
+  ttsfm(y ~ x | z | zp, "TTHN", data = d, vhet = ~ zv)
+  zsfm(y ~ x,           "ZISF", data = d, vhet = ~ zv)
+  psfm(y ~ x | z, "FD", data = d, individual = "id", vhet = ~ zv)
+  ```
+
+  As in `sfm()` this is a named argument and not a further pipe segment: a
+  fourth segment would give one character a third meaning in one formula.
+
+  **Nothing moves when `vhet` is absent.** Every model above reproduces its
+  parameters, standard errors, log-likelihood and efficiency scores exactly,
+  bit for bit, against the previous code.
+
+  Where it is implemented is decided by where `sigma_v` actually appears in an
+  objective. `"TTNLS"` is refused, because nonlinear least squares targets
+  `E[e] = sigma_u - sigma_w` and `sigma_v` never enters it -- the package
+  already reports the scales as `NA` there. Every `psfm()` model other than
+  `"FD"` is refused: the simulated-ML families have no closed form once the
+  noise varies within a firm, and the moment-based and fixed-effects
+  estimators have no `sigma_v` in an objective at all.
+
+  `psfm("FD")` needed a genuine generalisation rather than a substitution.
+  First-differencing turns the noise into `Var(D v_i) = D diag(sigma_v,it^2) D'`,
+  a tridiagonal matrix, where the homoskedastic case is `sigma_v^2` times a
+  fixed matrix and its determinant factorises. With `sigma_v` constant the new
+  construction returns the old matrix exactly.
+
+  Each block sits on the scale its own neighbours use: log standard deviation
+  in `ttsfm()` and `zsfm()`, whose slots hold standard deviations, and log
+  variance in `psfm("FD")`, whose slot is `sig_v2`. With `vhet` given there is
+  no single `sigma_v` to report, so those rows become coefficients named
+  `Zv.`, and the fitted per-observation scale is returned as `$sigma_v`.
 
 ### Formula syntax: pipes or named arguments
 

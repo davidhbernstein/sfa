@@ -22,7 +22,8 @@
                     sim_type = c("halton", "sobol", "torus", "uniform"),
                     antithetics = FALSE, sim_burn = NULL,
                     sim_scrambling = 0L, sim_prime = NULL,
-                    uhet = NULL, hhet = NULL, scaling = NULL)}
+                    uhet = NULL, hhet = NULL, scaling = NULL,
+                    vhet = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -95,6 +96,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}, for \code{model_name} \code{"TRE_Z"} and \code{"GTRE_Z"}. This is the same block as the formula's first pipe segment and writes the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
 \item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
 \item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
+\item{vhet}{Optional one-sided formula for the determinants of the NOISE variance, as in \code{vhet = ~ zv}, for \code{model_name = "FD"} only. A different block from \code{scaling}, which drives inefficiency, and usable beside it. First-differencing turns the noise into \eqn{\mathrm{Var}(D v_i) = D\,\mathrm{diag}(\sigma_{v,it}^2)\,D'}, a tridiagonal matrix rather than \eqn{\sigma_v^2} times a fixed one; with \eqn{\sigma_v} constant that is exactly the homoskedastic matrix. The predictor is on the log VARIANCE scale, \eqn{\sigma_{v,it}^2 = \exp(z_v'\delta_v)}, matching the \code{sig_v2} slot it replaces and \pkg{sfa}'s panel convention. The other \code{model_name}s are refused: the simulated-ML families have no closed form once the noise varies within a firm, and the moment-based and fixed-effects estimators have no \eqn{\sigma_v} in an objective. With \code{vhet} given the \code{sig_v2} row becomes coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
