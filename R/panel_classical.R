@@ -190,6 +190,14 @@
 
   ssr_old <- Inf
   it <- 0L
+  ## Tracked rather than inferred from `it`. `converged <- it < maxit` reported
+  ## FALSE for a run that met its tolerance ON the last allowed iteration --
+  ## the loop breaks with it == maxit there -- so a perfectly converged fit
+  ## warned that delta and the inefficiency scores were provisional (gap A83).
+  ## `it` is initialised because seq_len(0) never enters the loop, and
+  ## `iterations = it` below would then be an undefined symbol.
+  it <- 0L
+  converged <- FALSE
   for (it in seq_len(maxit)) {
     d_i <- delta[as.integer(tf)]
     a_i <- alpha[as.integer(id)]
@@ -227,11 +235,11 @@
     ssr <- sum((r - delta[as.integer(tf)] * alpha[as.integer(id)])^2)
     if (is.finite(ssr) && abs(ssr_old - ssr) <= tol * (abs(ssr) + tol)) {
       ssr_old <- ssr
+      converged <- TRUE
       break
     }
     ssr_old <- ssr
   }
-  converged <- it < maxit
   if (!converged) {
     warning("psfm(model_name = \"LS\"): the alternating least-squares ",
       "iteration hit maxit = ", maxit, " without meeting its tolerance. ",
@@ -294,8 +302,10 @@
 ## the correlation is modelled rather than assumed away, and the remaining
 ## slopes equal the within estimates while time-invariant regressors stay
 ## identified.
-.fit_ss_re <- function(formula_x, data, individual, model_name, inefdec,
-                       x_vars_vec) {
+## x_vars_vec was a formal and was never read in the body (found with
+## codetools::checkUsagePackage(all = TRUE), gap A83). Dropped rather than
+## left: an argument that is accepted and ignored reads as a promise.
+.fit_ss_re <- function(formula_x, data, individual, model_name, inefdec) {
   cre <- identical(model_name, "SSCRE")
   form <- formula_x
   mund <- character(0)

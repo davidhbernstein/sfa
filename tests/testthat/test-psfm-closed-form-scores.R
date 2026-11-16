@@ -62,13 +62,32 @@
   ## documented to error instead, rather than reintroduce the mixed-scale
   ## product silently.
   same_scale <- is.null(fit$par_index) && is.null(fit$par_scale)
-  Hi <- tryCatch(solve(fit$opt$hessian), error = function(e) NULL)
+  ## .sfa_solve_equilibrated(), the inverter bread() ACTUALLY uses, not
+  ## solve(). The two disagree on exactly the fits the equilibrated version
+  ## was written for -- GTRE_FML's Hessian carries a 2.5e17 diagonal entry, so
+  ## LAPACK refuses the direct solve while the scaled matrix is healthy -- so
+  ## predicting bread()'s branch with solve() mispredicted it: this test took
+  ## the "no usable Hessian" path while bread() had inverted the Hessian
+  ## successfully, and passed only because vcov() happened to agree. A77's
+  ## vcov() mask removed that coincidence and the mismatch surfaced on four
+  ## platforms.
+  Hi <- .sfa_solve_equilibrated(fit$opt$hessian)
   if (!is.null(Hi)) {
     expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
       unname(Hi * N), tolerance = 1e-8, info = label)
     if (same_scale) {
-      expect_equal(unname(suppressWarnings(bread.sfareg(fit))),
-        unname(stats::vcov(fit) * N), tolerance = 1e-8, info = label)
+      ## bread() and vcov() NO LONGER AGREE EVERYWHERE, by design. vcov()'s
+      ## default path withholds a parameter's row and column wherever the fit
+      ## reports no standard error (A77); bread() answers for every parameter,
+      ## because it serves the sandwich estimator, which A77 deliberately left
+      ## alone. So compare where vcov() answers and assert nothing where it
+      ## refuses -- the line above already pins bread() in full.
+      V <- suppressWarnings(stats::vcov(fit)) * N
+      ok <- is.finite(V)
+      if (any(ok)) {
+        expect_equal(unname(suppressWarnings(bread.sfareg(fit)))[ok],
+          unname(V)[ok], tolerance = 1e-8, info = label)
+      }
     }
   } else if (same_scale) {
     ## vcov() warns here too, for the same reason and by design.

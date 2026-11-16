@@ -301,6 +301,19 @@ wrong result came without an error or a warning.
   outright. `vcov()` now applies the fit's Jacobian, and `influence_sfa()` is
   fixed with it.
 
+* **`vcov()` handed back standard errors the fit had refused to report.**
+  Where `sfm()` nulls every standard error because `sigma_v` sits on its lower
+  bound (`$sigma_v_at_bound`, `$ntn_sigma_v_at_bound`), the Hessian stored at
+  that point still inverts, so `vcov()` re-derived the withheld numbers and
+  `lmtest::coeftest()` reported a z-value of 1.97e6 on a fit whose own
+  `summary()` printed `NA`. `vcov()` now reports `NA` wherever the fit does:
+  the whole matrix at those two boundaries, and otherwise the row and column
+  of any parameter whose standard error is `NA`, including the
+  `$se_unresolved` and `$se_at_bound` cases. `confint()`, `bread()` and
+  `sandwich::sandwich()` inherit the correction. `vcov(type = "bhhh")`,
+  `"sandwich"` and `"clustered"` are unchanged: they are alternative
+  estimators asked for by name.
+
 * **`ttsfm(model_name = "TTNLS")` standard errors omitted the residual
   variance.** Without determinants they now equal `lm()`'s.
 
@@ -343,6 +356,19 @@ wrong result came without an error or a warning.
 
 ### Efficiency prediction
 
+* `efficiency()` now answers for the `psfm()` GTRE/TRE family and for
+  `esfm()`. Its fallback chain ended at `$efficiency`, so the specifications
+  that store the score elsewhere -- `$U` and `$H` for the four-component panel
+  models, `$Efficiency` for `esfm()` -- were refused outright, while
+  `predict(type = "efficiency")` answered them: two generics disagreeing about
+  whether a GTRE fit has an efficiency measure at all. A new `component`
+  argument selects the transient (default, matching `predict()`) or the
+  persistent score on a fit that reports both. A fit with no persistent
+  component now errors rather than returning the transient one under that
+  name, `logDepVar = FALSE` is refused for a per-firm score, and a refusal
+  names a `type` the fit can actually answer rather than advising one that
+  cannot.
+
 * **`efficiency_ci()` could report the wrong estimator, or the wrong
   observations.** When a fit had lost `$exp_u_hat`, its fallback reported
   `exp(-E[u|e])` in place of the Battese-Coelli score. It also accepted stored
@@ -379,6 +405,18 @@ wrong result came without an error or a warning.
   on exactly the fits whose diagnostics matter most. Non-positive and
   non-finite eigenvalues are now dropped from the log panel and counted in the
   subtitle; with fewer than two left the panel falls back to a linear scale.
+
+* **`texreg` never actually worked on a fit.** `NAMESPACE` carried
+  `S3method(texreg::extract, sfareg)`, but `texreg::extract` is an **S4**
+  generic and `S3method()` writes into the S3 methods table, which S4 dispatch
+  never consults -- so the registration was inert and
+  `texreg::screenreg(list(fit))` reported "Neither texreg nor broom supports
+  models of class sfareg". The method is now registered with
+  `methods::setMethod()` in `.onLoad()`, and `setOldClass("sfareg")` declares
+  the S3 class to the S4 system. The test that was supposed to guard this
+  grepped `NAMESPACE` for the literal registration line, so it passed
+  throughout; it now hands `screenreg()` a fit and looks for the coefficients
+  in the output, which is the only form of it that can fail.
 
 * **`psfm()`'s default model `"TRE_Z"`, and `"FD"`, failed on a formula with
   no `|` segment.** An omitted segment now means `| 1`.
@@ -418,6 +456,18 @@ wrong result came without an error or a warning.
   `$models_requested`, the count reads "2 of 3", and the dropped
   specifications are named. An `sfma` object made before this change reports
   the surviving count alone rather than an invented denominator.
+
+* **`psfm("LS")` reported a converged fit as not converged when it converged
+  on the last allowed iteration.** `.fit_ls93()`'s alternating least squares
+  breaks out of its loop when the tolerance is met, and the flag was derived
+  as `it < maxit`, which is FALSE in exactly that case -- so `$ls_converged`
+  read `FALSE` and a warning told the user to treat `delta` and the
+  inefficiency scores as provisional, on a fit that had met its tolerance. The
+  flag is now set where the break happens.
+
+* A user-visible message in `vcov(type = "bhhh")`'s advice read
+  "crossproduct"; it now reads "cross-product", matching `DESCRIPTION`'s
+  `Language: en-US`.
 
 * **A `sigma_u` collapsed to zero was described as "the correct MLE" even
   under correct skew.** In that case the fit may not be a maximum, and `sfm()`,

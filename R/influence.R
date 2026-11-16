@@ -35,25 +35,37 @@ influence_sfa <- function(object, scale = TRUE) {
   ## copsfm() and ivsfm() is a different one -- and for ivsfm("IVLIML"), which
   ## estimates reduced-form parameters it never reports, a different LENGTH.
   ## Mixing the two silently rescales every influence value, and d_i below is
-  ## only the metric-free quantity its comment claims when both agree.
+  ## only the metric-free quantity its comment claims when both agree. Which
+  ## is why the covariance below is built from the Hessian directly for EVERY
+  ## fit rather than only for the ones whose scales differ.
+  ## The ESTIMATION-scale inverse observed information, UNMASKED, on both
+  ## kinds of fit -- which is what bread() computes, so the two agree by
+  ## construction.
+  ##
+  ## NOT stats::vcov(object). Its default path withholds a parameter's row and
+  ## column wherever the fit reports no standard error (A77). That is right
+  ## for REPORTED inference and wrong here: influence_sfa() is a diagnostic,
+  ## and refusing to form it on the fits that most need diagnosing is the
+  ## failure mode gap A81 records for plot(which = 1). Taking vcov() here made
+  ## influence_sfa() error outright on psfm("GTRE", estimator = "sml") and on
+  ## GTRE_FML, which it had always handled -- caught by CI on four platforms.
+  ##
+  ## .sfa_solve_equilibrated() rather than solve(): the two differ on exactly
+  ## the fits it was written for -- GTRE_FML's Hessian carries a 2.5e17
+  ## diagonal entry, so LAPACK refuses the direct solve while the scaled
+  ## matrix is perfectly healthy -- so the old `else` branch failed there for
+  ## a units artefact. Using one inverter on both branches also removes a
+  ## difference between them that was never meant to be one.
+  ## Still needed below, where IF is mapped onto the reported scale.
   jac <- object$par_scale
   idx <- object$par_index
-  V <- if (is.null(jac) && is.null(idx)) {
-    stats::vcov(object)               # inverse observed information
-  } else {
-    Ve <- tryCatch(solve(object$opt$hessian), error = function(e) NULL)
-    if (is.null(Ve)) {
-      stop("influence_sfa(): this fit's Hessian could not be inverted on the ",
-        "estimation scale, so the influence function cannot be formed.",
-        call. = FALSE
-      )
-    }
-    Ve
-  }
-  if (any(!is.finite(V))) {
-    stop("influence_sfa(): this fit has no usable covariance matrix, so the ",
-      "influence function cannot be formed. Refit with optHessian = TRUE, or ",
-      "try vcov(type = \"bhhh\").",
+  H <- if (!is.null(object$opt)) object$opt$hessian else NULL
+  V <- if (is.null(H)) NULL else .sfa_solve_equilibrated(H)
+  if (is.null(V) || any(!is.finite(V))) {
+    stop("influence_sfa(): this fit's Hessian could not be inverted on the ",
+      "estimation scale, so the influence function cannot be formed. Refit ",
+      "with optHessian = TRUE, or try vcov(type = \"bhhh\"), which needs no ",
+      "Hessian.",
       call. = FALSE
     )
   }
