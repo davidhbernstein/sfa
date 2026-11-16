@@ -1273,6 +1273,127 @@
   invisible(Method)
 }
 
+## ---------------------------------------------------------------------------
+## Pipe segments and named determinant arguments are two ways of writing the
+## same thing, and as of 1.3.0 a caller may use either.
+##
+## WHY BOTH. Pipe POSITION carries different meanings in different families:
+## the second RHS part is sigma_u everywhere, but the third is sigma_w in
+## ttsfm() and sigma_h in psfm()'s GTRE_Z, and in zsfm("ZISF_Z") the second
+## part is not a variance at all -- it is the mixing probability's linear
+## predictor. A caller who writes `y ~ x | z | zp` has to remember which
+## family they are in to know what they just said. The named form says it:
+## `uhet = ~z, whet = ~zp`. sfm() has offered exactly this choice for sigma_u
+## since the heteroskedasticity engine landed (see the guard in R/sfm.R), and
+## SIGMA_V_DESIGN_PROPOSAL.md left the question of which syntax to standardise
+## on explicitly open. The answer is both, which is why this is an alias
+## layer and not a second mechanism.
+##
+## HOW. The named formula is spliced into the pipe position its model reads
+## that block from, and everything downstream sees one canonical formula. So
+## no likelihood, no data_proc() tier and no bounds section changes, the two
+## routes are the same code path by construction, and a test can assert the
+## two give bit-identical fits. Nothing here adds a determinant block to a
+## model that did not have one: a named argument is accepted exactly where its
+## pipe segment is accepted, and refused elsewhere with a message naming the
+## model that does have it.
+##
+## Slot k means RHS part k + 1, i.e. the k-th determinant segment.
+.sfa_het_pipe_slots <- list(
+  NHN_Z  = c(uhet = 1L),
+  NE_Z   = c(uhet = 1L),
+  TRE_Z  = c(uhet = 1L),
+  GTRE_Z = c(uhet = 1L, hhet = 2L),
+  FD     = c(scaling = 1L),
+  ZISF_Z = c(ghet = 1L),
+  LCM_Z  = c(classhet = 1L),
+  TTNE   = c(uhet = 1L, whet = 2L),
+  TTHN   = c(uhet = 1L, whet = 2L),
+  TTNLS  = c(uhet = 1L, whet = 2L)
+)
+
+## Which models offer a given named argument, for the error message.
+.sfa_het_models_for <- function(arg) {
+  hit <- names(Filter(function(sl) arg %in% names(sl), .sfa_het_pipe_slots))
+  if (!length(hit)) character(0) else hit
+}
+
+## One RHS part of a formula, as text.
+.sfa_rhs_text <- function(f, k) {
+  paste(deparse(stats::formula(f, lhs = 0, rhs = k)[[2L]], width.cutoff = 500L),
+        collapse = " ")
+}
+
+.sfa_splice_het_formula <- function(formula, model_name, het, entry) {
+  given <- het[!vapply(het, is.null, logical(1))]
+  if (!length(given)) {
+    return(formula)
+  }
+  slots <- .sfa_het_pipe_slots[[model_name]]
+
+  ## An argument this model has no block for. Say which models do, because the
+  ## usual cause is reaching for the heteroskedastic variant by its plain name
+  ## (`"GTRE"` for `"GTRE_Z"`, `"TTNE"` is fine, `"NHN"` for `"NHN_Z"`).
+  bad <- setdiff(names(given), names(slots))
+  if (length(bad)) {
+    msg <- vapply(bad, function(a) {
+      m <- .sfa_het_models_for(a)
+      paste0("`", a, "`", if (length(m)) {
+        paste0(" is for model_name ", paste(dQuote(m), collapse = ", "))
+      } else " is not a determinant argument")
+    }, character(1))
+    stop(entry, "(): ", paste(msg, collapse = "; "), ", not ",
+      dQuote(model_name), ". A determinant argument is accepted exactly where ",
+      "its pipe segment is: it is another way to write the same formula, not ",
+      "a way to add a block to a model that has none.",
+      call. = FALSE
+    )
+  }
+
+  for (a in names(given)) {
+    if (!inherits(given[[a]], "formula") || length(given[[a]]) != 2L) {
+      stop(entry, "(): `", a, "` must be a one-sided formula, as in `", a,
+        " = ~ z1 + z2`.", call. = FALSE)
+    }
+  }
+
+  f <- Formula::Formula(formula)
+  n_parts <- length(f)[2]
+
+  ## Both routes for one block. Refusing is the only safe answer -- silently
+  ## preferring one would make the formula a caller reads differ from the
+  ## model that was fitted. Same wording as sfm()'s own guard.
+  for (a in names(given)) {
+    if (n_parts >= slots[[a]] + 1L) {
+      stop(entry, "(): the determinants of this block are given twice, once in ",
+        "`formula` as pipe segment ", slots[[a]], " and once by `", a,
+        "`. Give it once.", call. = FALSE)
+    }
+  }
+
+  n_slots <- max(slots[names(given)])
+  rhs <- character(n_slots + 1L)
+  rhs[1L] <- .sfa_rhs_text(f, 1L)
+  for (k in seq_len(n_slots)) {
+    a <- names(slots)[match(k, slots)]
+    rhs[k + 1L] <- if (!is.null(a) && a %in% names(given)) {
+      paste(deparse(given[[a]][[2L]], width.cutoff = 500L), collapse = " ")
+    } else if (n_parts >= k + 1L) {
+      .sfa_rhs_text(f, k + 1L)
+    } else {
+      ## An omitted segment means `1`, which is what the pipe syntax already
+      ## means, so `whet` alone gives `y ~ x | 1 | zp` and not an error.
+      "1"
+    }
+  }
+
+  out <- stats::as.formula(
+    paste(.response_name(formula), "~", paste(rhs, collapse = " | ")),
+    env = environment(formula)
+  )
+  out
+}
+
 .check_model_formula_pipes <- function(formula, model_name) {
   ## 1. Map model names to their maximum ALLOWED RHS parts (pipes + 1) 1 pipe
   ## = 2 parts, 2 pipes = 3 parts, 0 pipes = 1 part

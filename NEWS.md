@@ -228,6 +228,37 @@ wrong result came without an error or a warning.
 
 ## New features
 
+### Formula syntax: pipes or named arguments
+
+* **A variance-determinant block may now be written either as a pipe segment
+  or as its own named argument, in every entry point that has one.** `psfm()`
+  gains `uhet`, `hhet` and `scaling`; `ttsfm()` gains `uhet` and `whet`;
+  `zsfm()` gains `ghet`; `lcsfm()` gains `classhet`. `sfm()` has offered this
+  for `sigma_u` since `uhet` landed, and `ivsfm()` has only ever taken the
+  named form.
+
+  **Pipes are unchanged and nothing has to be rewritten.** The two routes write
+  the *same* model: the named form is spliced into its pipe position before
+  anything else runs, so both are one code path and give bit-identical fits.
+  With no named argument supplied the formula is passed through untouched.
+
+  The named form exists because pipe POSITION means different things in
+  different families. The second right-hand-side part is `sigma_u` throughout,
+  but the third is `sigma_w` in `ttsfm()` and `sigma_h` in `psfm()`'s
+  `"GTRE_Z"`, and in `zsfm()`'s `"ZISF_Z"` the second part is not a variance at
+  all -- it is the mixing probability's linear predictor, which is why that
+  argument is named for `gamma` rather than for a scale. So `y ~ x | z | zp`
+  cannot be read without knowing which family it belongs to, while
+  `uhet = ~z, whet = ~zp` says it. `psfm("FD")`'s segment is the scaling
+  function of Wang and Ho (2010), so it takes the name `sfm()` already uses for
+  a scaling specification.
+
+  Giving one block both ways is an error rather than a silently resolved
+  conflict, since the formula a reader sees would otherwise differ from the
+  model that was fitted. A named argument is accepted exactly where its pipe
+  segment is: it is another spelling, not a way to add a determinant block to a
+  model that has none.
+
 ### Estimators and distributions
 
 * **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter
@@ -420,6 +451,12 @@ wrong result came without an error or a warning.
 
 ### Errors and failures
 
+* **`plot(fit, which = 1)` stopped instead of drawing when the stored Hessian
+  was all zeros.** The Hessian-spectrum panel uses `log = "y"`, which has no
+  positive range when every eigenvalue is 0, so the diagnostic was unavailable
+  on exactly the fits whose diagnostics matter most. Non-positive and
+  non-finite eigenvalues are now dropped from the log panel and counted in the
+  subtitle; with fewer than two left the panel falls back to a linear scale.
 * **A `texreg` table of a heteroskedastic fit put the variance coefficients in
   the frontier body, and `include.scales = FALSE` did not drop them.** The
   prefixed names 1.3.0 introduced for determinants -- `Zv.`, `Zu.`, `Zmu.`,
@@ -472,6 +509,14 @@ wrong result came without an error or a warning.
   feasible region.**
 
 ### Messages and reporting
+
+* **`print.sfma()` could only ever report "k of k fitted".** Both sides of the
+  "of" were built from the surviving model list, so a model-averaging run that
+  dropped a specification printed as though nothing had been dropped -- the one
+  thing that line exists to say. The requested set is now kept on the object as
+  `$models_requested`, the count reads "2 of 3", and the dropped
+  specifications are named. An `sfma` object made before this change reports
+  the surviving count alone rather than an invented denominator.
 
 * **`psfm("LS")` reported a converged fit as not converged when it converged
   on the last allowed iteration.** `.fit_ls93()`'s alternating least squares
