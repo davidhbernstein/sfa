@@ -81,7 +81,10 @@ test_that("zsfm() keeps the mixing block separate from the noise block", {
   rn <- rownames(f$out)
   ## ghet/pipe block and vhet block both present and distinguishable.
   expect_true(all(c("Zv.(Intercept)", "Zv.x1") %in% rn))
-  expect_true("z" %in% rn)
+  ## The mixing block carries #103's `Zgamma.` prefix (A80), so it cannot be
+  ## confused with the `Zv.` noise block or with a frontier regressor.
+  expect_true(all(c("Zgamma.(Intercept)", "Zgamma.z") %in% rn))
+  expect_false("z" %in% rn)
   expect_length(f$sigma_v, nrow(d))
 })
 
