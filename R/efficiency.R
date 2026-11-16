@@ -22,14 +22,53 @@
 ## not a defect: the most likely value of u really is the boundary there.
 .u_mode <- function(mu_star) pmax(mu_star, 0)
 
+## The persistent efficiency of a four-component panel fit. psfm()'s GTRE,
+## GTRE_FML and GTRE_Z store it as $H, one value per FIRM, beside the
+## transient $U, one value per observation. TRE and TRE_Z have a persistent
+## random effect but no persistent inefficiency, so they have no $H and asking
+## for one is an error rather than a silent fall back to the transient score --
+## which is exactly the component mix-up gap A9 shipped.
+.te_persistent_slot <- function(object) object$H
+
+## What this fit can actually answer, so the error never advises a `type` that
+## has nothing to return either. The old message told a GTRE fit to use
+## type = "jlms", where it stores no E[u | e] and fails again.
+.eff_nothing_stored <- function(object, type, component) {
+  mn <- if (is.null(object$model_name)) "unknown" else object$model_name
+  if (identical(component, "persistent")) {
+    return(paste0(
+      "efficiency(component = \"persistent\"): model_name \"", mn, "\" stores no ",
+      "persistent efficiency. Only the four-component panel models have one ",
+      "(psfm() \"GTRE\", \"GTRE_FML\", \"GTRE_Z\"); \"TRE\" and \"TRE_Z\" have a ",
+      "persistent random effect but no persistent INEFFICIENCY, and every ",
+      "cross-sectional model has a single component. Use the default ",
+      "component = \"transient\"."))
+  }
+  have <- c(
+    if (!is.null(object$exp_u_hat) || !is.null(object$efficiency) ||
+        !is.null(object$Efficiency) || !is.null(object$U)) "\"bc\"",
+    if (!is.null(object$u_hat) || !is.null(object$jlms) ||
+        (!is.null(object$u_posterior) && !is.null(object$u_posterior$mu_star))) "\"jlms\"",
+    if (!is.null(object$u_posterior) && !is.null(object$u_posterior$mu_star)) "\"mode\"")
+  paste0("efficiency(type = \"", type, "\"): model_name \"", mn, "\" stores ",
+    if (identical(type, "bc")) "no E[exp(-u) | e]." else
+      "neither E[u | e] nor the posterior needed to rebuild it.",
+    if (length(have))
+      paste0(" This fit can answer type = ", paste(have, collapse = " or "), ".")
+    else " This fit stores no efficiency predictor at all.")
+}
+
 efficiency <- function(object,
                        type = c("bc", "jlms", "mode"),
                        logDepVar = TRUE,
-                       newdata = NULL) {
+                       newdata = NULL,
+                       component = c("transient", "persistent")) {
   if (!inherits(object, "sfareg")) {
     stop("`object` must be an \"sfareg\" fit.", call. = FALSE)
   }
   type <- match.arg(type)
+  .component_given <- !missing(component)
+  component <- match.arg(component)
   if (length(logDepVar) != 1L || !is.logical(logDepVar) || is.na(logDepVar)) {
     stop("`logDepVar` must be TRUE or FALSE.", call. = FALSE)
   }
@@ -52,21 +91,45 @@ efficiency <- function(object,
         }
       }
       if (is.null(v)) {
-        stop("efficiency(type = \"jlms\"): this fit stores neither E[u | e] ",
-          "nor the posterior needed to rebuild it.",
-          call. = FALSE
-        )
+        ## NOT derived from the stored E[exp(-u) | e]. -log(E[exp(-u) | e]) is
+        ## not E[u | e]; they differ by Jensen's inequality, and reporting one
+        ## under the other's name is the defect gap A68 recorded for
+        ## efficiency_ci(). A fit that stores only the Battese-Coelli score is
+        ## told so, and told what it CAN answer.
+        stop(.eff_nothing_stored(object, "jlms", component), call. = FALSE)
       }
       as.numeric(v)
     },
     bc = {
-      v <- object$exp_u_hat
-      if (is.null(v)) v <- object$efficiency
+      v <- if (identical(component, "persistent")) .te_persistent_slot(object) else {
+        ## Exhaustive rather than enumerated (gap A78). The chain used to end
+        ## at $efficiency and so returned nothing for every psfm() GTRE/TRE
+        ## entry, which store the components as $U and $H, nor for esfm(),
+        ## which writes $Efficiency with a capital E. predict.sfareg() already
+        ## carried the $U rung (R/sfareg_methods.R), so the two generics
+        ## disagreed about whether a GTRE fit has an efficiency measure at all.
+        w <- object$exp_u_hat
+        if (is.null(w)) w <- object$efficiency
+        if (is.null(w)) w <- object$Efficiency
+        if (is.null(w)) w <- object$U
+        w
+      }
       if (is.null(v)) {
-        stop("efficiency(type = \"bc\"): this fit stores no E[exp(-u) | e]. ",
-          "Several models report only the JLMS predictor; use type = \"jlms\".",
-          call. = FALSE
-        )
+        stop(.eff_nothing_stored(object, "bc", component), call. = FALSE)
+      }
+      ## A four-component fit has TWO efficiencies, and "the" efficiency of
+      ## such a fit is ambiguous. Said only when the caller did not choose --
+      ## a user who passed component = explicitly already knows -- and only
+      ## once a score has actually been found, so a call that is about to
+      ## error does not also emit advice. Gap A9 was persistent inefficiency
+      ## arriving inside a transient score, so silence here is the wrong
+      ## default.
+      if (!.component_given && identical(component, "transient") &&
+          !is.null(.te_persistent_slot(object))) {
+        message("efficiency(): model_name \"",
+          if (is.null(object$model_name)) "unknown" else object$model_name,
+          "\" reports two efficiencies. Returning the TRANSIENT one; ",
+          "component = \"persistent\" gives exp(-h), one value per firm.")
       }
       -log(pmax(as.numeric(v), .SFA_CONSTANTS$MIN_POSITIVE))
     },
@@ -92,6 +155,20 @@ efficiency <- function(object,
     ## deliberately, so the default path reports the stored number rather than
     ## a round-tripped copy of it.
     return(exp(-u))
+  }
+
+  ## A persistent score carries one value per FIRM and the fitted frontier one
+  ## per OBSERVATION, so the level-scale ratio below has nothing to divide by.
+  ## Recycling would misalign silently, which is how a firm-level quantity gets
+  ## read as an observation-level one (see convergence/efficiency/, whose
+  ## te_expand() refuses for the same reason).
+  if (identical(component, "persistent")) {
+    stop("efficiency(component = \"persistent\", logDepVar = FALSE): the ",
+      "persistent score is one value per firm and the fitted frontier is one ",
+      "per observation, so there is no level-scale ratio to form. Use ",
+      "logDepVar = TRUE, which returns exp(-h) per firm.",
+      call. = FALSE
+    )
   }
 
   ## y in levels: the frontier is f(x) and TE = (f - u)/f = 1 - u/f. This is a
