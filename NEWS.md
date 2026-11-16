@@ -15,6 +15,27 @@ results**.
   When a scale has determinants, its rows stay link coefficients, now prefixed
   `Zu.` and `Zw.`.
 
+* **`sfm("NHN_Z")`, `sfm("NE_Z")` and `zsfm("ZISF_Z")` prefix their
+  variance-determinant rows, so no two reported parameters share a name.** The
+  `| z` segment carries its own intercept, so a homoskedastic segment gave two
+  rows both called `(Intercept)` -- one from the frontier, one from the
+  determinant equation -- which `print()`, `summary()` and a `texreg` table
+  could not tell apart, and which made any name-based lookup on `$out`
+  self-match silently. The determinant rows are now `Zu.`-prefixed for
+  `NHN_Z`/`NE_Z` and `Zgamma.`-prefixed for `ZISF_Z`, whose `z` block
+  parameterises the mixing rather than a variance. This is the same convention
+  `ttsfm()` adopted above and that `vhet`/`uhet` already use -- it prefixes the
+  whole block, not just the colliding intercept, because a covariate may appear
+  in both the frontier and the determinant equation.
+  **Every determinant row is renamed, not only the intercept.** Code that read
+  `coef(fit)[["(Intercept)"]]` for the determinant intercept was in fact
+  getting the FRONTIER intercept; code that read a determinant slope as
+  `coef(fit)[["z"]]` was correct and now needs `coef(fit)[["Zu.z"]]`. `$out`,
+  `coef()`, `vcov()`, `std.errors` and `t.values` all move together, and
+  positional indexing is unaffected. The package's own `$z_spec$delta` keeps
+  the raw covariate names, so `marginal_effects()` and anything reading that
+  vector are untouched.
+
 * **`inefficiency_test()` computes only the one-sided LR test by default**
   (Coelli 1995). The Wald test used to be reported alongside it, and it rejects
   about 20% of the time at a nominal 5%. Pass
@@ -436,6 +457,15 @@ wrong result came without an error or a warning.
   on exactly the fits whose diagnostics matter most. Non-positive and
   non-finite eigenvalues are now dropped from the log panel and counted in the
   subtitle; with fewer than two left the panel falls back to a linear scale.
+* **A `texreg` table of a heteroskedastic fit put the variance coefficients in
+  the frontier body, and `include.scales = FALSE` did not drop them.** The
+  prefixed names 1.3.0 introduced for determinants -- `Zv.`, `Zu.`, `Zmu.`,
+  `scale.`, `shape.` -- were matched by none of the patterns that identify a
+  scale parameter, since those look for names *starting* with `sigma`, `lambda`
+  and so on. So `sfm(vhet = ~z)` produced a table with `Zv.(Intercept)` and
+  `Zv.z` sitting beside `x1` and `x2`, unmarked, and asking for a frontier-only
+  table returned them anyway -- although the same argument correctly drops
+  `lambda` and `sigma` from a plain `NHN` fit.
 
 * **`texreg` never actually worked on a fit.** `NAMESPACE` carried
   `S3method(texreg::extract, sfareg)`, but `texreg::extract` is an **S4**

@@ -49,7 +49,10 @@ Under \code{"ZISF_Z"}, \eqn{p} varies with the covariates \eqn{z} through the li
 \itemize{
 \item \code{logit = TRUE} (the default): the logistic link \eqn{\Lambda(z'\gamma)}, which covers \eqn{(0,1)}.
 \item \code{logit = FALSE}: \eqn{\Phi(z'\gamma)/(1 + \Phi(z'\gamma))}, which is \bold{bounded above by 0.5}. Under that link no observation can be assigned a probability of full efficiency above one half, whatever the data. It is not the probit analogue of the default and is retained only for backward compatibility.
+
 }
+
+\bold{Row names.} The \eqn{z} block carries its own intercept, so its rows are prefixed \code{Zgamma.} -- naming the \eqn{\gamma} equation, since what \eqn{z} parameterizes here is the mixing probability and not a variance. Before 1.3.0 they took the raw column names, so a single-intercept \code{| z} segment produced \emph{two} rows both called \code{(Intercept)}, one from the frontier and one from the \eqn{\gamma} equation, with nothing to tell them apart.
 }
 
 \subsection{Efficiency predictions}{

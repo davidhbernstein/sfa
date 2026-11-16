@@ -29,7 +29,14 @@ test_that("the two links are reparameterizations, not different models", {
     expect_equal(as.numeric(logLik(a)), as.numeric(logLik(b)), tolerance = 1e-4, info = m)
     ## sigma_u = exp(eta) against sqrt(exp(eta)) = exp(eta/2): for the same
     ## fitted sigma_u the SD-link delta is HALF the variance-link delta.
-    expect_equal(unname(coef(a)[["z"]]) / unname(coef(b)[["z"]]), 0.5, tolerance = 0.02, info = m)
+    ## "Zu.z", not "z": the determinant rows are prefixed by block as of
+    ## 1.3.0 (gap A80), because the z design matrix carries its own intercept
+    ## and the unprefixed names collided with the frontier's. This line is the
+    ## evidence that the rename reaches further than the duplicate intercept --
+    ## it breaks any lookup of a NAMED determinant covariate too -- and NEWS
+    ## says so under "Breaking changes".
+    expect_equal(unname(coef(a)[["Zu.z"]]) / unname(coef(b)[["Zu.z"]]), 0.5,
+                 tolerance = 0.02, info = m)
     ## The frontier is untouched by the reparameterization.
     expect_equal(unname(coef(a)[["x1"]]), unname(coef(b)[["x1"]]), tolerance = 1e-3, info = m)
     expect_identical(b$z_spec$link, "var")
