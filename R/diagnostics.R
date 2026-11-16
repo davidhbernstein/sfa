@@ -300,12 +300,36 @@ plot.sfareg <- function(x, which = 1:4, n_grid = 41, span = 0.25, ...) {
   graphics::par(mfrow = grDevices::n2mfrow(npanel), mar = c(4, 4, 2.5, 1))
 
   if (1L %in% which) {
+    ## log = "y" needs a positive range. On a fit whose stored Hessian is all
+    ## zeros -- the case PR #91 (A76) addressed on the numerical side -- every
+    ## eigenvalue is 0, plot() has nothing to scale and STOPS, so the panel was
+    ## unavailable on exactly the fits whose diagnostics matter most (gap A81).
+    ## Non-positive and non-finite eigenvalues are dropped from the log panel
+    ## and counted in the subtitle; with fewer than two left there is no log
+    ## panel to draw and it falls back to a linear scale, which can show a row
+    ## of zeros. Either way it draws rather than raising.
     ev <- abs(d$hessian$eigenvalues)
-    graphics::plot(seq_along(ev), ev,
-      log = "y", type = "b", pch = 19, xlab = "eigenvalue (ordered)",
-      ylab = "|eigenvalue|", main = "Hessian spectrum"
-    )
-    graphics::mtext(sprintf("condition number %.3g", d$hessian$condition), side = 3, cex = 0.7)
+    pos <- is.finite(ev) & ev > 0
+    sub <- sprintf("condition number %.3g", d$hessian$condition)
+    if (sum(pos) >= 2L) {
+      graphics::plot(which(pos), ev[pos],
+        log = "y", type = "b", pch = 19, xlab = "eigenvalue (ordered)",
+        ylab = "|eigenvalue|", main = "Hessian spectrum",
+        xlim = c(1, max(length(ev), 1L))
+      )
+      if (any(!pos)) {
+        sub <- paste0(sub, sprintf("; %d of %d zero or non-finite, not shown",
+                                   sum(!pos), length(ev)))
+      }
+    } else {
+      graphics::plot(seq_along(ev), ev,
+        type = "b", pch = 19, xlab = "eigenvalue (ordered)",
+        ylab = "|eigenvalue|", main = "Hessian spectrum"
+      )
+      sub <- paste0(sub, sprintf("; linear scale, only %d of %d eigenvalues positive",
+                                 sum(pos), length(ev)))
+    }
+    graphics::mtext(sub, side = 3, cex = 0.7)
   }
 
   if (2L %in% which) {

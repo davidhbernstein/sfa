@@ -399,6 +399,13 @@ wrong result came without an error or a warning.
 
 ### Errors and failures
 
+* **`plot(fit, which = 1)` stopped instead of drawing when the stored Hessian
+  was all zeros.** The Hessian-spectrum panel uses `log = "y"`, which has no
+  positive range when every eigenvalue is 0, so the diagnostic was unavailable
+  on exactly the fits whose diagnostics matter most. Non-positive and
+  non-finite eigenvalues are now dropped from the log panel and counted in the
+  subtitle; with fewer than two left the panel falls back to a linear scale.
+
 * **`texreg` never actually worked on a fit.** `NAMESPACE` carried
   `S3method(texreg::extract, sfareg)`, but `texreg::extract` is an **S4**
   generic and `S3method()` writes into the S3 methods table, which S4 dispatch
@@ -441,6 +448,14 @@ wrong result came without an error or a warning.
   feasible region.**
 
 ### Messages and reporting
+
+* **`print.sfma()` could only ever report "k of k fitted".** Both sides of the
+  "of" were built from the surviving model list, so a model-averaging run that
+  dropped a specification printed as though nothing had been dropped -- the one
+  thing that line exists to say. The requested set is now kept on the object as
+  `$models_requested`, the count reads "2 of 3", and the dropped
+  specifications are named. An `sfma` object made before this change reports
+  the surviving count alone rather than an invented denominator.
 
 * **`psfm("LS")` reported a converged fit as not converged when it converged
   on the last allowed iteration.** `.fit_ls93()`'s alternating least squares
