@@ -138,7 +138,7 @@ bread.sfareg <- function(x, ...) {
       paste(dQuote(pinned, FALSE), collapse = ", ")))
   }
   if (length(huge)) {
-    msg <- c(msg, sprintf("%s carries a score of order %.0e, which cancels catastrophically in the crossproduct",
+    msg <- c(msg, sprintf("%s carries a score of order %.0e, which cancels catastrophically in the cross-product",
       paste(dQuote(huge, FALSE), collapse = ", "),
       max(apply(abs(G[, match(huge, if (!is.null(nm) && length(nm) == ncol(G)) nm else paste0("[", seq_len(ncol(G)), "]")), drop = FALSE]), 2L, max))))
   }

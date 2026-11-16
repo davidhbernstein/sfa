@@ -442,6 +442,18 @@ wrong result came without an error or a warning.
 
 ### Messages and reporting
 
+* **`psfm("LS")` reported a converged fit as not converged when it converged
+  on the last allowed iteration.** `.fit_ls93()`'s alternating least squares
+  breaks out of its loop when the tolerance is met, and the flag was derived
+  as `it < maxit`, which is FALSE in exactly that case -- so `$ls_converged`
+  read `FALSE` and a warning told the user to treat `delta` and the
+  inefficiency scores as provisional, on a fit that had met its tolerance. The
+  flag is now set where the break happens.
+
+* A user-visible message in `vcov(type = "bhhh")`'s advice read
+  "crossproduct"; it now reads "cross-product", matching `DESCRIPTION`'s
+  `Language: en-US`.
+
 * **A `sigma_u` collapsed to zero was described as "the correct MLE" even
   under correct skew.** In that case the fit may not be a maximum, and `sfm()`,
   `print()` and `summary()` now say so.
