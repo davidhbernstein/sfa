@@ -47,7 +47,10 @@ psfm <- function(formula,
                  antithetics = FALSE,
                  sim_burn = NULL,
                  sim_scrambling = 0L,
-                 sim_prime = NULL) {
+                 sim_prime = NULL,
+                 uhet = NULL,
+                 hhet = NULL,
+                 scaling = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -155,6 +158,16 @@ psfm <- function(formula,
     )
   }
 
+  ## A determinant block may be written as a pipe segment or as a named
+  ## argument, and the named one is spliced into its pipe position here, so
+  ## everything below this line sees one canonical formula and no likelihood,
+  ## data_proc() tier or bounds section had to change.
+  ##
+  ## PIPES ARE UNCHANGED. With no named argument given this returns `formula`
+  ## itself -- the identical object -- so an existing pipe call does not enter
+  ## the new path at all and cannot be affected by it.
+  formula <- .sfa_splice_het_formula(formula, model_name, list(uhet = uhet, hhet = hhet, scaling = scaling),
+                                     "psfm")
   .check_model_formula_pipes(formula, model_name)
   .check_optim_method(Method)
 

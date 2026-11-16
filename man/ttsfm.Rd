@@ -15,7 +15,7 @@ maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0, start_val = FALSE, PSopt = FALSE,
 optHessian = TRUE, inefdec = TRUE, upper = NA,
 Method = "L-BFGS-B", logit = TRUE, verbose = FALSE,
-keep_objective = FALSE, rand.psoptim = NULL)}
+keep_objective = FALSE, rand.psoptim = NULL, uhet = NULL, whet = NULL)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. Use \code{y ~ x | zu | zw} to allow determinants \code{zu} of the first one-sided component and \code{zw} of the second.}
 \item{model_name}{\code{"TTNE"}, \code{"TTHN"} or \code{"TTNLS"}; see \sQuote{Description}. Matching ignores case, so \code{"ttne"} and \code{"TTNE"} are the same choice.}
@@ -38,6 +38,8 @@ them.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0, for \code{"TTNE"} and \code{"TTHN"}. It has no effect for \code{"TTNLS"}, which is nonlinear least squares rather than maximum likelihood and so has no score; that case warns. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer seed for the particle-swarm stage, used only when \code{PSopt = TRUE}. The seed is applied to that stage alone and the caller's random-number state is restored afterwards. With \code{PSopt = TRUE} and the default \code{NULL} the swarm draws from the session's random-number state, so set a seed whenever a result must be reproducible across sessions or package versions.}
+\item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}. The same block as the formula's first pipe segment, writing the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
+\item{whet}{Optional one-sided formula for the determinants of \eqn{\sigma_w}, the SECOND one-sided component. The same block as the formula's second pipe segment. Usable on its own, in which case \eqn{\sigma_u} stays homoskedastic exactly as \code{y ~ x | 1 | zp} means. New in 1.3.0.}
 }
 \details{
 \subsection{The model}{
@@ -63,12 +65,35 @@ Like the other composed-error models in this package, \code{"TTNE"} and \code{"T
 \subsection{Iteration defaults}{
 Like \code{sfm()} and \code{zsfm()}, \code{ttsfm()}'s likelihoods are closed-form, so its optimization defaults are much higher than \code{psfm()}'s, which uses simulated maximum likelihood for several models. See \code{\link{psfm}}'s Details.
 }
+\subsection{Pipes or named arguments}{
+A determinant block may be written either as a pipe segment in \code{formula}
+or as its own named argument, and the two write the \emph{same} model: the
+named form is spliced into its pipe position before anything else runs, so both
+routes are one code path and give bit-identical fits. Pipes are unchanged and
+remain fully supported; nothing existing has to be rewritten.
+
+The named form exists because pipe POSITION means different things in different
+families. The second right-hand-side part is \eqn{\sigma_u} throughout, but the
+third is \eqn{\sigma_w} in \code{\link{ttsfm}} and \eqn{\sigma_h} in
+\code{\link{psfm}}'s \code{"GTRE_Z"}, and in \code{\link{zsfm}}'s
+\code{"ZISF_Z"} the second part is not a variance at all but the mixing
+probability's linear predictor. \code{y ~ x | z | zp} therefore cannot be read
+without knowing which family it belongs to, while
+\code{uhet = ~z, whet = ~zp} says it.
+
+Giving one block both ways is an error rather than a silently resolved
+conflict, since the formula a reader sees would otherwise differ from the model
+that was fitted. A named argument is accepted exactly where its pipe segment
+is: it is another spelling, not a way to add a determinant block to a model
+that has none.
+}
 }
 \references{Polachek, S. and Yoon, B.J. (1987). A Two-Tiered Earnings Frontier Estimation of Employer and Employee Information in the Labor Market. \emph{The Review of Economics and Statistics}.}
 \author{David H. Bernstein and Christopher F. Parmeter}
 \note{Standard errors require \code{optHessian = TRUE}.
 
 \bold{\code{"TTHN"} will drive \eqn{\sigma_v} to zero when \eqn{\sigma_u} and \eqn{\sigma_w} are close, and that is the maximum likelihood estimate rather than a failure of the optimizer.} With \eqn{\sigma_u = \sigma_w} the difference \eqn{w - u} is already symmetric and heavy-tailed, so a small normal \eqn{v} underneath it is very nearly invisible: on a 2,000-observation draw at \eqn{\sigma_u = \sigma_w = 1} the \eqn{\sigma_v} profile is flat to 0.000 log units from \eqn{10^{-6}} upward and decreasing above 0.01, with no interior maximum, and the collapsed fit beats the true parameter values by 1.29 log units. The two-tier structure is identified; the noise underneath two equal and opposite tiers is not. Asymmetric \eqn{(\sigma_u, \sigma_w)} does not show this.}
+
 \value{
 An object of class \code{"sfareg"} containing the following components:
 

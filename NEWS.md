@@ -207,6 +207,37 @@ wrong result came without an error or a warning.
 
 ## New features
 
+### Formula syntax: pipes or named arguments
+
+* **A variance-determinant block may now be written either as a pipe segment
+  or as its own named argument, in every entry point that has one.** `psfm()`
+  gains `uhet`, `hhet` and `scaling`; `ttsfm()` gains `uhet` and `whet`;
+  `zsfm()` gains `ghet`; `lcsfm()` gains `classhet`. `sfm()` has offered this
+  for `sigma_u` since `uhet` landed, and `ivsfm()` has only ever taken the
+  named form.
+
+  **Pipes are unchanged and nothing has to be rewritten.** The two routes write
+  the *same* model: the named form is spliced into its pipe position before
+  anything else runs, so both are one code path and give bit-identical fits.
+  With no named argument supplied the formula is passed through untouched.
+
+  The named form exists because pipe POSITION means different things in
+  different families. The second right-hand-side part is `sigma_u` throughout,
+  but the third is `sigma_w` in `ttsfm()` and `sigma_h` in `psfm()`'s
+  `"GTRE_Z"`, and in `zsfm()`'s `"ZISF_Z"` the second part is not a variance at
+  all -- it is the mixing probability's linear predictor, which is why that
+  argument is named for `gamma` rather than for a scale. So `y ~ x | z | zp`
+  cannot be read without knowing which family it belongs to, while
+  `uhet = ~z, whet = ~zp` says it. `psfm("FD")`'s segment is the scaling
+  function of Wang and Ho (2010), so it takes the name `sfm()` already uses for
+  a scaling specification.
+
+  Giving one block both ways is an error rather than a silently resolved
+  conflict, since the formula a reader sees would otherwise differ from the
+  model that was fitted. A named argument is accepted exactly where its pipe
+  segment is: it is another spelling, not a way to add a determinant block to a
+  model that has none.
+
 ### Estimators and distributions
 
 * **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter

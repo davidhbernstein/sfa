@@ -13,7 +13,7 @@ data, maxit.bobyqa = 10000,maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0,start_val = FALSE,PSopt = FALSE, 
 optHessian = TRUE, inefdec = TRUE, upper = NA, 
 Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,
-keep_objective = FALSE,rand.psoptim = NULL)}
+keep_objective = FALSE,rand.psoptim = NULL, ghet = NULL)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. For \code{"ZISF_Z"} a second part gives the covariates of the probability of full efficiency: \code{y ~ x1 + x2 | z1}.}
 \item{model_name}{\code{"ZISF"} or \code{"ZISF_Z"}; see \sQuote{Description}. Matching ignores case, so \code{"zisf"} and \code{"ZISF"} are the same choice.}
@@ -35,6 +35,7 @@ them.}
 \item{verbose}{Logical. Print optimization progress messages? Default is \code{FALSE}.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}
 \item{rand.psoptim}{Integer. Seed for replication of psoptim. Defaults to \code{NULL}.}
+\item{ghet}{Optional one-sided formula for the determinants of the mixing probability's linear predictor \eqn{z'\gamma}, for \code{model_name = "ZISF_Z"}, as in \code{ghet = ~ z1}. The same block as the formula's pipe segment, writing the same model; give it one way or the other, not both. Named for \eqn{\gamma} rather than for a variance, because what \eqn{z} parameterizes here is the probability of full efficiency and not a scale. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
 }
 \details{
 \subsection{The model}{
@@ -63,6 +64,28 @@ The prediction of \eqn{u} over both regimes is \code{(1 - post.prob) * jlms}. Th
 \subsection{Iteration defaults}{
 Like \code{sfm()}, \code{zsfm()} has a closed-form likelihood, so its optimization defaults (thousands of iterations) are much higher than \code{psfm()}'s, which uses simulated maximum likelihood for several models. See \code{\link{psfm}}'s Details.
 }
+\subsection{Pipes or named arguments}{
+A determinant block may be written either as a pipe segment in \code{formula}
+or as its own named argument, and the two write the \emph{same} model: the
+named form is spliced into its pipe position before anything else runs, so both
+routes are one code path and give bit-identical fits. Pipes are unchanged and
+remain fully supported; nothing existing has to be rewritten.
+
+The named form exists because pipe POSITION means different things in different
+families. The second right-hand-side part is \eqn{\sigma_u} throughout, but the
+third is \eqn{\sigma_w} in \code{\link{ttsfm}} and \eqn{\sigma_h} in
+\code{\link{psfm}}'s \code{"GTRE_Z"}, and in \code{\link{zsfm}}'s
+\code{"ZISF_Z"} the second part is not a variance at all but the mixing
+probability's linear predictor. \code{y ~ x | z | zp} therefore cannot be read
+without knowing which family it belongs to, while
+\code{uhet = ~z, whet = ~zp} says it.
+
+Giving one block both ways is an error rather than a silently resolved
+conflict, since the formula a reader sees would otherwise differ from the model
+that was fitted. A named argument is accepted exactly where its pipe segment
+is: it is another spelling, not a way to add a determinant block to a model
+that has none.
+}
 }
 \references{Kumbhakar, S.C., Parmeter, C.F. and Tsionas, E.G. (2013) 'A zero inefficiency stochastic frontier model', \emph{Journal of Econometrics}, 172(1), pp. 66-76. doi:10.1016/j.jeconom.2012.08.021.
 
@@ -70,6 +93,7 @@ Jondrow, J., Lovell, C.A.K., Materov, I.S. and Schmidt, P. (1982) 'On the estima
 \author{Christopher F. Parmeter and David H. Bernstein}
 \note{Standard errors require \code{optHessian = TRUE}.}
 \seealso{\code{\link{sfm}}, \code{\link{psfm}}, \code{\link{ttsfm}}, \code{\link{sfareg-methods}}, \code{\link{panel89}}}
+
 \value{
 An object of class \code{"sfareg"} containing the following components:
 

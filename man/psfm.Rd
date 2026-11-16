@@ -21,7 +21,8 @@
                     kss_smooth = "auto", kss_L_max = 7L, mundlak = NULL,
                     sim_type = c("halton", "sobol", "torus", "uniform"),
                     antithetics = FALSE, sim_burn = NULL,
-                    sim_scrambling = 0L, sim_prime = NULL)}
+                    sim_scrambling = 0L, sim_prime = NULL,
+                    uhet = NULL, hhet = NULL, scaling = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -91,6 +92,9 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
 \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
+\item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}, for \code{model_name} \code{"TRE_Z"} and \code{"GTRE_Z"}. This is the same block as the formula's first pipe segment and writes the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
+\item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
+\item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
@@ -300,6 +304,28 @@ Standard errors come from the numerical Hessian and need \code{optHessian = TRUE
 
 \subsection{Efficiency prediction}{
 The GTRE family returns transient efficiency \code{U} per observation and persistent efficiency \code{H} per firm. \code{"TRE"}-type models return \code{U}. \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"}, \code{"PL80"} and \code{"BC92"} return \code{exp_u_hat}, \eqn{E[\exp(-u)|\epsilon]} (Battese and Coelli 1988), generalized to the panel case for the error-components models by pooling a firm's observations and scaling by \eqn{B_{it}}. The distribution-free estimators return \code{u_hat} and \code{exp_u_hat} measured from the best firm. \sQuote{Value} gives the details per model; \code{\link{efficiency}} gives a common interface.
+}
+\subsection{Pipes or named arguments}{
+A determinant block may be written either as a pipe segment in \code{formula}
+or as its own named argument, and the two write the \emph{same} model: the
+named form is spliced into its pipe position before anything else runs, so both
+routes are one code path and give bit-identical fits. Pipes are unchanged and
+remain fully supported; nothing existing has to be rewritten.
+
+The named form exists because pipe POSITION means different things in different
+families. The second right-hand-side part is \eqn{\sigma_u} throughout, but the
+third is \eqn{\sigma_w} in \code{\link{ttsfm}} and \eqn{\sigma_h} in
+\code{\link{psfm}}'s \code{"GTRE_Z"}, and in \code{\link{zsfm}}'s
+\code{"ZISF_Z"} the second part is not a variance at all but the mixing
+probability's linear predictor. \code{y ~ x | z | zp} therefore cannot be read
+without knowing which family it belongs to, while
+\code{uhet = ~z, whet = ~zp} says it.
+
+Giving one block both ways is an error rather than a silently resolved
+conflict, since the formula a reader sees would otherwise differ from the model
+that was fitted. A named argument is accepted exactly where its pipe segment
+is: it is another spelling, not a way to add a determinant block to a model
+that has none.
 }
 }
 \references{Filippini and Greene (2016, JPA); Colombi, Kumbhakar, Martini and Vittadini (2014, JPA) on the closed-skew-normal four-component likelihood, with Colombi (2010) and Colombi, Martini and Vittadini (2011) on the two-step estimator used to seed it; Greene (2005, JoE and JPA); Wang and Ho (2010, JoE); Chen, Schmidt and Wang (2014, JoE); Kumbhakar (1990, JoE); Pitt and Lee (1980, JoE); Battese and Coelli (1992, JPA); Battese and Coelli (1988, JoE); Jondrow, Lovell, Materov and Schmidt (1982, JoE); Schmidt and Sickles (1984, JBES)}
