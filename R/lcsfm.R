@@ -17,7 +17,8 @@ lcsfm <- function(formula,
                   Method = "L-BFGS-B",
                   verbose = FALSE,
                   keep_objective = FALSE,
-                  rand.psoptim = NULL) {
+                  rand.psoptim = NULL,
+                  classhet = NULL) {
   ## call/model_name resolution ahead of .check_model_formula_pipes() -- see
   ## sfm.R's identical fix for why.
   call <- match.call()
@@ -41,6 +42,16 @@ lcsfm <- function(formula,
     flags = list(optHessian = optHessian, PSopt = PSopt, inefdec = inefdec)
   )
 
+  ## A determinant block may be written as a pipe segment or as a named
+  ## argument, and the named one is spliced into its pipe position here, so
+  ## everything below this line sees one canonical formula and no likelihood,
+  ## data_proc() tier or bounds section had to change.
+  ##
+  ## PIPES ARE UNCHANGED. With no named argument given this returns `formula`
+  ## itself -- the identical object -- so an existing pipe call does not enter
+  ## the new path at all and cannot be affected by it.
+  formula <- .sfa_splice_het_formula(formula, model_name, list(classhet = classhet),
+                                     "lcsfm")
   .check_model_formula_pipes(formula, model_name)
   .check_optim_method(Method)
 
