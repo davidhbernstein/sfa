@@ -13,7 +13,8 @@ data, maxit.bobyqa = 10000,maxit.psoptim = 1000, maxit.optim = 1000,
 REPORT = 1, trace = 0, pgtol = 0,start_val = FALSE,PSopt = FALSE, 
 optHessian = TRUE, inefdec = TRUE, upper = NA, 
 Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,
-keep_objective = FALSE,rand.psoptim = NULL, ghet = NULL)}
+keep_objective = FALSE,rand.psoptim = NULL, ghet = NULL,
+                   vhet = NULL)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. For \code{"ZISF_Z"} a second part gives the covariates of the probability of full efficiency: \code{y ~ x1 + x2 | z1}.}
 \item{model_name}{\code{"ZISF"} or \code{"ZISF_Z"}; see \sQuote{Description}. Matching ignores case, so \code{"zisf"} and \code{"ZISF"} are the same choice.}
@@ -36,6 +37,7 @@ them.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. \code{FALSE} by default, because a closure carries its enclosing environment, so a fit saved with one serializes the estimation data alongside the results.}
 \item{rand.psoptim}{Integer. Seed for replication of psoptim. Defaults to \code{NULL}.}
 \item{ghet}{Optional one-sided formula for the determinants of the mixing probability's linear predictor \eqn{z'\gamma}, for \code{model_name = "ZISF_Z"}, as in \code{ghet = ~ z1}. The same block as the formula's pipe segment, writing the same model; give it one way or the other, not both. Named for \eqn{\gamma} rather than for a variance, because what \eqn{z} parameterizes here is the probability of full efficiency and not a scale. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
+\item{vhet}{Optional one-sided formula for the determinants of \eqn{\sigma_v}, the NOISE scale, as in \code{vhet = ~ zv}, for both \code{model_name}s. A different block from \code{ghet} and usable beside it: \code{ghet} parameterizes the PROBABILITY of full efficiency and \code{vhet} the noise scale within the frontier regime. The predictor is on the log standard-deviation scale, \eqn{\sigma_{v,i} = \exp(z_v'\delta_v)}. With \code{vhet} given the single \code{sigv} row becomes coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
 }
 \details{
 \subsection{The model}{
