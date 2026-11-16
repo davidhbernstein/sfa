@@ -8,7 +8,7 @@ dependent variable may be on.
 }
 \usage{
 efficiency(object, type = c("bc", "jlms", "mode"), logDepVar = TRUE,
-           newdata = NULL)
+           newdata = NULL, component = c("transient", "persistent"))
 }
 \arguments{
 \item{object}{An \code{"sfareg"} fit.}
@@ -23,6 +23,13 @@ efficiency(object, type = c("bc", "jlms", "mode"), logDepVar = TRUE,
 \item{newdata}{Data to rebuild the fitted frontier from, needed only when
   \code{logDepVar = FALSE}. Supply it when the data used for the fit can no
   longer be recovered from the stored call.}
+\item{component}{Which efficiency, for the four-component panel models that
+  report two. \code{"transient"} (the default) is \eqn{E[\exp(-u_{it}) \mid
+  \cdot]}, one value per observation; \code{"persistent"} is
+  \eqn{E[\exp(-h_i) \mid \cdot]}, one value per \emph{firm}. Only
+  \code{psfm()}'s \code{"GTRE"}, \code{"GTRE_FML"} and \code{"GTRE_Z"} have
+  a persistent component; asking any other fit for one is an error rather than
+  a silent fall back to the transient score.}
 }
 \details{
 \bold{Which predictor.} The three differ in what they report about the same
@@ -35,6 +42,19 @@ tail. That is a property of the predictor rather than a defect: where the
 posterior mean of \eqn{u} is negative the single most likely value really is the
 boundary. It is available only for the models whose posterior is a truncated
 normal (\code{"NHN"}, \code{"NHN_Z"}, \code{"NE"}, \code{"NTN"}).
+
+\bold{Which component.} A four-component panel fit has two efficiencies and
+not one: a transient \eqn{u_{it}} that varies within firm and a persistent
+\eqn{h_i} that does not. \code{efficiency()} returns the transient score by
+default, matching \code{\link{predict.sfareg}}, and says so once per call
+when the fit has both and the caller did not choose. \code{"TRE"} and
+\code{"TRE_Z"} have a persistent random \emph{effect} but no persistent
+\emph{inefficiency}, so they have no second score.
+
+Note the lengths differ: a persistent score has one value per firm, so it
+cannot be placed beside observation-level quantities without expanding it, and
+\code{logDepVar = FALSE} is refused for it outright -- the fitted frontier is
+observation-level and there is no ratio to form.
 
 \bold{Which scale.} The package elsewhere assumes throughout that the
 dependent variable is logged, which is the usual case and makes \eqn{u} a
@@ -50,7 +70,8 @@ near zero output. A warning is issued if any score comes back negative or
 non-finite, since silence there would be the real failure.
 }
 \value{
-A numeric vector of efficiency scores, one per observation used in the fit.
+A numeric vector of efficiency scores: one per observation used in the fit, or
+one per firm when \code{component = "persistent"}.
 }
 \seealso{
 \code{\link{efficiency_ci}} for interval estimates of the same quantity.

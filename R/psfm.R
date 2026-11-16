@@ -341,7 +341,7 @@ psfm <- function(formula,
     if (model_name %in% c("SSRE", "SSCRE")) {
       Start.Time <- start.time()
       data <- data[rownames(data_x), , drop = FALSE]
-      RE <- .fit_ss_re(formula_x, data, individual, model_name, inefdec, x_vars_vec)
+      RE <- .fit_ss_re(formula_x, data, individual, model_name, inefdec)
       End.Time <- end.time(Start.Time)
 
       out <- matrix(0, nrow = 3, ncol = length(RE$beta))
