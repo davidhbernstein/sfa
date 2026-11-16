@@ -21,7 +21,8 @@
                     kss_smooth = "auto", kss_L_max = 7L, mundlak = NULL,
                     sim_type = c("halton", "sobol", "torus", "uniform"),
                     antithetics = FALSE, sim_burn = NULL,
-                    sim_scrambling = 0L, sim_prime = NULL, uhet = NULL, hhet = NULL, scaling = NULL)}
+                    sim_scrambling = 0L, sim_prime = NULL,
+                    uhet = NULL, hhet = NULL, scaling = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -43,9 +44,6 @@
   \item{\code{"BC92"}}{Battese and Coelli (1992): exponential time decay.}
   \item{\code{"PL80_MVTN"}}{Pitt and Lee's (1981) Model III: inefficiency varies over time and is CORRELATED within a firm, through a multivariate normal truncated to the negative orthant. This is the likelihood from their Appendix 2, which they derived but did not use, calling the T-dimensional integrals intractable. Balanced panels only. See \code{\link{PL80_MVTN}}.}
   \item{\code{"K1990"}, \code{"K1990modified"}}{Kumbhakar (1990) time patterns for inefficiency.}
-\item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}, for \code{model_name} \code{"TRE_Z"} and \code{"GTRE_Z"}. This is the same block as the formula's first pipe segment and writes the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
-\item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
-\item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
 } Matching ignores case, so \code{"tre"}, \code{"TRE"} and \code{"Tre"} are the same choice.}
   \item{data}{A panel data set. This may be an ordinary \code{data.frame} (or tibble/data.table), in which case the panel index is built from the \code{individual} and \code{time} arguments, or a \code{plm::pdata.frame} that already carries an index, which is used as-is.}
   \item{maxit.bobyqa}{Maximum number of iterations for the bobyqa optimization routine}
@@ -94,6 +92,9 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
 \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
+\item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}, for \code{model_name} \code{"TRE_Z"} and \code{"GTRE_Z"}. This is the same block as the formula's first pipe segment and writes the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
+\item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
+\item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
