@@ -326,6 +326,7 @@ A scale parameter on its zero boundary is often the maximum likelihood estimate 
 \itemize{
   \item \code{sigma_u_at_bound} with \code{wrong_skew}: the residuals are skewed the wrong way, and \eqn{\sigma_u = 0} is the estimate (Waldman 1982). Read it as no evidence of inefficiency. With correctly skewed residuals, a collapse is suspect and \code{sfm()} warns.
   \item \code{thn_sigma_u_at_bound} (\code{"tHN"}): the noise tail absorbed the inefficiency.
+  \item \code{nw_on_ridge} (\code{"NW"}): the Weibull shape reached its cap of 20. On such samples the likelihood rises without limit as \eqn{k} grows, with \eqn{\sigma_u} and the intercept growing together, so there is no finite maximum and \eqn{\sigma_u}, the intercept and the efficiency scores are not identified. \code{sfm()} also warns.
   \item \code{ntn_sigma_v_at_bound} (\code{"NTN"}) and \code{sigma_v_at_bound} (\code{"NHN_Z"}, \code{"NE_Z"}, \code{"NR"}): \eqn{\sigma_v} collapsed and the fit is a deterministic frontier. Standard errors are \code{NA}.
 }
 Each is described under \sQuote{Value}. In every case treat the efficiency scores as uninformative. See \link{sfa-wrongskew} and \code{\link{skewness_test}} for tests and remedies.

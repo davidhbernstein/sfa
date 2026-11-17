@@ -1728,6 +1728,21 @@
   out
 }
 
+## log[exp(c e + c^2 sv^2/2) Phi(-e/sv - c sv)], with NE's switch so no large
+## terms cancel as sv -> 0. notes/code_history/matrix_utils.md (A92).
+.log_exp_phi <- function(e, sv, cc) {
+  n <- max(length(e), length(sv), length(cc))
+  e <- rep_len(e, n); sv <- rep_len(sv, n); cc <- rep_len(cc, n)
+  z <- -e / sv - cc * sv
+  hi <- z > .SFA_CONSTANTS$NE_TILT_SWITCH
+  out <- numeric(n)
+  if (any(!hi)) out[!hi] <- -e[!hi]^2 / (2 * sv[!hi]^2) + .log_phi_tilt(z[!hi])
+  if (any(hi)) {
+    out[hi] <- cc[hi] * e[hi] + cc[hi]^2 * sv[hi]^2 / 2 + stats::pnorm(z[hi], log.p = TRUE)
+  }
+  out
+}
+
 
 ## log(exp(a) + exp(b)), elementwise, without leaving the log scale.
 .log_add2 <- function(a, b) {
@@ -1788,6 +1803,44 @@
     return(NULL)
   }
   out
+}
+
+## Largest Weibull shape an NW fit may take: past it the likelihood can rise
+## forever along a ridge. notes/code_history/sfm.md (A91).
+.NW_K_RIDGE <- 20
+
+## Helper: starting values for the normal-Weibull model (A91).
+## notes/code_history/sfm.md.
+.nw_start_candidates <- function(epsilon_hat, beta_0_st, beta_hat,
+                                 k_grid = c(1, 1.5, 2, 3, 5)) {
+  e <- as.numeric(epsilon_hat)
+  e <- e - mean(e)
+  if (!length(e) || any(!is.finite(e))) {
+    return(list())
+  }
+  k2 <- mean(e^2)
+  k3 <- mean(e^3)
+  sd_e <- sqrt(max(k2, .Machine$double.eps))
+  kk <- sqrt(2 / pi) * (1 - 4 / pi) ## < 0
+  eu_hn <- if (is.finite(k3) && k3 < 0) sqrt(2 / pi) * (k3 / kk)^(1 / 3) else NA_real_
+  eu <- if (is.finite(eu_hn) && eu_hn > 0) eu_hn else 0.5 * sd_e
+  eu <- min(max(eu, 1e-3), 10 * sd_e)
+  mk <- function(sv, su, k) {
+    if (!all(is.finite(c(sv, su, k))) || sv <= 0 || su <= 0 || k <= 0) {
+      return(NULL)
+    }
+    b0 <- if (is.na(beta_0_st)) NULL else unname(beta_0_st) + su * gamma(1 + 1 / k)
+    unname(c(sv, su, k, b0, beta_hat))
+  }
+  cands <- list()
+  for (k in k_grid) {
+    g1 <- gamma(1 + 1 / k)
+    vk <- gamma(1 + 2 / k) - g1^2 ## Var(u) / sigma_u^2
+    su <- eu / g1
+    cands <- c(cands, list(mk(sqrt(max(k2 - vk * su^2, (0.05 * sd_e)^2)), su, k)))
+    cands <- c(cands, list(mk(0.05 * sd_e, sqrt(k2 / vk), k)))
+  }
+  Filter(Negate(is.null), cands)
 }
 
 ## Helper: starting values for the normal-gamma model

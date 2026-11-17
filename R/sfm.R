@@ -909,9 +909,8 @@ sfm <- function(formula,
         ## Both terms are exponentially tilted Gaussians with the same defect
         ## as NE above, so both go through .log_phi_tilt().  The shared
         ## -eps^2/(2 sigma_v^2) cancels out of d entirely.
-        q <- eps^2 / (2 * sigv^2)
-        lt1 <- -q + .log_phi_tilt(-eps / sigv - lam * sigv)
-        lt2 <- -q + .log_phi_tilt(-eps / sigv - 2 * lam * sigv)
+        lt1 <- .log_exp_phi(eps, sigv, lam)
+        lt2 <- .log_exp_phi(eps, sigv, 2 * lam)
         d <- pmin(lt2 - lt1, -.Machine$double.eps) ## T2 < T1 by construction
         like <- log(2 * lam) + lt1 + log(-expm1(d))
       }
@@ -936,7 +935,7 @@ sfm <- function(formula,
         ## A large FINITE penalty, not .Machine$double.xmax: optim()'s
         ## finite-difference gradient differences the objective.
         if (!is.finite(sigv) || !is.finite(sigu) || !is.finite(shp) ||
-          sigv <= 0 || sigu <= 0 || (model_name == "NW" && shp <= 0)) {
+          sigv <= 0 || sigu <= 0 || (model_name == "NW" && (shp <= 0 || shp > .NW_K_RIDGE))) {
           return(1e12)
         }
         if (integration == "quadrature") {
@@ -1035,11 +1034,8 @@ sfm <- function(formula,
         ## sig_v^2/(2 sig_u^2) + eps/sig_u raised by A cancels EXACTLY against
         ## the same terms inside log Phi(aa), leaving -eps^2/(2 sig_v^2). Formed
         ## as two pieces it cancels catastrophically as sig_u -> 0 (issue #28).
-        q <- eps^2 / (2 * sig_v^2)
-        aa <- -sig_v / sig_u - eps / sig_v
-        bb <- -sig_v * (1 + lam) / sig_u - eps / sig_v
-        l1 <- log(2) - q + .log_phi_tilt(aa)
-        l2 <- -q + .log_phi_tilt(bb)
+        l1 <- log(2) + .log_exp_phi(eps, sig_v, 1 / sig_u)
+        l2 <- .log_exp_phi(eps, sig_v, (1 + lam) / sig_u)
         like <- log1p(lam) - log(2 * lam + 1) - log(sig_u) +
           l1 + log(-expm1(pmin(l2 - l1, -.Machine$double.eps)))
       }
@@ -1249,12 +1245,12 @@ sfm <- function(formula,
         .nhn_ref <- append(.nh$par, 0, after = 2L)
       }
     }
-    if (model_name %in% c("NG", "NNAK") && isFALSE(is.numeric(start_val))) {
-      .cand <- if (model_name == "NG") {
-        .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat)
-      } else {
-        .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat)
-      }
+    if (model_name %in% c("NG", "NNAK", "NW") && isFALSE(is.numeric(start_val))) {
+      .cand <- switch(model_name,
+        NG = .ng_start_candidates(epsilon_hat, beta_0_st, beta_hat),
+        NNAK = .nnak_start_candidates(epsilon_hat, beta_0_st, beta_hat),
+        NW = .nw_start_candidates(epsilon_hat, beta_0_st, beta_hat)
+      )
       ## NNAK's variance-share candidates are ranked apart from the rest.
       .n_main <- attr(.cand, "n_main")
       .n_main <- if (is.null(.n_main)) length(.cand) else .n_main
@@ -1304,12 +1300,14 @@ sfm <- function(formula,
           idx[order(.obj[idx])][seq_len(min(k, length(idx)))]
         }
         .ord <- c(.top(which(!.is_extra), 3L), .top(which(.is_extra), 2L))
+        ## NW: polished with k capped at .NW_K_RIDGE (A91).
+        .up_ms <- if (model_name == "NW") replace(rep(Inf, length(lower_bob)), 3L, .NW_K_RIDGE) else Inf
         .fits <- Filter(Negate(is.null), lapply(.ord, function(i) {
           tryCatch(
             suppressWarnings(
-              stats::optim(.cand[[i]], like.fn,
+              stats::optim(pmin(.cand[[i]], .up_ms), like.fn,
                 method = "L-BFGS-B",
-                lower = lower_bob, control = list(maxit = 200)
+                lower = lower_bob, upper = .up_ms, control = list(maxit = 200)
               )
             ),
             error = function(e) NULL
@@ -1328,7 +1326,7 @@ sfm <- function(formula,
       }
     }
 
-    ## The start the stages below are handed -- for NG and NNAK, the polished multistart
+    ## The start the stages below are handed -- for NG, NNAK and NW, the polished multistart
     ## point -- kept so the fit can be checked against it (gap A25).
     .start_ref <- start_v
 
@@ -1393,7 +1391,7 @@ sfm <- function(formula,
     ## NE, and ended some of them lower than before.
     ## NTN joins on the same terms (issue #55): checked at the end against the
     ## mu = 0 fit, not started from it, for the reason recorded above.
-    if (optHessian == TRUE && model_name %in% c("NG", "NNAK", "NTN")) {
+    if (optHessian == TRUE && model_name %in% c("NG", "NNAK", "NTN", "NW")) {
       for (.ref in Filter(Negate(is.null), list(.start_ref, .ne_ref, .nhn_ref))) {
         .ref_val <- tryCatch(like.fn(.ref), error = function(e) NA_real_)
         if (is.finite(.ref_val) && (!is.finite(opt$value) || opt$value > .ref_val + 1e-6)) {
@@ -1607,10 +1605,8 @@ sfm <- function(formula,
       sig_u <- opt$par[2]
       lam <- 1 / sig_u
       eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
-      lt1 <- -(eps_hat^2 / (2 * sig_v^2)) +
-        .log_phi_tilt(-eps_hat / sig_v - lam * sig_v)
-      lt2 <- -(eps_hat^2 / (2 * sig_v^2)) +
-        .log_phi_tilt(-eps_hat / sig_v - 2 * lam * sig_v)
+      lt1 <- .log_exp_phi(eps_hat, sig_v, lam)
+      lt2 <- .log_exp_phi(eps_hat, sig_v, 2 * lam)
       ## SIGNED mixture, not a convex one: the GE density is a DIFFERENCE of
       ## two exponential pieces.
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
@@ -1798,8 +1794,8 @@ sfm <- function(formula,
       ## lt1 is used below, and adding a large common term to both only to
       ## subtract it again costs real digits -- measured, at eps_hat/sig_v =
       ## 1e6 it loses 5 significant figures of d.
-      lt1 <- log(2) + .log_phi_tilt(-eps_hat / sig_v - r1 * sig_v)
-      lt2 <- .log_phi_tilt(-eps_hat / sig_v - r2 * sig_v)
+      lt1 <- log(2) + .log_exp_phi(eps_hat, sig_v, r1)
+      lt2 <- .log_exp_phi(eps_hat, sig_v, r2)
       d <- pmin(lt2 - lt1, -.Machine$double.eps)
       w1 <- -1 / expm1(d)
       w2 <- w1 - 1
@@ -1927,6 +1923,21 @@ sfm <- function(formula,
     ## NLN and NW record how u was integrated out, which simulation_se() reads.
     if (model_name %in% c("NLN", "NW")) {
       results$integration <- integration
+    }
+    ## NW at its shape cap is on the no-maximum ridge (A91).
+    if (model_name == "NW") {
+      .k_hat <- unname(opt$par[3L])
+      results$nw_on_ridge <- isTRUE(is.finite(.k_hat) && .k_hat > 0.99 * .NW_K_RIDGE)
+      if (results$nw_on_ridge) {
+        warning("sfm(model_name = \"NW\"): the Weibull shape k = ",
+          signif(.k_hat, 4), " is at its upper limit of ", .NW_K_RIDGE, ". The ",
+          "likelihood is still rising along a ridge where u is nearly constant ",
+          "and the intercept absorbs it, so it has no finite maximum, and ",
+          "sigma_u, the intercept and the efficiency scores are not identified. ",
+          "Consider sfm(model_name = \"NHN\") or another inefficiency distribution.",
+          call. = FALSE
+        )
+      }
     }
 
     ## tHN additionally reports the boundary flag and the multi-start diagnostic.

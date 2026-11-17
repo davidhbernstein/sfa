@@ -49,7 +49,7 @@
       ## The exponential tilt and log Phi both diverge as gamma -> 0 and cancel;
       ## .log_phi_tilt() does that cancellation in closed form, as sfm()'s "NE"
       ## branch does.
-      -log(g) - w^2 / (2 * sigma_v^2) + .log_phi_tilt(-w / sigma_v - sigma_v / g)
+      -log(g) + .log_exp_phi(w, sigma_v, 1 / g)
     } else {
       B <- a0 * g
       z2 <- w / sigma_v - sigma_v / g

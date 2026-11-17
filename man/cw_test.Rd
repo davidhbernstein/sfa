@@ -11,7 +11,7 @@ cw_test(x, model_name = NULL, tau = 1, type = c("cosine", "sine"),
 -- ordinary least squares residuals are enough.}
 \item{model_name}{The distributional pair under the null. Required when
 \code{x} is a numeric vector; taken from the fit otherwise. One of
-\code{"NHN"}, \code{"NE"}, \code{"NR"}, \code{"NU"}, \code{"NGE"}.}
+\code{"NHN"}, \code{"NE"}, \code{"NR"}, \code{"NGE"}. \code{"NU"} is refused: a uniform inefficiency is symmetric, so the second and third moments the estimator matches cannot identify it.}
 \item{tau}{Frequency at which the characteristic function is compared. Chen
 and Wang suggest a value around 1, and a \emph{single} frequency: combining
 several oversizes the test (see Details).}
