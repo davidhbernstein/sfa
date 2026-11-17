@@ -127,6 +127,22 @@ wrong result came without an error or a warning.
 
 ### `sfm()`
 
+* **`"NW"` often stopped at the least-squares point**, with `sigu` near 0,
+  below a finite interior maximum: on one reported sample 31.67 against 38.03.
+  It now starts from a grid over the Weibull shape and the noise share and
+  keeps the best, as `"NG"` and `"NNAK"` do. The shape is capped at 20: on
+  some samples the likelihood rises forever as `k` grows, with `sigu` and the
+  intercept growing together and no finite maximum, and a fit that reaches
+  the cap now says so in a warning and in `$nw_on_ridge`.
+
+* **`"NGE"` and `"TSL"` overstated their log-likelihood as `sigma_v` -> 0**,
+  by up to 0.03, and `"NGE"` stopped up to 0.74 short of the maximum there.
+  The term `-eps^2/(2 sigma_v^2) + log Phi(z) + z^2/2` was formed by
+  subtracting two numbers of size `eps^2/(2 sigma_v^2)`, ~7e12 at
+  `sigma_v = 4e-7`. `"NE"` already avoided this; the same fix now covers
+  `"NGE"`, `"TSL"`, `"NE"` with `vhet`/`uhet`, `esfm()`, and the
+  `"NGE"`/`"TSL"` efficiency scores. Fits away from that boundary are unchanged.
+
 * **`"NW"` and `"NLN"` are now fitted by quadrature instead of simulation.**
   At the default number of draws, the simulated log-likelihood was off by 0.3
   to 0.5 at n = 500. That was enough for `sigu` and the shape parameter to
@@ -844,7 +860,11 @@ A feature release. In brief:
   near-singular. The authors report the same for their combined `tau`.
 
   A wrongly signed third moment leaves the moment equations with no admissible
-  solution, and that is an error rather than a number.
+  solution, and that is an error rather than a number; so is a skewness the
+  model cannot reach (a normal/half-normal composed error cannot exceed
+  0.995 in absolute value). Available for `"NHN"`, `"NE"`, `"NR"` and
+  `"NGE"`. `"NU"` is refused: a uniform inefficiency is symmetric, so the
+  second and third moments the estimator matches cannot identify it.
 
 * **The Gauss-Legendre rule is now cached.** It depends on nothing but the
   node count and was rebuilt by an eigendecomposition on every call --

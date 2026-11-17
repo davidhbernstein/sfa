@@ -59,9 +59,16 @@
   switch(model_name,
     "NHN" = c("lambda", "sigma"),
     "NE" = , "NR" = , "NGE" = c("sigv", "sigu"),
-    "NU" = c("sigv", "theta"),
+    ## Refused: a symmetric u leaves the moments uninformative (A93).
+    "NU" = stop("cw_test(): not available for model_name = \"NU\". A uniform ",
+      "inefficiency is symmetric, so the third central moment of the composed ",
+      "error is zero for every theta, and Chen and Wang's estimator -- which ",
+      "matches the second and third moments -- cannot identify the model. The ",
+      "test would never reject.",
+      call. = FALSE
+    ),
     stop("cw_test(): implemented for the two-parameter normal-noise models ",
-      "NHN, NE, NR, NU and NGE. Got model_name = ", dQuote(model_name), ".",
+      "NHN, NE, NR and NGE. Got model_name = ", dQuote(model_name), ".",
       call. = FALSE
     )
   )
@@ -199,6 +206,17 @@ cw_test <- function(x, model_name = NULL, tau = 1,
     c(stats::sd(ec) / sqrt(2), stats::sd(ec) / sqrt(2))
   }
   fitm <- .cw_estimate(m_hat, model_name, s_start, n_nodes)
+  ## Unmatched moments: the model cannot produce these residuals (A94).
+  if (!is.finite(fitm$value) || fitm$value > 1e-6) {
+    stop("cw_test(): model_name = ", dQuote(model_name), " cannot reproduce ",
+      "the residuals' second and third moments (skewness ",
+      format(m_hat[2] / m_hat[1]^1.5, digits = 3), "), so the moment ",
+      "equations have no admissible solution and the test is undefined. That ",
+      "is itself evidence against this inefficiency distribution; a heavier-",
+      "tailed one (for example \"NE\" or \"NGE\") may fit.",
+      call. = FALSE
+    )
+  }
   th <- fitm$theta
   par <- .cw_build_par(model_name, th)
 
@@ -224,11 +242,13 @@ cw_test <- function(x, model_name = NULL, tau = 1,
 
   ## K_j = E[d psi_j / d theta']; the sign is carried by differentiating the
   ## theoretical term, which enters psi with a minus.
-  K1 <- -numDeriv::jacobian(function(t) th_fun(t)$moments, th)
-  K2 <- -numDeriv::jacobian(function(t) {
-    z <- th_fun(t)
+  ## In log theta, so no finite-difference step can make a scale negative (A94).
+  lth <- log(th)
+  K1 <- -sweep(numDeriv::jacobian(function(l) th_fun(exp(l))$moments, lth), 2, th, "/")
+  K2 <- -sweep(numDeriv::jacobian(function(l) {
+    z <- th_fun(exp(l))
     if (type == "cosine") z$Ecos else z$Esin
-  }, th)
+  }, lth), 2, th, "/")
   if (q == 1L) K2 <- matrix(K2, nrow = 1L)
 
   A <- tryCatch(K2 %*% solve(K1), error = function(err) NULL)

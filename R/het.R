@@ -98,8 +98,7 @@
 ## be kept in step.
 .het_loglik <- function(eps, s_u, s_v, mu, family) {
   if (identical(family, "exponential")) {
-    z <- -(eps / s_v) - (s_v / s_u)
-    return(-log(s_u) - (eps^2 / (2 * s_v^2)) + .log_phi_tilt(z))
+    return(-log(s_u) + .log_exp_phi(eps, s_v, 1 / s_u))
   }
   s2 <- s_u^2 + s_v^2
   s <- sqrt(s2)
