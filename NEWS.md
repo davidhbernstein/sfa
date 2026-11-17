@@ -253,6 +253,14 @@ wrong result came without an error or a warning.
   tail-dependent families, most on data with observations in the tails; fits
   take three to five times as long.
 
+* **`efficiency()` on a `zsfm()` fit reported inefficiency for observations
+  that are probably fully efficient.** `type = "jlms"` read the fit's `jlms`,
+  which is E[u | e] within the inefficient regime, as E[u | e] over both;
+  an observation with a 0.97 posterior probability of full efficiency came
+  back at 0.84. `type = "bc"`, the default, refused. Fits now also store
+  `u_hat` and `exp_u_hat` over both regimes, which `efficiency()` and
+  `predict(type = "efficiency")` use. `jlms` and `post.prob` are unchanged.
+
 ## New features
 
 ### Heteroskedastic noise beyond `sfm()`

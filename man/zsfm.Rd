@@ -58,12 +58,14 @@ Under \code{"ZISF_Z"}, \eqn{p} varies with the covariates \eqn{z} through the li
 }
 
 \subsection{Efficiency predictions}{
-Two per-observation predictions are returned, and they answer different questions:
+Four per-observation predictions are returned, and they answer different questions:
 \itemize{
 \item \code{post.prob} is the posterior probability that the observation is fully efficient, given its residual.
+\item \code{u_hat} is \eqn{E[u \mid \varepsilon]} over both regimes, \code{(1 - post.prob) * jlms}.
+\item \code{exp_u_hat} is \eqn{E[\exp(-u) \mid \varepsilon]} over both regimes: \code{post.prob} plus \code{1 - post.prob} times the Battese--Coelli score of the inefficient regime.
 \item \code{jlms} is the Jondrow et al. (1982) prediction \eqn{E[u \mid \varepsilon]} \emph{conditional on the observation being in the inefficient regime}. It is the ordinary normal-half-normal formula and does not weight by \code{post.prob}.
 }
-The prediction of \eqn{u} over both regimes is \code{(1 - post.prob) * jlms}. The two can differ by orders of magnitude when the fitted \eqn{p} is large, so use the product when you want \eqn{E[u \mid \varepsilon]} itself.
+\code{\link{efficiency}} and \code{predict(type = "efficiency")} use \code{u_hat} and \code{exp_u_hat}. \code{jlms} and \code{u_hat} can differ by orders of magnitude when the fitted \eqn{p} is large. Before 1.3.0 only \code{jlms} was stored, and \code{efficiency(type = "jlms")} reported it as the prediction over both regimes.
 }
 
 \subsection{Iteration defaults}{
@@ -110,6 +112,8 @@ An object of class \code{"sfareg"} containing the following components:
 \item{formula}{The formula used in the model specification.}
 \item{jlms}{The Jondrow et al. (1982) inefficiency prediction \eqn{E[u \mid \varepsilon]} within the inefficient regime; see \sQuote{Efficiency predictions}.}
 \item{post.prob}{Posterior probability that each observation is fully efficient.}
+\item{u_hat}{\eqn{E[u \mid \varepsilon]} over both regimes, \code{(1 - post.prob) * jlms}; see \sQuote{Efficiency predictions}.}
+\item{exp_u_hat}{\eqn{E[\exp(-u) \mid \varepsilon]} over both regimes; see \sQuote{Efficiency predictions}.}
 \item{coefficients}{A vector of estimated parameters.}
 \item{std.errors}{A vector of standard errors for the estimated parameters (NA if \code{optHessian = FALSE}).}
 \item{t.values}{A vector of t-values for the estimated parameters (NA if \code{optHessian = FALSE}).}
@@ -134,6 +138,7 @@ f <- zsfm(formula    = eqz,
 f
 
 ## Inefficiency over both regimes, not just the inefficient one
-head((1 - f$post.prob) * f$jlms)
+head(f$u_hat)                  # (1 - f$post.prob) * f$jlms
+head(efficiency(f))            # E[exp(-u) | e] over both regimes
 }
 }
