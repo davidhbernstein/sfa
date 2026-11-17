@@ -482,6 +482,13 @@ zsfm <- function(formula,
       zz <- mustar / sigstar
       ## In logs: dnorm(zz) / pnorm(zz) is 0 / 0 below zz ~ -37 (gap A30).
       jlms <- .jlms_u(mustar, sigstar)
+      ## Over BOTH regimes (gap A88): u = 0 with posterior probability
+      ## post.prob, so E[u | e] = (1 - post.prob) * jlms and
+      ## E[exp(-u) | e] = post.prob + (1 - post.prob) * E[exp(-u) | e, u > 0].
+      ## These are what efficiency() and predict() read; jlms stays the
+      ## regime-conditional quantity its help page documents.
+      u_hat <- as.numeric((1 - post.prob) * jlms)
+      exp_u_hat <- as.numeric(post.prob + (1 - post.prob) * .te_battese_coelli(mustar, sigstar))
     }
 
     if (model_name %in% c("ZISF", "ZISF_Z")) {
@@ -498,6 +505,8 @@ zsfm <- function(formula,
       ## Appended, not rebuilt: re-listing twelve values against twelve names
       ## to add one field is how a misalignment gets introduced.
       if (!is.null(.sm)) results$se_unresolved <- .sm
+      results$u_hat <- u_hat
+      results$exp_u_hat <- exp_u_hat
       ## Rows actually used, not rows supplied: bread() scales by this.
       results$nobs <- length(as.numeric(Y))
       results$anchor_resid <- .sfa_anchor_resid(data_i_vars, Y)

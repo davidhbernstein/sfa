@@ -1005,8 +1005,11 @@ ttsfm <- function(formula,
 
       nzv <- n_zv_vars
       sig.v <- .tt_sigv(p[nr + seq_len(nzv)])
-      sig.u <- .z_sigma((zu %*% p[(nr + 2):(nr + nzu + 1)]))
-      sig.w <- .z_sigma((zw %*% p[(nr + nzu + 2):(nr + nzu + nzw + 1)]))
+      ## Offset by the sigma_v block's WIDTH, as fn() and metrics.ne() are
+      ## (gap A89): with `vhet` the block is nzv slots, and positions fixed
+      ## at nr + 2 built sigma_u from a Zv. coefficient.
+      sig.u <- .z_sigma((zu %*% p[nr + nzv + seq_len(nzu)]))
+      sig.w <- .z_sigma((zw %*% p[nr + nzv + nzu + seq_len(nzw)]))
 
       theta1 <- sig.w / sig.v
       theta2 <- sig.u / sig.v
