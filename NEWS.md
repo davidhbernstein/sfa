@@ -124,8 +124,8 @@ wrong result came without an error or a warning.
   (`"NHN"`, `"NHN_Z"` and others) used `-log(exp_u_hat)`, which is smaller than
   E[u | e] by Jensen's inequality; those fits now use the JLMS predictor rebuilt
   from their posterior. A fit that stores only the Battese-Coelli score
-  (`sfm()`'s `"NR"`, `"NG"` and `"NNAK"`, and any other fit with only
-  `exp_u_hat` or `$U`) is now refused rather than approximated.
+  (`sfm()`'s `"NR"`, `"NG"` and `"NNAK"`, or any other fit with only
+  `exp_u_hat`) is now refused rather than approximated.
 
 * **A transformed response was fitted untransformed.** With
   `log(q) ~ log(K)`, `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()` and `psfm()`
