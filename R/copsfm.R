@@ -312,6 +312,13 @@
 .cop_u_m1 <- function(udist) if (identical(udist, "exponential")) 1 else sqrt(2 / pi)
 .cop_v_v2 <- function(vdist) switch(vdist, normal = 1, laplace = 2, pi^2 / 3)
 
+## Starting sigma_v from the moments, or half the residual SD where they do
+## not identify Var(v). notes/code_history/copsfm.md (A90).
+.cop_sv_start <- function(m2, su0, sd_e, udist, vdist) {
+  sv2 <- (m2 - .cop_u_v2(udist) * su0^2) / .cop_v_v2(vdist)
+  if (is.finite(sv2) && sv2 > (0.05 * sd_e)^2) sqrt(sv2) else 0.5 * sd_e / sqrt(.cop_v_v2(vdist))
+}
+
 ## ---------------------------------------------------------------------------
 ## The integral over u (A74). See notes/code_history/copsfm.md.
 ## ---------------------------------------------------------------------------
@@ -641,7 +648,8 @@ copsfm <- function(formula,
   su0 <- if (is.finite(su0)) max(su0, 1e-3) else max(0.5 * stats::sd(e0), 1e-3)
   ## Var(eps) = Var(v) + Var(u), and for a generalized logistic at alpha = 1
   ## Var(v) is delta_v^2 pi^2/3 rather than delta_v^2.
-  sv0 <- sqrt(max(m2 - .cop_u_v2(udist) * su0^2, 1e-6) / .cop_v_v2(vdist))
+  ## Not floored at 0.001 where dependence breaks the moment identity (A90).
+  sv0 <- .cop_sv_start(m2, su0, stats::sd(e0), udist, vdist)
   b0 <- as.numeric(ols$coefficients)
   if (attr(stats::terms(mf), "intercept") == 1L) {
     b0[1L] <- b0[1L] + S * su0 * .cop_u_m1(udist)

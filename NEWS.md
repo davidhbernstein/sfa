@@ -253,6 +253,14 @@ wrong result came without an error or a warning.
   tail-dependent families, most on data with observations in the tails; fits
   take three to five times as long.
 
+* **`copsfm()` often stopped at a spurious optimum with `sigma_v` near 0**
+  when the data had real dependence between `v` and `u`. Its starting value
+  for `sigma_v` assumed independence and, under positive dependence, fell to a
+  floor of 0.001. In simulations at n = 400, 11 of 25 fits did this (Clayton
+  5 of 5, Frank 4 of 5, Gaussian 1 of 5), each 11 to 129 log-likelihood units
+  below the true parameters. The start no longer falls to that floor, and all
+  11 now reach the maximum. Fits that started elsewhere are unchanged.
+
 * **`efficiency()` on a `zsfm()` fit reported inefficiency for observations
   that are probably fully efficient.** `type = "jlms"` read the fit's `jlms`,
   which is E[u | e] within the inefficient regime, as E[u | e] over both;
