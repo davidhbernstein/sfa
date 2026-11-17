@@ -36,9 +36,9 @@ test_that("inefdec passed as a variable is read, and an unreadable one is refuse
   fv <- suppressWarnings(sfm(y_cost ~ x, model_name = "NHN", data = d, inefdec = flag))
   expect_equal(efficiency(fv, logDepVar = FALSE), efficiency(fc, logDepVar = FALSE))
   expect_equal(predict(fv, type = "response"), predict(fc, type = "response"))
-  ## A cost frontier's prediction adds inefficiency to the frontier. NHN fits
-  ## store exp_u_hat, not u_hat, so predict() uses -log(exp_u_hat).
-  u <- -log(pmax(fc$exp_u_hat, .Machine$double.xmin))
+  ## A cost frontier's prediction adds inefficiency to the frontier: E[u | e],
+  ## the u that efficiency(type = "jlms") reports (A88).
+  u <- -log(efficiency(fc, type = "jlms"))
   expect_equal(as.numeric(predict(fc, type = "response")), as.numeric(fitted(fc) + u))
 
   fx <- fv

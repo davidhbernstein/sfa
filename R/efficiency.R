@@ -30,6 +30,21 @@
 ## which is exactly the component mix-up gap A9 shipped.
 .te_persistent_slot <- function(object) object$H
 
+## E[u | e] as the fit stores it, or rebuilt from its truncated-normal
+## posterior; NULL when the fit has neither. Shared by efficiency(type = "jlms")
+## and predict(type = "response") so the two cannot disagree about u (A88).
+.eff_jlms_u <- function(object) {
+  v <- object$u_hat
+  if (is.null(v)) v <- object$jlms
+  if (is.null(v)) {
+    post <- object$u_posterior
+    if (!is.null(post) && !is.null(post$mu_star)) {
+      v <- .jlms_u(post$mu_star, post$sigma_star)
+    }
+  }
+  if (is.null(v)) NULL else as.numeric(v)
+}
+
 ## What this fit can actually answer, so the error never advises a `type` that
 ## has nothing to return either. The old message told a GTRE fit to use
 ## type = "jlms", where it stores no E[u | e] and fails again.
@@ -82,14 +97,7 @@ efficiency <- function(object,
       ## with the SAME helper efficiency_ci() uses, so the two cannot drift.
       ## Most cross-sectional fits store exp_u_hat and the posterior but not
       ## E[u | e] itself.
-      v <- object$u_hat
-      if (is.null(v)) v <- object$jlms
-      if (is.null(v)) {
-        post <- object$u_posterior
-        if (!is.null(post) && !is.null(post$mu_star)) {
-          v <- .jlms_u(post$mu_star, post$sigma_star)
-        }
-      }
+      v <- .eff_jlms_u(object)
       if (is.null(v)) {
         ## NOT derived from the stored E[exp(-u) | e]. -log(E[exp(-u) | e]) is
         ## not E[u | e]; they differ by Jensen's inequality, and reporting one
