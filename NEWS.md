@@ -105,6 +105,10 @@ wrong result came without an error or a warning.
 
 ### Cost frontiers
 
+* **`sfm(estimator = "cols")` and `"cmle"` scored a cost frontier on the wrongly
+  oriented residual (A107).** The estimates were right; `exp_u_hat` was off by
+  up to 0.9.
+
 * **`copsfm(inefdec = FALSE)` maximised the density of `v - u` instead of
   `v + u`.** The scales and intercept were wrong: on clean data with a true
   `sigma_u` of 1, it reported 0.031. Production fits were unaffected. **Re-run
@@ -453,10 +457,6 @@ wrong result came without an error or a warning.
 
 ## Bug fixes
 
-* **`selsfm(model_name = "kts")`'s `jlms` weighted the two regimes equally**
-  (A106). It now uses the mixture weight phi_i the likelihood uses, so it is
-  E[u | y, I]; it had been off by up to 0.07.
-
 ### Standard errors and covariances
 
 * **A negative variance estimate was reported as a standard error of 0**,
@@ -529,6 +529,18 @@ wrong result came without an error or a warning.
   `sfma(weights = "tic")` gives such a fit no weight, and `vuong()` refuses it.
 
 ### Efficiency prediction
+
+* **`selsfm(model_name = "kts")`'s `jlms` weighted the two regimes equally**
+  (A106). It now uses the mixture weight phi_i the likelihood uses, so it is
+  E[u | y, I]; it had been off by up to 0.07.
+
+* **`efficiency(type = "bc")` returned exp(-E[u|e]) for `ivsfm()` and `selsfm()`
+  fits (A102).** They now store E[exp(-u)|e] as `exp_u_hat`; the
+  `efficiency` slot is unchanged.
+
+* **`sfma()` averaged -log E[exp(-u)|e] for `"NR"` (A104).** `sfm("NR")` now
+  stores E[u|e] as `u_hat`, and `sfma()` drops any candidate that stores no
+  E[u|e] instead of substituting.
 
 * `efficiency()` now answers for the `psfm()` GTRE/TRE family and for
   `esfm()`. Its fallback chain ended at `$efficiency`, so the specifications
