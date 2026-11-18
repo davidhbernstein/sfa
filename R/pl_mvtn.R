@@ -38,20 +38,89 @@
   }
 
   list(Q = Q, logdet_Sig = logdet_Sig, logdet_Q = logdet_Q,
-       a = a, b = b, Sigma = diag(a, BigT) + b)
+       a = a, b = b, Sigma = diag(a, BigT) + b, r_Q = 1 / a2, q_Q = qq)
 }
 
-## Orthant probability Pr(w <= 0), w ~ N(mean, varcov), on the log scale.
-.pl_mvtn_log_orthant <- function(mean, varcov) {
-  p <- tryCatch(
-    mnormt::sadmvn(lower = rep(-Inf, length(mean)), upper = rep(0, length(mean)),
-                   mean = mean, varcov = varcov),
-    error = function(e) NA_real_
-  )
-  if (!is.finite(p) || p <= 0) {
-    return(NA_real_)
+## Orthant probability log Pr(w <= 0) for w ~ N(m, r I + q J), one per ROW of
+## M (A100). Every covariance this likelihood meets is equicorrelated.
+## q >= 0: w_t = m_t + sqrt(r) z_t + sqrt(q) c with c ~ N(0, 1), so
+##   Pr = INT phi(c) prod_t Phi(-(m_t + sqrt(q) c) / sqrt(r)) dc,
+## whose log integrand is concave: adaptive Gauss-Hermite at the mode (Newton,
+## vectorised over rows), scaled by the curvature there. Exact to ~1e-12
+## relative, including far in the tail where the old mnormt::sadmvn() at its
+## defaults ("accuracy non achieved", status discarded) was off by ~3e-3.
+## q < 0 has no real one-factor form: mvtnorm's Miwa rule (deterministic) up
+## to T = 20, GenzBretz at a tight tolerance beyond.
+.equi_log_orthant <- function(M, r, q, n_nodes = 48L) {
+  if (!is.matrix(M)) M <- matrix(M, nrow = 1L)
+  n <- nrow(M); Tn <- ncol(M)
+  if (!(is.finite(r) && r > 0 && is.finite(q) && r + Tn * q > 0)) {
+    return(rep(NA_real_, n))
   }
-  log(p)
+  if (q < 0) {
+    S <- diag(r, Tn) + q
+    alg <- if (Tn <= 20L) mvtnorm::Miwa(steps = 512L) else
+      mvtnorm::GenzBretz(maxpts = 1e6, abseps = 1e-12, releps = 1e-8)
+    .rng_state <- .rng_snapshot(); on.exit(.rng_restore(.rng_state), add = TRUE)
+    set.seed(20261118L)
+    return(apply(M, 1L, function(m) {
+      p <- tryCatch(as.numeric(mvtnorm::pmvnorm(upper = rep(0, Tn), mean = m,
+        sigma = S, algorithm = alg)), error = function(e) NA_real_)
+      if (is.finite(p) && p > 0) log(p) else NA_real_
+    }))
+  }
+  sr <- sqrt(r)
+  A <- -M / sr
+  b <- -sqrt(q) / sr
+  g <- function(cc) -cc^2 / 2 + rowSums(pnorm(A + b * cc, log.p = TRUE))
+  cc <- rep(0, n); gc <- g(cc)
+  for (it in 1:100) {
+    X <- A + b * cc
+    Mi <- exp(dnorm(X, log = TRUE) - pnorm(X, log.p = TRUE))
+    g1 <- -cc + b * rowSums(Mi)
+    g2 <- -1 - b^2 * rowSums(Mi * (X + Mi))
+    step <- -g1 / g2
+    for (h in 1:40) {                  # damped: never step downhill
+      cn <- cc + step; gn <- g(cn)
+      bad <- !(gn >= gc - 1e-12 * abs(gc))
+      if (!any(bad)) break
+      step[bad] <- step[bad] / 2
+    }
+    cc <- cn; gc <- gn
+    if (max(abs(step)) < 1e-12) break
+  }
+  X <- A + b * cc
+  Mi <- exp(dnorm(X, log = TRUE) - pnorm(X, log.p = TRUE))
+  sd_c <- 1 / sqrt(1 + b^2 * rowSums(Mi * (X + Mi)))
+  gh <- .gauss_hermite_nodes(n_nodes)
+  L <- vapply(seq_along(gh$nodes), function(k)
+    g(cc + sqrt(2) * sd_c * gh$nodes[k]) + gh$nodes[k]^2 + log(gh$weights[k]), numeric(n))
+  if (!is.matrix(L)) L <- matrix(L, nrow = n)
+  mx <- apply(L, 1L, max)
+  mx + log(rowSums(exp(L - mx))) + log(sqrt(2) * sd_c) - 0.5 * log(2 * pi)
+}
+
+## Posterior scores for the firm's w ~ N(mu_i, r I + q J) truncated to w <= 0
+## (inefficiency = -w), one row per firm (A100):
+##   E[exp(w_t)]  = exp(mu_t + (r+q)/2) Pr(mu + Q e_t) / Pr(mu)   (truncated MGF)
+##   E[w_t]       = mu_t - sum_s Q_ts F_s / Pr(mu)                (Tallis 1961)
+##   F_s = phi(0; mu_s, r+q) Pr_{T-1}(w_-s <= 0 | w_s = 0), whose conditional
+##   law is again equicorrelated: mean mu_-s - q/(r+q) mu_s, cov r I + qr/(r+q) J.
+.pl_mvtn_scores <- function(MU, r, q) {
+  Tn <- ncol(MU); v <- r + q
+  lP <- .equi_log_orthant(MU, r, q)
+  BC <- U <- matrix(NA_real_, nrow(MU), Tn)
+  qc <- q * r / v
+  LF <- matrix(NA_real_, nrow(MU), Tn)
+  for (t in seq_len(Tn)) {
+    sh <- MU + q; sh[, t] <- sh[, t] + r          # mu + Q e_t
+    BC[, t] <- exp(MU[, t] + v / 2 + .equi_log_orthant(sh, r, q) - lP)
+    Mc <- MU[, -t, drop = FALSE] - (q / v) * MU[, t]
+    LF[, t] <- dnorm(0, MU[, t], sqrt(v), log = TRUE) + .equi_log_orthant(Mc, r, qc) - lP
+  }
+  FP <- exp(LF)                                   # F_s / Pr
+  Ew <- MU - (r * FP + q * rowSums(FP))
+  list(u_hat = pmax(-Ew, 0), exp_u_hat = pmin(pmax(BC, 0), 1))
 }
 
 ## The out-of-domain penalty. NOT .SFA_CONSTANTS$MAX_VALUE, which is
@@ -89,7 +158,7 @@
   if (is.null(pr)) {
     return(.bail())
   }
-  logP0 <- .pl_mvtn_log_orthant(rep(0, BigT), pr$Sigma)
+  logP0 <- .equi_log_orthant(rep(0, BigT), pr$a, pr$b)
   if (!is.finite(logP0)) {
     return(.bail())
   }
@@ -99,23 +168,18 @@
   const <- -(BigT / 2) * log(2 * pi) - BigT * log(sig_v) -
     0.5 * pr$logdet_Sig + 0.5 * pr$logdet_Q - logP0
 
-  ll_i <- numeric(nfirm)
-  for (i in seq_along(Y_list)) {
-    ## u <= 0 is PL's sign convention, i.e. inefficiency SUBTRACTS from a
-    ## production frontier. inefdec_n flips it for a cost frontier.
-    eps <- inefdec_n * (Y_list[[i]] - as.numeric(X_list[[i]] %*% beta))
-    Qe <- Qi %*% eps
-    mu <- as.numeric(Qe) / s2
-    quad <- sum(eps^2) / s2 - as.numeric(crossprod(eps, Qe)) / s2^2
-    lP <- .pl_mvtn_log_orthant(mu, Qi)
-    if (!is.finite(lP)) {
-      if (isTRUE(per_obs)) {
-        ll_i[i] <- -.PL_MVTN_PEN() / nfirm
-        next
-      }
-      return(.PL_MVTN_PEN())
-    }
-    ll_i[i] <- const - 0.5 * quad + lP
+  ## u <= 0 is PL's sign convention, i.e. inefficiency SUBTRACTS from a
+  ## production frontier. inefdec_n flips it for a cost frontier.
+  E <- t(vapply(seq_len(nfirm), function(i)
+    inefdec_n * (Y_list[[i]] - as.numeric(X_list[[i]] %*% beta)), numeric(BigT)))
+  QE <- E %*% Qi                                  # Q symmetric
+  MU <- QE / s2
+  quad <- rowSums(E^2) / s2 - rowSums(E * QE) / s2^2
+  lP <- .equi_log_orthant(MU, pr$r_Q, pr$q_Q)
+  ll_i <- const - 0.5 * quad + lP
+  if (any(!is.finite(ll_i))) {
+    if (!isTRUE(per_obs)) return(.PL_MVTN_PEN())
+    ll_i[!is.finite(ll_i)] <- -.PL_MVTN_PEN() / nfirm
   }
   if (isTRUE(per_obs)) {
     ## Positive, one entry per FIRM, non-finite floored rather than dropped.
@@ -243,16 +307,17 @@
   out[2, ] <- se
   out[3, ] <- out[1, ] / se
 
-  ## E[u_it | eps_i] has no closed form here -- u is truncated multivariate
-  ## normal and the conditional mean is another T-dimensional integral.
+  ## The exact posterior scores (A100): E[u | eps_i] and E[exp(-u) | eps_i]
+  ## under the truncated equicorrelated normal, by .pl_mvtn_scores().
   pr <- .pl_mvtn_parts(opt$par[2], opt$par[3], opt$par[1], BigT)
-  u_hat <- rep(NA_real_, length(Yall))
+  u_hat <- exp_u_hat <- rep(NA_real_, length(Yall))
   if (!is.null(pr)) {
-    s2v <- opt$par[1]^2
+    E <- t(vapply(seq_along(Y_list), function(i)
+      inefdec_n * (Y_list[[i]] - as.numeric(X_list[[i]] %*% opt$par[-(1:3)])), numeric(BigT)))
+    sc <- .pl_mvtn_scores(E %*% pr$Q / opt$par[1]^2, pr$r_Q, pr$q_Q)
     for (i in seq_along(Y_list)) {
-      eps <- inefdec_n * (Y_list[[i]] - as.numeric(X_list[[i]] %*% opt$par[-(1:3)]))
-      mu <- as.numeric(pr$Q %*% eps) / s2v
-      u_hat[gid == i] <- pmax(-pmin(mu, 0), 0)
+      u_hat[gid == i] <- sc$u_hat[i, ]
+      exp_u_hat[gid == i] <- sc$exp_u_hat[i, ]
     }
   }
 
@@ -263,7 +328,7 @@
     out = t(out), opt = opt, total_time = total_time, start_v = start_v,
     model_name = "PL80_MVTN", formula = formula,
     coefficients = out[1, ], std.errors = out[2, ], t.values = out[3, ],
-    u_hat = u_hat, exp_u_hat = pmin(pmax(exp(-u_hat), 0), 1),
+    u_hat = u_hat, exp_u_hat = exp_u_hat,
     BigT = BigT, call = call, data = data
   )
   class(results) <- "sfareg"

@@ -78,6 +78,19 @@ wrong result came without an error or a warning.
   and `psfm("GTRE", inefdec = FALSE)` by `"fiml"` reports the cost frontier's
   intercept with its own sign and scores the correctly oriented residual.
 
+* **`psfm("PL80_MVTN")`: exact likelihood and exact scores (A100).** Every
+  covariance in the likelihood is equicorrelated, so for rho >= 0 each orthant
+  probability is a one-dimensional integral over a common factor, now
+  computed by adaptive Gauss-Hermite quadrature to about twelve digits. It was
+  `mnormt::sadmvn()` at its defaults, which at T = 10 does not reach its
+  tolerance and whose status was discarded: `logLik` was off by 0.039 at
+  N = 40, and by more in the tail. rho < 0 uses `mvtnorm`'s deterministic
+  Miwa rule. `u_hat` is now E[u | e] (Tallis 1961) and `exp_u_hat`
+  E[exp(-u) | e] (the truncated normal's moment generating function); `u_hat`
+  was a documented approximation, off by up to 0.145, and `exp_u_hat` was
+  `exp(-u_hat)`. Fits are also much faster: 7 s instead of 503 s on a
+  T = 6, N = 100 panel.
+
 * **`psfm("FD")` reported the wrong efficiency scores.** The fit itself --
   coefficients, standard errors, log-likelihood -- was correct and is
   unchanged; `u_hat` and `exp_u_hat` were not, because the loop that builds
