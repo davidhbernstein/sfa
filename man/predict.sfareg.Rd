@@ -13,14 +13,14 @@
 \arguments{
 \item{object}{An object of class \code{"sfareg"}.}
 \item{newdata}{Optional data frame containing the frontier regressors at which to predict. If omitted, the data the model was fitted to is used.}
-\item{type}{\code{"frontier"} (default) returns the deterministic frontier \eqn{x'\beta}. \code{"response"} shifts it by the predicted inefficiency, giving an estimate of \eqn{E[y \mid x]} rather than of the frontier itself, with the sign following the production/cost convention the model was fitted under. \code{"efficiency"} returns the predicted technical efficiency \eqn{E[\exp(-u) \mid \varepsilon]}.}
+\item{type}{\code{"frontier"} (default) returns the deterministic frontier \eqn{x'\beta}. \code{"response"} shifts it by the predicted inefficiency \eqn{E[u \mid \varepsilon]} (Jondrow et al. 1982), the same \eqn{u} that \code{\link{efficiency}(type = "jlms")} reports, giving an estimate of \eqn{E[y \mid x]} rather than of the frontier itself, with the sign following the production/cost convention the model was fitted under. \code{"efficiency"} returns the predicted technical efficiency \eqn{E[\exp(-u) \mid \varepsilon]}.}
 \item{...}{Ignored.}
 }
 \details{Only the first part of a pipe formula (\code{y ~ x | z | zp}) describes the frontier; later parts parameterize variances and take no part in prediction.
 
 Frontier coefficients are identified by matching the fitted coefficient names against the frontier design matrix, so these methods work for every model in the package without depending on where a given model happens to place its auxiliary parameters (\code{lambda}/\code{sigma} for \code{NHN}, \code{sigv}/\code{sigu} for \code{NE}, \code{sigmaSq}/\code{gamma} for \code{PL80}, and so on).
 
-\code{type = "efficiency"} and \code{type = "response"} are available only for the estimation sample, since both require the composed residual and therefore the response; requesting them with \code{newdata} raises an error rather than returning something misleading. \code{"efficiency"} additionally requires a model that returns an efficiency prediction -- see \code{\link{sfm}} for which ones do.}
+\code{type = "efficiency"} and \code{type = "response"} are available only for the estimation sample, since both require the composed residual and therefore the response; requesting them with \code{newdata} raises an error rather than returning something misleading. \code{"efficiency"} additionally requires a model that returns an efficiency prediction -- see \code{\link{sfm}} for which ones do. \code{"response"} requires \eqn{E[u \mid \varepsilon]} itself: a fit that stores only \eqn{E[\exp(-u) \mid \varepsilon]} (for example \code{sfm("NG")}) is refused, since \eqn{-\log E[\exp(-u) \mid \varepsilon]} is not \eqn{E[u \mid \varepsilon]}.}
 \value{A numeric vector, one element per observation.}
 \seealso{\code{\link{sfm}}, \code{\link{psfm}}, \code{\link{sfareg-methods}}}
 \author{David H. Bernstein}

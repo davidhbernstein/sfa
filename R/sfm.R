@@ -1779,6 +1779,20 @@ sfm <- function(formula,
       )
     }
 
+    if (model_name == "NE_Z") {
+      ## NE with sigma_u = exp(z'delta) per observation, on the likelihood's
+      ## own link: the posterior is N+(-e - sig_v^2 / sig_u_i, sig_v^2).
+      beta <- opt$par[2:(n_x_vars + 1)]
+      delta <- opt$par[(n_x_vars + 2):(n_x_vars + n_z_vars + 1)]
+      sig_v <- opt$par[1]
+      sig_u <- as.numeric(.z_sigma(.Zz %*% delta))
+      eps_hat <- inefdec_n * (Y - rowSums(t(t(data_i_vars) * beta)))
+      mu_star <- as.numeric(-eps_hat - sig_v^2 / sig_u)
+      exp_u_hat <- .te_battese_coelli(mu_star, sig_v)
+      u_hat <- .jlms_u(mu_star, sig_v)
+      u_post <- list(mu_star = mu_star, sigma_star = rep_len(sig_v, length(mu_star)))
+    }
+
     if (model_name == "TSL") {
       ## Truncated skew-Laplace.
       beta <- opt$par[-c(1:3)]
@@ -1897,7 +1911,7 @@ sfm <- function(formula,
 
     ## NE/NTN additionally return u_hat (the JLMS E[u|e] point predictor)
     ## alongside exp_u_hat.
-    if (model_name %in% c("NE", "NTN", "NU", "NGE", "NLN", "NW", "TSL", "NGB2")) {
+    if (model_name %in% c("NE", "NE_Z", "NTN", "NU", "NGE", "NLN", "NW", "TSL", "NGB2")) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula, exp_u_hat, u_hat,
         out["par", ], out["st_err", ], out["t-val", ], call
@@ -1971,9 +1985,8 @@ sfm <- function(formula,
       results$inefdec <- isTRUE(inefdec)
     }
 
-    ## Fallback for models with no efficiency predictor yet (currently the _Z
-    ## variants other than NHN_Z).
-    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL", "NGB2"))) {
+    ## Fallback for a model with no efficiency predictor (none at present).
+    if (!(model_name %in% c("NHN", "NHN_Z", "NR", "NG", "NNAK", "NE", "NE_Z", "NTN", "NU", "NGE", "NLN", "NW", "THT", "tHN", "TSL", "NGB2"))) {
       results <- list(
         t(out), c(opt), End.Time, start_v, model_name, formula,
         out["par", ], out["st_err", ], out["t-val", ], call
@@ -2040,7 +2053,7 @@ sfm <- function(formula,
       }
     }
 
-    ## NE_Z's result is built by the fallback block above, so this comes last.
+    ## Appended after every results block, so no rebuild can drop it.
     if (model_name %in% c("NHN_Z", "NE_Z", "NR")) {
       results$sigma_v_at_bound <- sigma_v_at_bound
     }

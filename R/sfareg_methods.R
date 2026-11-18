@@ -626,17 +626,20 @@ predict.sfareg <- function(object, newdata = NULL,
     return(z$xb)
   }
 
-  ## "response": the frontier shifted by predicted inefficiency, i.e.
-  u <- object$u_hat
-  if (is.null(u) && !is.null(object$exp_u_hat)) u <- -log(pmax(object$exp_u_hat, .Machine$double.xmin))
-  if (is.null(u)) {
-    stop("type = \"response\" needs an inefficiency prediction, which model ",
-      object$model_name, " does not return.",
-      call. = FALSE
-    )
-  }
+  ## "response": the frontier shifted by E[u | e], the same u that
+  ## efficiency(type = "jlms") reports. -log(exp_u_hat) is not E[u | e] (A68,
+  ## A88), so a fit that stores only the Battese-Coelli score is refused.
   if (!is.null(newdata)) {
     stop("type = \"response\" is only available for the estimation sample.", call. = FALSE)
+  }
+  u <- .eff_jlms_u(object)
+  if (is.null(u)) {
+    stop("predict(type = \"response\") needs E[u | e], which model ",
+      if (is.null(object$model_name)) "unknown" else object$model_name,
+      " does not store. Use type = \"frontier\", or efficiency() for the ",
+      "Battese-Coelli score.",
+      call. = FALSE
+    )
   }
   cost <- .is_cost_fit(object)
   if (is.na(cost)) stop(.cost_fit_unknown("predict(type = \"response\")"), call. = FALSE)

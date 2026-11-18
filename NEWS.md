@@ -126,6 +126,14 @@ wrong result came without an error or a warning.
 
 ### Every formula-based entry point
 
+* **`predict(type = "response")` shifts the frontier by E[u | e], the same u
+  that `efficiency(type = "jlms")` reports.** A fit without a stored `u_hat`
+  (`"NHN"`, `"NHN_Z"` and others) used `-log(exp_u_hat)`, which is smaller than
+  E[u | e] by Jensen's inequality; those fits now use the JLMS predictor rebuilt
+  from their posterior. A fit that stores only the Battese-Coelli score
+  (`sfm()`'s `"NR"`, `"NG"` and `"NNAK"`, or any other fit with only
+  `exp_u_hat`) is now refused rather than approximated.
+
 * **A transformed response was fitted untransformed.** With
   `log(q) ~ log(K)`, `sfm()`, `zsfm()`, `lcsfm()`, `ttsfm()` and `psfm()`
   fitted `q` in levels. The left-hand side is now evaluated as written, and the
@@ -149,6 +157,11 @@ wrong result came without an error or a warning.
   `sigma_v = 4e-7`. `"NE"` already avoided this; the same fix now covers
   `"NGE"`, `"TSL"`, `"NE"` with `vhet`/`uhet`, `esfm()`, and the
   `"NGE"`/`"TSL"` efficiency scores. Fits away from that boundary are unchanged.
+
+* **`"NE_Z"` now returns `exp_u_hat`, `u_hat` and `u_posterior`**, so
+  `efficiency()`, `efficiency_ci()` and `predict(type = "efficiency")` work on it,
+  as they already did for `"NE"` with `uhet`. It used to store no efficiency
+  score at all.
 
 * **`"NW"` and `"NLN"` are now fitted by quadrature instead of simulation.**
   At the default number of draws, the simulated log-likelihood was off by 0.3
