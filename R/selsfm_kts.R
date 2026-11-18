@@ -80,17 +80,30 @@
   a <- as.numeric(Z %*% gam)
   mu <- ifelse(I == 1, as.numeric(X1 %*% b1), as.numeric(X0 %*% b0))
   sv <- ifelse(I == 1, sv1, sv0)
+  ## The mixture weight phi_i, formed exactly as .kts_loglik() forms it. The
+  ## regimes enter with weights 1 - phi_i (sigma_u0) and phi_i (sigma_u1);
+  ## adding them with equal weight was A106.
+  Abar <- function(su) {
+    arg <- pmin(pmax(outer(a, su * nd$z, function(x, y) x + del * y),
+      .SFA_CONSTANTS$CLIP_Z1_LOWER), .SFA_CONSTANTS$CLIP_Z1_UPPER)
+    as.numeric(stats::pnorm(arg) %*% nd$w)
+  }
+  A0 <- Abar(su0); A1 <- Abar(su1)
+  dA <- 1 + A0 - A1
+  dA[abs(dA) < .SFA_CONSTANTS$MIN_POSITIVE] <- .SFA_CONSTANTS$MIN_POSITIVE
+  phi <- pmin(pmax(A0 / dA, 0), 1)
   num <- 0; den <- 0
   for (j in seq_along(nd$z)) {
     for (reg in 1:2) {
       su <- if (reg == 1) su0 else su1
+      pw <- if (reg == 1) 1 - phi else phi
       uu <- su * nd$z[j]
       arg <- pmin(pmax(a + del * uu, .SFA_CONSTANTS$CLIP_Z1_LOWER),
         .SFA_CONSTANTS$CLIP_Z1_UPPER)
       lf <- ifelse(I == 1, stats::pnorm(arg, log.p = TRUE),
         stats::pnorm(arg, log.p = TRUE, lower.tail = FALSE))
       e <- (y - (mu - S * uu)) / sv
-      wgt <- exp(-0.5 * e^2 - log(sv) + lf) * nd$w[j]
+      wgt <- pw * exp(-0.5 * e^2 - log(sv) + lf) * nd$w[j]
       num <- num + wgt * uu
       den <- den + wgt
     }
