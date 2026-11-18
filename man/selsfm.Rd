@@ -169,12 +169,15 @@ coefficients, and \code{nobs} is the number of selected rows, the sample the
 second-stage likelihood sums over. Also returned:
 \item{alpha}{First-stage probit coefficients.}
 \item{probit}{The fitted first-stage object.}
-\item{jlms}{\eqn{E[u_i \mid \varepsilon_i]} by the simulated Bayes rule of
-  Greene's Equation (21), computed over the same draws the likelihood used.}
+\item{jlms}{\eqn{E[u_i \mid \varepsilon_i]} at the fitted parameters. For
+  \code{"greene"} it is the posterior mean Greene's Equation (21) simulates,
+  computed instead by quadrature on its exact one-dimensional posterior, so it
+  carries no simulation error: from the likelihood's own draws from the prior
+  it was off by up to 0.68 in the tail at the default \code{Nsim}. For
+  \code{"kts"} it uses the quadrature its likelihood uses.}
 \item{efficiency, exp_u_hat}{\code{exp(-jlms)}, and \eqn{E[\exp(-u_i) \mid
-  \varepsilon_i]} over the same draws; \code{\link{efficiency}(type = "bc")}
-  returns the second. For \code{"kts"} both are computed by the quadrature
-  its likelihood uses.}
+  \varepsilon_i]} under the same posterior; \code{\link{efficiency}(type = "bc")}
+  returns the second.}
 \item{n_selected, n_total}{Selected and total observation counts.}
 \item{Nsim, sim_type}{The draw count and sequence actually used.}
 

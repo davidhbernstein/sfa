@@ -534,6 +534,14 @@ wrong result came without an error or a warning.
   (A106). It now uses the mixture weight phi_i the likelihood uses, so it is
   E[u | y, I]; it had been off by up to 0.07.
 
+* **`selsfm(model_name = "greene")`'s scores carried simulation error (A105).**
+  `jlms` and `exp_u_hat` weighted the likelihood's draws from the PRIOR of u,
+  which put almost none where the posterior lives for a firm in the tail: at
+  the default `Nsim` `jlms` was off by up to 0.68, and by 0.03 on an ordinary
+  sample. Both are now computed by quadrature on the exact one-dimensional
+  posterior at the fitted parameters, to about 1e-10. The likelihood is
+  unchanged.
+
 * **`efficiency(type = "bc")` returned exp(-E[u|e]) for `ivsfm()` and `selsfm()`
   fits (A102).** They now store E[exp(-u)|e] as `exp_u_hat`; the
   `efficiency` slot is unchanged.
