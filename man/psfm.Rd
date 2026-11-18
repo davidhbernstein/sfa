@@ -379,7 +379,7 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For FD model:}
 \item{u_hat}{Predicted technical efficiency in levels.}
 \item{h_hat}{Estimated z heterogeneity function values.}
-\item{exp_u_hat}{Predicted technical efficiency.}
+\item{exp_u_hat}{Predicted technical efficiency, \eqn{E[\exp(-u_{it}) \mid e_i]} (Battese and Coelli 1988) under the posterior of \eqn{u_i^*}, which is not \code{exp(-u_hat)}.}
 
 \bold{For GTRE_SEQ1 and GTRE_SEQ2 models:}
 \item{other_parms}{A matrix of additional parameters (lambda, sigma, beta_0 for SEQ1; sigma_u, sigma_v, sigma_h, sigma_r, lambda, sigma for SEQ2).}
