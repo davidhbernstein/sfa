@@ -171,6 +171,10 @@ second-stage likelihood sums over. Also returned:
 \item{probit}{The fitted first-stage object.}
 \item{jlms}{\eqn{E[u_i \mid \varepsilon_i]} by the simulated Bayes rule of
   Greene's Equation (21), computed over the same draws the likelihood used.}
+\item{efficiency, exp_u_hat}{\code{exp(-jlms)}, and \eqn{E[\exp(-u_i) \mid
+  \varepsilon_i]} over the same draws; \code{\link{efficiency}(type = "bc")}
+  returns the second. For \code{"kts"} both are computed by the quadrature
+  its likelihood uses.}
 \item{n_selected, n_total}{Selected and total observation counts.}
 \item{Nsim, sim_type}{The draw count and sequence actually used.}
 

@@ -60,10 +60,8 @@
       v <- .jlms_u(post$mu_star, post$sigma_star)
     }
   }
-  if (is.null(v)) {
-    e <- fit$exp_u_hat
-    if (!is.null(e)) v <- -log(pmax(as.numeric(e), .SFA_CONSTANTS$MIN_POSITIVE))
-  }
+  ## No -log(exp_u_hat) fallback: by Jensen it is not E[u | e] (A104). A
+  ## candidate that stores no E[u | e] is dropped by sfma() with a message.
   if (is.null(v)) return(NULL)
   as.numeric(v)
 }

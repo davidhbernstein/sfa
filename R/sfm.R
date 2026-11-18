@@ -588,7 +588,8 @@ sfm <- function(formula,
     ## property of the assumed u, and the normal/half-normal posterior applied
     ## to an exponential or a gamma u answers a different question. Undefined
     ## when sigma_u collapses under wrong skew.
-    eps_c <- inefdec_n * CF$residuals
+    ## Already production-oriented: the engine fits Yc = inefdec_n * Y (A107).
+    eps_c <- CF$residuals
     if (CF$sigma_u > 0) {
       s2u <- CF$sigma_u^2
       s2v <- CF$sigma_v^2
@@ -688,7 +689,8 @@ sfm <- function(formula,
     out[2, ] <- se_v
     out[3, ] <- par_v / se_v
 
-    eps_c <- inefdec_n * MF$residuals
+    ## Already production-oriented: the engine fits Yc = inefdec_n * Y (A107).
+    eps_c <- MF$residuals
     exp_u_hat <- if (MF$sigma_u > 0 && MF$sigma_v > 0) {
       s2u <- MF$sigma_u^2
       s2v <- MF$sigma_v^2
@@ -1684,6 +1686,11 @@ sfm <- function(formula,
       ## (w^2 - z^2)/2 = s z + s^2/2, without the cancellation (gap A34).
       exp_u_hat <- exp(s * z + s^2 / 2 + .log_nr_g(w) - .log_nr_g(z))
       exp_u_hat <- pmax(exp_u_hat, 0)
+      ## E[u | e]: the posterior is proportional to u phi((u + s z)/s) on u > 0,
+      ## so E[u | e] = s (-z + Phi(-z) / G(z)), G(z) = phi(z) - z Phi(-z) as in
+      ## .log_nr_g(). Stored so that sfma() and efficiency(type = "jlms") need
+      ## not substitute -log(exp_u_hat), which is not E[u | e] (A104).
+      u_hat <- pmax(s * (-z + exp(stats::pnorm(-z, log.p = TRUE) - .log_nr_g(z))), 0)
     }
 
     if (model_name == "tHN") {
@@ -1892,6 +1899,8 @@ sfm <- function(formula,
         "coefficients", "std.errors", "t.values", "call"
       )
       results$inefdec <- isTRUE(inefdec)
+      ## Appended, not rebuilt: NR alone of the three has a closed-form E[u | e] (A104).
+      if (model_name == "NR") results$u_hat <- u_hat
     }
 
     ## NG additionally reports its starting-value search, which is what decides

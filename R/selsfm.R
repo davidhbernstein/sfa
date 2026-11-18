@@ -356,6 +356,9 @@ selsfm <- function(selection,
     "coefficients", "std.errors", "t.values", "call"
   )
   results$inefdec <- isTRUE(inefdec)
+  ## E[exp(-u) | e] over the same simulated weights as jlms, for
+  ## efficiency(type = "bc"); `efficiency` is exp(-jlms) (A102).
+  results$exp_u_hat <- rowSums(w * exp(-su * absU))
   ## Appended, not rebuilt: re-listing a long value vector against a long name
   ## vector to add one field is how a misalignment gets introduced.
   if (!is.null(.sm)) results$se_unresolved <- .sm

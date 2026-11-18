@@ -174,7 +174,11 @@ Alongside the usual components:
   estimate \code{"C2SLS"} corrects.}
 \item{wrong_skew}{Whether the 2SLS residuals are skewed the wrong way.}
 \item{jlms, efficiency}{\eqn{E[u_i \mid \varepsilon_i, \xi_i]} and
-  \code{exp(-jlms)}.}
+  \code{exp(-jlms)}. For \code{"C2SLS"}, which estimates no \eqn{\rho},
+  \code{jlms} is \eqn{E[u_i \mid \varepsilon_i]}.}
+\item{exp_u_hat}{\eqn{E[\exp(-u_i) \mid \cdot]} (Battese and Coelli 1988)
+  under the same posterior; this, not \code{efficiency}, is what
+  \code{\link{efficiency}(type = "bc")} returns.}
 \item{vcov_rho}{The full \eqn{q \times q} covariance of \eqn{\hat\rho}, which
   \code{\link{endogeneity_test}} needs for the joint Wald statistic.}
 \item{inefdec}{The orientation this fit used, as a scalar logical: \code{TRUE} for a production frontier, \code{FALSE} for a cost one. Recorded at fit time so that post-estimation functions (\code{\link{efficiency}} with \code{logDepVar = FALSE}, the robust accessors, the composed CDF) do not have to re-evaluate the \code{inefdec} argument of the recorded call, which fails when it was passed as a variable that is no longer in scope.}

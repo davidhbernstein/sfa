@@ -71,7 +71,8 @@
 ## E[u | y_i, I_i], by the same quadrature: the posterior mean of u under the
 ## mixture density the likelihood integrates, so the predictor and the
 ## likelihood cannot drift apart.
-.kts_jlms <- function(theta, y, X0, X1, Z, I, nd, S = 1) {
+## `g` gives E[g(u) | y_i, I_i]; exp(-u) gives the Battese-Coelli score.
+.kts_jlms <- function(theta, y, X0, X1, Z, I, nd, S = 1, g = identity) {
   k <- ncol(X0); m <- ncol(Z)
   b0 <- theta[1:k]; b1 <- theta[(k + 1):(2 * k)]
   sv0 <- exp(theta[2 * k + 1]); sv1 <- exp(theta[2 * k + 2])
@@ -104,7 +105,7 @@
         stats::pnorm(arg, log.p = TRUE, lower.tail = FALSE))
       e <- (y - (mu - S * uu)) / sv
       wgt <- pw * exp(-0.5 * e^2 - log(sv) + lf) * nd$w[j]
-      num <- num + wgt * uu
+      num <- num + wgt * g(uu)
       den <- den + wgt
     }
   }
@@ -218,5 +219,7 @@
     "n_nodes", "nobs", "n_selected", "S",
     "coefficients", "std.errors", "t.values", "call")
   results$inefdec <- isTRUE(inefdec)
+  ## E[exp(-u) | y, I] for efficiency(type = "bc"); `efficiency` is exp(-jlms) (A102).
+  results$exp_u_hat <- .kts_jlms(th, y, X, X, Z, I, nd, S, g = function(u) exp(-u))
   results
 }
