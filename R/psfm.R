@@ -740,13 +740,12 @@ psfm <- function(formula,
       sig_r <- opt$par[3]
       sig_h <- opt$par[4]
 
-      ## Residuals per firm, oriented and clamped as this branch always has.
-      ## The clamp ties a share of observations at exactly zero; it is left
-      ## alone here so that moving this block into .gtre_csn_te() changes no
-      ## GTRE number.
+      ## Residuals per firm, production-oriented and NOT clamped: e_it =
+      ## alpha_i - h_i + v_it - u_it is positive for a sizeable share of
+      ## observations under the model itself (A95).
       e_i <- as.list(rep(0, N))
       for (i in seq_len(N)) {
-        e_i[[i]] <- pmin(inefdec_n * (Y[[i]][, 1] - rowSums(t(t(data_i_vars[[i]]) * beta))), Y[[i]][, 1] * 0)
+        e_i[[i]] <- inefdec_n * (Y[[i]][, 1] - rowSums(t(t(data_i_vars[[i]]) * beta)))
       }
       .te <- .gtre_csn_te(e_i, t, sig_u, sig_v, sig_r, sig_h)
       H <- .te$H
@@ -1141,10 +1140,7 @@ psfm <- function(formula,
       ## Residual vectors epsilon_i
       e_i <- Map(
         f = function(Yi, Xi) {
-          pmin(
-            inefdec_n * (Yi[, 1] - rowSums(t(t(Xi) * beta))),
-            Yi[, 1] * 0
-          )
+          inefdec_n * (Yi[, 1] - rowSums(t(t(Xi) * beta)))
         },
         Yi = Y,
         Xi = data_i_vars
@@ -1890,7 +1886,7 @@ psfm <- function(formula,
     if (isTRUE(is.numeric(start_val))) {
       start_cands <- list(start_val)
     } else {
-      b0_re <- if (is.na(beta_0)) mean(Y_vec) else unname(beta_0)
+      b0_re <- if (is.na(beta_0)) mean(data[, y_var]) else unname(beta_0)
       cand_re <- unname(c(
         b0_re, beta_hat[seq_len(Kx)],
         max(sigma_r, 0.05), max(sigma_v, 0.05),
@@ -1900,7 +1896,7 @@ psfm <- function(formula,
       cand_ts <- tryCatch(
         {
           ts <- .gtre_two_step(epsilon_hat, alpha_hat, beta_0_st)
-          b0 <- if (is.na(ts$beta_0)) mean(Y_vec) else unname(ts$beta_0)
+          b0 <- if (is.na(ts$beta_0)) mean(data[, y_var]) else unname(ts$beta_0)
           unname(c(
             b0, beta_hat[seq_len(Kx)],
             sqrt(max(ts$sigmaSq_hr * (1 - ts$gamma_hr), 2.5e-3)),
@@ -1934,7 +1930,11 @@ psfm <- function(formula,
     ## Quadrature nodes for the rank-one CDF reduction, built once per fit.
     gh_fml <- .gauss_hermite_nodes(64L)
 
+    ## The intercept is carried in the frontier's own orientation: the
+    ## likelihood's residual is inefdec_n * (y - b0 - X b), so a cost fit
+    ## reports the cost frontier's intercept, not its negative (A107).
     like.fml <- function(x, per_obs = FALSE) {
+      x[1] <- inefdec_n * x[1]
       .csn_gtre_loglik(x,
         Y = Y_vec, X = X_s, gid = gid,
         ngroups = N, BigT = BigT, gh = gh_fml, per_obs = per_obs
@@ -2070,7 +2070,8 @@ psfm <- function(formula,
     sig_v <- opt$par[np - 2]
     sig_h <- opt$par[np - 1]
     sig_u <- opt$par[np]
-    eps <- as.numeric(Y_vec - opt$par[1] - X_s %*% opt$par[2:(1 + Kx)])
+    ## Already production-oriented: Y_vec and X_s carry inefdec_n (A107).
+    eps <- as.numeric(Y_vec - inefdec_n * opt$par[1] - X_s %*% opt$par[2:(1 + Kx)])
     ## Both efficiencies come from the SAME closed-skew-normal posterior the
     ## simulated-likelihood route uses (Colombi et al. 2014), so the two
     ## estimators of this model report the same estimand.
@@ -2085,8 +2086,7 @@ psfm <- function(formula,
     ## npsf's independent four-component fit sits with the simulated route.
     ##
     ## `fiml` requires a balanced panel, so every firm has BigT periods.
-    eps_i <- split(as.numeric(inefdec_n * eps), gid)
-    e_i <- lapply(eps_i, function(z) pmin(z, 0))
+    e_i <- split(eps, gid)
     .te <- .gtre_csn_te(e_i, rep(BigT, N), sig_u, sig_v, sig_r, sig_h)
     U <- .te$U
     H <- .te$H
@@ -2258,7 +2258,9 @@ psfm <- function(formula,
       r_hat_m_exp[A:B] <- rep(r_hat_m[m], t[m])
     }
 
-    eps_hat <- pmin(inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)) - r_hat_m_exp), data[, y_var] * 0)
+    ## Not clamped at zero: Battese-Coelli at the recovered effect is defined
+    ## for a positive residual too (A98).
+    eps_hat <- inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)) - r_hat_m_exp)
     sig_star <- sig_u * sig_v / sig
     inner <- (lamb * eps_hat) / sig
     exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
@@ -2754,6 +2756,7 @@ psfm <- function(formula,
     .sv2_hat <- if (is.null(vhet)) NULL else .fd_sv2(opt$par[1L + seq_len(.nzv)])
     mu <- opt$par[2L + .nzv]
     u_hat <- rep(0, sum(t))
+    exp_u_hat <- rep(0, sum(t))
     h_hat <- exp(as.matrix(data.frame(subset(data, select = z_vars))) %*% delta)
 
     ## eps_t/eps_h/SIG/sig_star2/mu_star below do not depend on `tt` at all
@@ -2807,12 +2810,13 @@ psfm <- function(formula,
           tt
         }
         u_hat[num] <- h_hat[num] * (mu_star + (sqrt(sig_star2) * dnorm(mu_star / sqrt(sig_star2)) / max(pnorm(mu_star / sqrt(sig_star2)), .SFA_CONSTANTS$MIN_POSITIVE)))
+        ## E[exp(-h_it u*_i) | e_i], Battese-Coelli under the u* posterior,
+        ## not exp(-E[u_it | e_i]) (A99).
+        exp_u_hat[num] <- .te_battese_coelli(
+          h_hat[num] * as.numeric(mu_star), h_hat[num] * sqrt(as.numeric(sig_star2))
+        )
       }
     }
-
-    exp_u_hat <- exp(-u_hat)
-    exp_u_hat <- pmax(exp_u_hat, 0)
-    exp_u_hat <- pmin(exp_u_hat, 1)
 
     st_err <- if (.hessian_unusable(opt$hessian) | optHessian == FALSE) {
       rep(NA, length(opt$par))

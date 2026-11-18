@@ -71,6 +71,13 @@ wrong result came without an error or a warning.
 
 ### Panel efficiency scores
 
+* **Panel efficiency scores that disagreed with their own model (A95, A98,
+  A99, A107).** The GTRE family (`"sml"`, `"fiml"`, `GTRE_Z`) and `TFE_WMLE`
+  no longer clamp the residual at zero before the posterior (`U` was off by up
+  to 0.38); `psfm("FD")`'s `exp_u_hat` is now E[exp(-u)|e], not exp(-E[u|e]);
+  and `psfm("GTRE", inefdec = FALSE)` by `"fiml"` reports the cost frontier's
+  intercept with its own sign and scores the correctly oriented residual.
+
 * **`psfm("FD")` reported the wrong efficiency scores.** The fit itself --
   coefficients, standard errors, log-likelihood -- was correct and is
   unchanged; `u_hat` and `exp_u_hat` were not, because the loop that builds
@@ -432,6 +439,10 @@ wrong result came without an error or a warning.
   `efficiency()` therefore work after the data have gone out of scope.
 
 ## Bug fixes
+
+* **`selsfm(model_name = "kts")`'s `jlms` weighted the two regimes equally**
+  (A106). It now uses the mixture weight phi_i the likelihood uses, so it is
+  E[u | y, I]; it had been off by up to 0.07.
 
 ### Standard errors and covariances
 

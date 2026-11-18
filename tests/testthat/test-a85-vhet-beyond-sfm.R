@@ -113,7 +113,7 @@ test_that("psfm('FD') u_hat is the posterior mean the model implies (A86)", {
   ## not a landing point.
   b <- p[c("x1", "x2")]; dl <- p[["z"]]
   su2 <- p[["sig_u2"]]; sv2 <- p[["sig_v2"]]; mu <- p[["mu"]]
-  uh <- numeric(nrow(d))
+  uh <- numeric(nrow(d)); eh <- numeric(nrow(d))
   for (i in seq_len(N)) {
     r <- which(d$name == i); Ti <- length(r)
     D <- diag(Ti)[-1, , drop = FALSE] - diag(Ti)[-Ti, , drop = FALSE]
@@ -122,12 +122,14 @@ test_that("psfm('FD') u_hat is the posterior mean the model implies (A86)", {
     Si <- solve(sv2 * (D %*% t(D)))
     s2 <- 1 / (as.numeric(t(dh) %*% Si %*% dh) + 1 / su2)
     ms <- (mu / su2 - as.numeric(t(de) %*% Si %*% dh)) * s2
-    uh[r] <- exp(d$z[r] * dl) *
-      (ms + sqrt(s2) * dnorm(ms / sqrt(s2)) / pnorm(ms / sqrt(s2)))
+    hh <- exp(d$z[r] * dl)
+    uh[r] <- hh * (ms + sqrt(s2) * dnorm(ms / sqrt(s2)) / pnorm(ms / sqrt(s2)))
+    ## E[exp(-h u*) | e_i] under u* ~ N+(ms, s2), Battese-Coelli (A99).
+    eh[r] <- exp(-hh * ms + hh^2 * s2 / 2) *
+      pnorm(ms / sqrt(s2) - hh * sqrt(s2)) / pnorm(ms / sqrt(s2))
   }
   expect_equal(as.numeric(f$u_hat), uh, tolerance = 1e-8)
-  expect_equal(as.numeric(f$exp_u_hat), pmin(pmax(exp(-uh), 0), 1),
-               tolerance = 1e-8)
+  expect_equal(as.numeric(f$exp_u_hat), eh, tolerance = 1e-8)
 })
 
 test_that("psfm('FD') with vhet reduces to the homoskedastic covariance", {
