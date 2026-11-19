@@ -369,6 +369,10 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For GTRE, GTRE_Z, TRE and TRE_Z models:}
 \item{U}{Predicted time-varying technical efficiency for each observation.}
 
+\bold{For TRE and TRE_Z models:}
+\item{U}{\eqn{E[\exp(-u_{it}) \mid e_i]}{E[exp(-u_it) | e_i]}: the transient efficiency under the posterior of the fitted model, integrating over the firm effect \eqn{\alpha_i}{alpha_i} (adaptive Gauss-Hermite quadrature, 64 nodes). The residual is \eqn{e_{it} = \alpha_i + v_{it} - u_{it}}{e_it = alpha_i + v_it - u_it}, so the firm effect is not charged to inefficiency.}
+\item{u_hat}{\eqn{E[u_{it} \mid e_i]}{E[u_it | e_i]} under the same posterior, so \code{efficiency(type = "jlms")} is available.}
+
 \bold{For TFE and TFE_WMLE models:}
 \item{r_hat_m}{Estimated individual-specific fixed effects, named by individual. For \code{"TFE"} these are the maximum-likelihood estimates of \eqn{\alpha_i} directly; for \code{"TFE_WMLE"} they are recovered after estimation from the mean residual plus \eqn{\sqrt{2/\pi}\,\sigma_u}, since the within likelihood does not identify them.}
 \item{exp_u_hat}{Predicted technical efficiency, \eqn{E[\exp(-u)|\epsilon]} (Battese and Coelli, 1988).}

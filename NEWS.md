@@ -91,6 +91,21 @@ wrong result came without an error or a warning.
   `exp(-u_hat)`. Fits are also much faster: 7 s instead of 503 s on a
   T = 6, N = 100 panel.
 
+* **`psfm("TRE")` and `psfm("TRE_Z")` now score the posterior of the model
+  they fit (A96, A97).** `U` is E[exp(-u_it) | e_i], integrating over the
+  firm effect alpha_i by adaptive Gauss-Hermite quadrature. `"TRE"` used a
+  plug-in -- the firm-mean residual plus sqrt(2/pi) sigma_u, then a clamp at
+  zero -- and was off by up to 0.16; `"TRE_Z"` left alpha_i out of the residual
+  altogether, charging the firm effect to inefficiency (off by up to 0.11).
+  Both now also store `u_hat`, E[u_it | e_i] under the same posterior, so
+  `efficiency(type = "jlms")` answers for them instead of refusing.
+
+* **`psfm("GTRE_Z")`'s scores use the likelihood's own sigma_h,i (A101).**
+  The likelihood sets each firm's persistent scale to the firm mean of
+  sqrt(exp(zp_it'delta_h)); `U` and `H` read `zp` at the firm's first row
+  instead. The two agree when `zp` is constant within firm. When it is not,
+  `H` was off by up to 0.14 on a test panel; it now uses the firm mean.
+
 * **`psfm("FD")` reported the wrong efficiency scores.** The fit itself --
   coefficients, standard errors, log-likelihood -- was correct and is
   unchanged; `u_hat` and `exp_u_hat` were not, because the loop that builds

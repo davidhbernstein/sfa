@@ -762,31 +762,13 @@ psfm <- function(formula,
       sig_u <- (lamb * sig) / sqrt(1 + lamb^2)
       sig_v <- sig_u / lamb
 
-      Y_mean <- rep(0, N)
-      X_mean <- matrix(0, N, ncol = length(x_vars_vec))
-      colnames(X_mean) <- x_vars_vec
-
-      for (ii in seq_len(N)) {
-        data_i[[ii]] <- data[which(data[, c(individual)] == indiv[ii]), ]
-        Y_mean[ii] <- mean(as.numeric(data_i[[ii]][, y_var]))
-        X_mean[ii, ] <- colMeans(data.frame(data_i[[ii]][, c(x_vars_vec)]))
-      }
-
-      r_hat_m <- Y_mean - rowSums(t(beta * t(X_mean))) + inefdec_n * sqrt(2 / pi) * sig_u
-      r_hat_m_exp <- rep(0, sum(t))
-      t_cum <- c(cumsum(t))
-
-      for (m in 1:length(t)) {
-        B <- t_cum[m]
-        A <- B + 1 - t[m]
-        r_hat_m_exp[A:B] <- rep(r_hat_m[m], t[m])
-      }
-
-      eps_hat <- pmin(inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)) - r_hat_m_exp), data[, y_var] * 0)
-      sig_star <- sig_u * sig_v / sig
-      inner <- (lamb * eps_hat) / sig
-      exp_u_hat <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
-      U <- exp_u_hat
+      sig_r <- opt$par[3]
+      ## The TRE posterior, integrating over alpha_i (A96): not a plug-in
+      ## firm mean with a clamp.
+      eps_hat <- inefdec_n * (data[, y_var] - rowSums(t(t(data[, c(x_vars_vec)]) * beta)))
+      .te <- .tre_posterior_te(eps_hat, data[, individual], sig_u, sig_v, sig_r)
+      U <- .te$U
+      u_hat <- .te$u
     }
 
     # cor(U,exp(-p_data_trial$u))
@@ -806,6 +788,7 @@ psfm <- function(formula,
       class(results) <- "sfareg"
       names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
       results$inefdec <- isTRUE(inefdec)
+      results$u_hat <- u_hat   # E[u_it | e_i], same posterior as U
       ## Appended, not rebuilt: re-listing a long value vector against a
       ## long name vector to add one field is how a misalignment gets in.
       if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -1085,12 +1068,12 @@ psfm <- function(formula,
       ## Basic dimensions and indexing
       n <- sum(t)
       id_obs <- rep(seq_len(N), t)
-      t_cum <- cumsum(t)
-      t_start <- c(1, head(t_cum, -1) + 1)
 
       ## Build variance-design matrices
       Z_mat <- .make_var_design(data, z_vars, rows = NULL, int_name = "int_u")
-      Zp_mat <- .make_var_design(data, zp_vars, rows = t_start, int_name = "int_h")
+      ## Every row, not the firm's first: the likelihood sets sigma_h,i to the
+      ## firm MEAN of sqrt(exp(zp_it'delta_h)), so the predictor must too (A101).
+      Zp_mat <- .make_var_design(data, zp_vars, rows = NULL, int_name = "int_h")
 
       # n_z_eff  <- ncol(Z_mat)
       # n_zp_eff <- ncol(Zp_mat)
@@ -1131,7 +1114,7 @@ psfm <- function(formula,
       eta_h <- pmin(pmax(eta_h, -eta_bound), eta_bound)
 
       sig_u_all <- pmax(sqrt(exp(eta_u)), min_sd)
-      sig_h_all <- pmax(sqrt(exp(eta_h)), min_sd)
+      sig_h_all <- pmax(as.numeric(tapply(sqrt(exp(eta_h)), id_obs, mean)), min_sd)
 
       if (any(!is.finite(sig_u_all)) || any(!is.finite(sig_h_all))) {
         stop(
@@ -1834,19 +1817,19 @@ psfm <- function(formula,
     lamb <- sig_u / sig_v
     sig <- sqrt(sig_u^2 + sig_v^2)
 
-    eps_hat <- pmin(inefdec_n * (data[, y_var] - rowSums(t(t(data.frame(data[, c(x_vars_vec)])) * beta))), 5)
-
-    sig_star <- (sig_u * sig_v) / sig
-    inner <- (lamb * eps_hat) / sig
-    U <- .te_battese_coelli(-eps_hat * sig_u^2 / sig^2, sig_star)
-    U <- pmax(U, 0)
-    U <- pmin(U, 1)
+    ## The TRE posterior, integrating over alpha_i (A97): the random effect
+    ## is part of the residual, not inefficiency.
+    eps_hat <- inefdec_n * (data[, y_var] - rowSums(t(t(data.frame(data[, c(x_vars_vec)])) * beta)))
+    .te <- .tre_posterior_te(eps_hat, data[, individual], sig_u, sig_v, opt$par[2])
+    U <- .te$U
+    u_hat <- .te$u
 
     ## Results
     results <- list(t(out), c(opt), data, End.Time, start_v, model_name, formula, U, out["par", ], out["st_err", ], out["t-val", ], call)
     class(results) <- "sfareg"
     names(results) <- c("out", "opt", "data", "total_time", "start_v", "model_name", "formula", "U", "coefficients", "std.errors", "t.values", "call")
     results$inefdec <- isTRUE(inefdec)
+    results$u_hat <- u_hat   # E[u_it | e_i], same posterior as U
     ## Appended, not rebuilt: re-listing a long value vector against a
     ## long name vector to add one field is how a misalignment gets in.
     if (!is.null(.sm)) results$se_unresolved <- .sm
