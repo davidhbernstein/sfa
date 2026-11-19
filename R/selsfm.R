@@ -325,24 +325,19 @@ selsfm <- function(selection,
   }
   if (!is.null(.sm)) warning(.sm$message, call. = FALSE)
 
-  ## ---- observation-specific inefficiency, Greene's (21) -------------------
-  ## Simulated Bayes over the same draws the likelihood used: E[u_i | eps_i] is
-  ## a weighted mean of the draws, the weights being each draw's share of the
-  ## simulated density.
-  su <- opt$par[1L]
-  sv <- opt$par[2L]
+  ## ---- observation-specific inefficiency (A105) ----------------------------
+  ## E[u_i | eps_i, d_i = 1] and E[exp(-u_i) | eps_i, d_i = 1] under the model
+  ## at the fitted parameters, by quadrature rather than Greene's (21) over the
+  ## likelihood's prior draws: those put almost no draws where the posterior
+  ## lives in the tail (off by 0.68 at the default Nsim).
+  su <- abs(opt$par[1L])
+  sv <- abs(opt$par[2L])
   rho <- opt$par[3L]
   beta <- opt$par[4L:length(opt$par)]
   r0 <- as.numeric(y - X %*% beta)
-  v <- r0 + S * su * absU
-  root <- sqrt(1 - rho^2)
-  lg <- -0.5 * (v / sv)^2 - log(sv) - cz$LOG_SQRT_2PI
-  zarg <- pmin(pmax((rho * (v / sv) + a_i) / root, cz$CLIP_Z1_LOWER), cz$CLIP_Z1_UPPER)
-  lg <- lg + stats::pnorm(zarg, log.p = TRUE)
-  w <- exp(lg - .log_row_sum_exp(lg))
-  jlms <- su * rowSums(w * absU)
+  .post <- .selsfm_greene_posterior(r0, a_i, su, sv, rho, S)
+  jlms <- .post$u
   eff <- exp(-jlms)
-
   results <- list(
     t(out), c(opt), End.Time, start_v, "SEL", frontier, selection, jlms, eff,
     alpha_hat, probit, R, sim_type, n_sel, length(d_num), S, n_sel,
@@ -356,9 +351,9 @@ selsfm <- function(selection,
     "coefficients", "std.errors", "t.values", "call"
   )
   results$inefdec <- isTRUE(inefdec)
-  ## E[exp(-u) | e] over the same simulated weights as jlms, for
+  ## E[exp(-u) | e] under the same posterior as jlms, for
   ## efficiency(type = "bc"); `efficiency` is exp(-jlms) (A102).
-  results$exp_u_hat <- rowSums(w * exp(-su * absU))
+  results$exp_u_hat <- .post$bc
   ## Appended, not rebuilt: re-listing a long value vector against a long name
   ## vector to add one field is how a misalignment gets introduced.
   if (!is.null(.sm)) results$se_unresolved <- .sm
@@ -374,4 +369,74 @@ selsfm <- function(selection,
   ## that BIC() must divide by; without this nobs.sfareg() falls through to
   ## re-evaluating the call's `data` and reports the whole sample.
   .sfa_keep_data(results, data_supplied)
+}
+
+
+## Posterior of u_i ~ N+(0, su^2) in Greene's (2010) selection frontier, given
+## the residual r0 = y - x'b = v - S u and selection d_i = 1 (A105):
+##   log f(u | .) = -u^2/(2 su^2) - (r0 + S u)^2/(2 sv^2) + log Phi(x(u)) + const,
+##   x(u) = (rho (r0 + S u)/sv + a_i) / sqrt(1 - rho^2),  u >= 0.
+## The quadratic part has curvature exactly -1/s*^2, s* = su sv/sqrt(su^2+sv^2),
+## and log Phi of a linear function is concave, so the posterior is STRONGLY
+## log-concave: beyond the mode it falls at least as fast as a Gaussian of sd
+## s*. Hence: mode by damped Newton (vectorised, projected onto u >= 0), the
+## window [mode - 9 s*, mode + 9 s*] intersected with u >= 0 (mass outside
+## < e^-40), and composite Gauss-Legendre with breaks graded from the mode and
+## at the selection factor's step x(u) = 0, which near |rho| = 1 is a near-jump.
+.selsfm_greene_posterior <- function(r0, a_i, su, sv, rho, S, n_nodes = 16L) {
+  n <- length(r0)
+  s2 <- su^2 + sv^2
+  ss <- su * sv / sqrt(s2)
+  root <- sqrt(1 - rho^2)
+  k <- rho * S / (sv * root)                       # dx/du
+  xf <- function(u) (rho * (r0 + S * u) / sv + a_i) / root
+  lk <- function(u) -u^2 / (2 * su^2) - (r0 + S * u)^2 / (2 * sv^2) +
+    stats::pnorm(xf(u), log.p = TRUE)
+  ## mode
+  u <- pmax(-S * r0 * su^2 / s2, 0); gu <- lk(u)
+  for (it in 1:100) {
+    x <- xf(u); M <- exp(stats::dnorm(x, log = TRUE) - stats::pnorm(x, log.p = TRUE))
+    g1 <- -u / su^2 - S * (r0 + S * u) / sv^2 + k * M
+    g2 <- -1 / ss^2 - k^2 * M * (x + M)
+    step <- -g1 / g2
+    for (h in 1:60) {
+      un <- pmax(u + step, 0); gn <- lk(un)
+      bad <- !(gn >= gu - 1e-13 * abs(gu))
+      if (!any(bad)) break
+      step[bad] <- step[bad] / 2
+    }
+    done <- max(abs(un - u)) < 1e-13 * max(1, max(abs(u)))
+    u <- un; gu <- gn
+    if (done) break
+  }
+  ## Local scale at the mode: the curvature there, or, with the mode on the
+  ## boundary u = 0 and the density falling, the slope -- either can be far
+  ## smaller than s*, which bounds only the tail. Panels are graded
+  ## geometrically outward from the mode in units of that scale, so a
+  ## posterior of width 1e-3 and one of width s* are both resolved, out to
+  ## the window [mode - 9 s*, mode + 9 s*] intersected with u >= 0.
+  x <- xf(u); M <- exp(stats::dnorm(x, log = TRUE) - stats::pnorm(x, log.p = TRUE))
+  g1 <- -u / su^2 - S * (r0 + S * u) / sv^2 + k * M
+  g2 <- -1 / ss^2 - k^2 * M * (x + M)
+  sl <- 1 / sqrt(-g2)
+  sl <- ifelse(u <= 0 & g1 < 0, pmin(sl, 1 / abs(g1)), sl)
+  lo <- pmax(u - 9 * ss, 0); hi <- u + 9 * ss
+  ust <- if (rho != 0) S * (-a_i * sv / rho - r0) else rep(NA_real_, n)
+  ust <- ifelse(is.finite(ust), pmin(pmax(ust, lo), hi), u)
+  off <- sl %o% 2^(0:14)
+  brk <- cbind(lo, pmax(u - off, lo), u, ust, pmin(u + off, hi), hi)
+  brk <- t(apply(brk, 1L, sort))
+  gl <- .gauss_legendre_01(as.integer(n_nodes))
+  U <- NULL; LW <- NULL
+  for (j in seq_len(ncol(brk) - 1L)) {
+    A <- brk[, j]; L <- brk[, j + 1L] - A
+    U <- cbind(U, A + outer(L, gl$nodes))
+    LW <- cbind(LW, log(L) %o% rep(1, n_nodes) +
+      matrix(log(gl$weights), n, n_nodes, byrow = TRUE))
+  }
+  lw <- matrix(lk(as.numeric(U)), n) + LW          # lk recycles r0/a_i by row
+  lw[!is.finite(lw)] <- -Inf
+  w <- exp(lw - apply(lw, 1L, max))
+  w <- w / rowSums(w)
+  list(u = rowSums(w * U), bc = rowSums(w * exp(-U)))
 }
