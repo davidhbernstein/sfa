@@ -84,19 +84,34 @@ test_that("psfm('TRE') scores its own residual at its own parameters", {
 test_that("GTRE_Z's predictor uses the likelihood's firm-mean sigma_h (A101)", {
   skip_on_cran()
   ## sigma_h,i is the firm MEAN of sqrt(exp(zp'delta_h)) in the likelihood, so
-  ## reversing zp's order within each firm changes neither the objective nor,
-  ## with the predictor reading the same mean, the scores. Reading the firm's
-  ## first row, as the predictor did, makes H move while the fit stays put.
+  ## reversing zp's order within each firm must leave the scores unchanged AT
+  ## THE SAME PARAMETERS. Reading each firm's first row, as the predictor did,
+  ## moves H. The optimizer is stubbed to return its start unchanged, so both
+  ## fits are scored at exactly P: comparing two real fits instead asserted
+  ## that the optimizer took the same path on both, which on Linux it did not.
+  ns <- asNamespace("sfa")
+  orig <- get("opt.bobyqa", envir = ns)
+  on.exit(assignInNamespace("opt.bobyqa", orig, ns = "sfa"), add = TRUE)
+  assignInNamespace("opt.bobyqa", function(fn, start_v, ...) {
+    f0 <- fn(start_v)
+    list(start_v = start_v, start_feval = f0,
+         bob1 = list(par = start_v, value = f0, counts = c(`function` = 1L, gradient = NA_integer_),
+                     convergence = 0L, message = "stub: scored at start_val"))
+  }, ns = "sfa")
   d <- as.data.frame(data_gen_p(t = 5, N = 40, rand = 3, sig_u = 1, sig_v = 0.3,
     sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5))
   set.seed(5)
   d$zp_gtre <- d$zp_gtre + rnorm(nrow(d), 0, 0.6)     # varies within firm
   d2 <- d
   d2$zp_gtre <- ave(d$zp_gtre, d$name, FUN = rev)
+  ## sigv, sigr, frontier (3), u block (2), h block (2)
+  P <- c(0.3, 0.2, 0.5, 0.5, 0.5, 0.33, 0.61, -1, 0.5)
   fit <- function(dd) suppressWarnings(psfm(y_gtre_z ~ x1 + x2 | z_gtre | zp_gtre,
-    model_name = "GTRE_Z", data = dd, individual = "name", halton_num = 30, rand.gtre = 7))
+    model_name = "GTRE_Z", data = dd, individual = "name", halton_num = 30,
+    rand.gtre = 7, start_val = P, optHessian = FALSE))
   a <- fit(d); b <- fit(d2)
-  expect_equal(unname(coef(a)), unname(coef(b)), tolerance = 1e-6)
-  expect_equal(as.numeric(a$H), as.numeric(b$H), tolerance = 1e-5)
-  expect_equal(as.numeric(a$U), as.numeric(b$U), tolerance = 1e-5)
+  expect_equal(unname(a$out[, "par"]), P)
+  expect_equal(unname(b$out[, "par"]), P)
+  expect_equal(as.numeric(a$H), as.numeric(b$H), tolerance = 1e-8)
+  expect_equal(as.numeric(a$U), as.numeric(b$U), tolerance = 1e-8)
 })
