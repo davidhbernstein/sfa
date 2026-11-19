@@ -3729,7 +3729,7 @@
 ## unchanged.
 ##
 ##   e_i    list of length N: firm i's residuals, already oriented for
-##          production/cost and clamped as that branch clamps them
+##          production/cost, NOT clamped (A95)
 ##   t      per-firm number of periods (length N)
 ##   sig_u, sig_v, sig_r, sig_h   on the natural (standard-deviation) scale
 ##
@@ -3788,4 +3788,54 @@
   }
   U <- pmin(U, 1)
   list(H = H, U = U)
+}
+
+
+## Transient efficiency for the true random-effects frontier (TRE, TRE_Z):
+## E[exp(-u_it) | e_i] and E[u_it | e_i] under y_it = x'b + alpha_i + v_it - u_it,
+## alpha_i ~ N(0, sig_r^2), v ~ N(0, sig_v^2), u_it ~ N+(0, sig_u,it^2) (A96, A97).
+## Given alpha_i the firm's observations are independent normal-half-normal, so
+## the posterior is a 1-D integral over alpha_i. Its density is log-concave
+## (normal prior times log-concave NHN terms), so adaptive Gauss-Hermite centred
+## at the mode, scaled by the curvature there, converges fast.
+##
+##   e       residuals y - x'b, oriented so u enters negatively, any row order
+##   id      firm of each row
+##   sig_u   scalar or one per row (TRE_Z); sig_v, sig_r scalars
+## Returns list(U = E[exp(-u)|e_i], u = E[u|e_i]), one per row, in e's order.
+.tre_posterior_te <- function(e, id, sig_u, sig_v, sig_r, n_nodes = 64L) {
+  n <- length(e)
+  su <- rep_len(as.numeric(sig_u), n)
+  s <- sqrt(su^2 + sig_v^2)
+  lam <- su / sig_v
+  sig_r <- abs(as.numeric(sig_r))     # the likelihood is symmetric in its sign
+  if (!(sig_r > 1e-8 * max(s))) {     # alpha degenerate at 0: cross-sectional NHN
+    mu <- -e * su^2 / s^2; ss <- su * sig_v / s
+    return(list(U = .te_battese_coelli(mu, ss), u = .jlms_u(mu, ss)))
+  }
+  gh <- .gauss_hermite_nodes(n_nodes)
+  U <- u <- rep(NA_real_, n)
+  for (r in split(seq_len(n), factor(id, levels = unique(id)))) {
+    ei <- e[r]; si <- s[r]; li <- lam[r]; ui <- su[r]
+    ## log posterior kernel of alpha, and its curvature
+    lk <- function(a) dnorm(a, 0, sig_r, log = TRUE) +
+      vapply(a, function(aa) {
+        z <- (ei - aa) / si
+        sum(dnorm(z, log = TRUE) - log(si) + pnorm(-li * z, log.p = TRUE))
+      }, 1)
+    B <- max(abs(ei)) + 10 * (sig_r + max(si))
+    m <- stats::optimize(lk, c(-B, B), maximum = TRUE, tol = 1e-10)$maximum
+    z <- li * (m - ei) / si
+    M <- exp(dnorm(z, log = TRUE) - pnorm(z, log.p = TRUE))
+    sd_a <- 1 / sqrt(1 / sig_r^2 + sum(1 / si^2 + (li / si)^2 * M * (z + M)))
+    a <- m + sqrt(2) * sd_a * gh$nodes
+    lw <- lk(a) + gh$nodes^2 + log(gh$weights)
+    p <- exp(lw - max(lw)); p <- p / sum(p)
+    ## given alpha: u_it | e_it - alpha ~ N+(mu*, sig*^2)
+    ss <- ui * sig_v / si
+    mu <- -outer(ei, a, "-") * (ui^2 / si^2)      # T x K
+    U[r] <- as.numeric(.te_battese_coelli(mu, ss) %*% p)
+    u[r] <- as.numeric(.jlms_u(mu, ss) %*% p)
+  }
+  list(U = U, u = u)
 }
