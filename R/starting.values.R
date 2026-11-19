@@ -446,7 +446,7 @@ start_cs <- function(formula_x, data_orig, x_vars_vec, intercept, model_name, n_
 .RE_START_MODELS <- c("TRE_Z", "GTRE_Z", "TRE", "GTRE", "GTRE_FML", "GTRE_SEQ1", "GTRE_SEQ2")
 
 start_panel <- function(formula_x, data, model_name, start_val, intercept, x_vars_vec,
-                        individual = NULL, collinear_chk = NULL) {
+                        individual = NULL, collinear_chk = NULL, inefdec_n = 1) {
   sfa_eps <- sfa_alp <- exp_eta <- exp_u <- sigma_v <- sigma_u <-
     sigma_r <- sigma_h <- beta_0 <- lambda <- sigma <- start_v <- out <-
     plm_gtre <- beta_hat <- alpha_hat <- epsilon_hat <- beta_0_st <- beta_se <- NULL
@@ -513,8 +513,12 @@ start_panel <- function(formula_x, data, model_name, start_val, intercept, x_var
   if (isFALSE(is.numeric(start_val)) & model_name %in% .RE_START_MODELS) {
     ## Variance components for the starting values come from the SAME
     ## sequential decomposition that psfm(model_name = "GTRE_SEQ1") reports.
-    fit_eps_st <- .fit_nhn_intercept(as.numeric(epsilon_hat))
-    fit_alp_st <- .fit_nhn_intercept(as.numeric(alpha_hat))
+    ## Oriented, as GTRE_SEQ1 already does (A108): on a cost frontier the
+    ## residuals are skewed the other way, so an unoriented NHN fit collapses
+    ## sigma_u and moves the intercept the wrong way, and the cost fit then
+    ## started from -- and stopped at -- a different optimum than its mirror.
+    fit_eps_st <- .fit_nhn_intercept(as.numeric(epsilon_hat), inefdec_n = inefdec_n)
+    fit_alp_st <- .fit_nhn_intercept(as.numeric(alpha_hat), inefdec_n = inefdec_n)
     sigma_v <- fit_eps_st$par[1]
     sigma_u <- fit_eps_st$par[2]
     sigma_r <- fit_alp_st$par[1]

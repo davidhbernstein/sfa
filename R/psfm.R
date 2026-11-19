@@ -470,7 +470,7 @@ psfm <- function(formula,
     }
 
     Start_Panel <- start_panel(formula_x, data, model_name, start_val, intercept, x_vars_vec,
-      individual = individual, collinear_chk = collinear_chk
+      individual = individual, collinear_chk = collinear_chk, inefdec_n = inefdec_n
     )
 
     alpha_hat <- Start_Panel$alpha_hat
@@ -553,7 +553,10 @@ psfm <- function(formula,
           eps[[ii]] <- Y[[ii]] - x[3] * R_h1[[ii]] + x[4] * R_h2[[ii]] * inefdec_n
         }
         if (model_name == "TRE") {
-          eps[[ii]] <- Y[[ii]] - x[3] * R_h1[[ii]]
+          ## The draw term follows the orientation, so that a cost fit of -y is
+          ## exactly the mirror of the production fit of y (A108): alpha is
+          ## symmetric, but a finite set of draws is not.
+          eps[[ii]] <- Y[[ii]] - inefdec_n * x[3] * R_h1[[ii]]
         }
 
         ## Single matrix multiply instead of n_x_vars separate Ti x R
@@ -950,8 +953,10 @@ psfm <- function(formula,
         }
 
 
-        ## Construct epsilon_it draw-by-draw
-        eps_ii <- Y[[ii]] - sig_r * R_h1[[ii]] + sigma_h_fun * R_h2[[ii]] * inefdec_n
+        ## Construct epsilon_it draw-by-draw. The alpha draw term follows the
+        ## orientation, as h's does, so a cost fit of -y mirrors the production
+        ## fit of y exactly (A108).
+        eps_ii <- Y[[ii]] - inefdec_n * sig_r * R_h1[[ii]] + sigma_h_fun * R_h2[[ii]] * inefdec_n
 
         ## Remove frontier mean: one matrix multiply (Ti x k times k) instead
         ## of n_x_vars separate Ti x R temporary matrices/subtractions.
@@ -1407,7 +1412,7 @@ psfm <- function(formula,
                   eta_h_i <- pmin(pmax(eta_h_i, -eta_bound), eta_bound)
                   sqrt(exp(eta_h_i))
                 }
-                eps_ii <- Y[[ii]] - sig_r * R_h1[[ii]] + sigma_h_fun * R_h2[[ii]] * inefdec_n
+                eps_ii <- Y[[ii]] - inefdec_n * sig_r * R_h1[[ii]] + sigma_h_fun * R_h2[[ii]] * inefdec_n
                 eps_ii <- eps_ii - as.vector(data_i_vars[[ii]] %*% beta)
                 eps_ii <- inefdec_n * eps_ii
                 sigma_u_fun <- if (n_z_vars > 1) {
@@ -1707,7 +1712,7 @@ psfm <- function(formula,
       }
 
       fn1 <- function(ii) {
-        eps[[ii]] <- Y[[ii]] - x[2] * R_h1[[ii]]
+        eps[[ii]] <- Y[[ii]] - inefdec_n * x[2] * R_h1[[ii]]   # orientation-equivariant (A108)
 
         ## Single matrix multiply instead of n_x_vars separate Ti x R
         ## temporary matrices/subtractions.
