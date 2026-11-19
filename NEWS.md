@@ -568,6 +568,21 @@ wrong result came without an error or a warning.
   posterior at the fitted parameters, to about 1e-10. The likelihood is
   unchanged.
 
+* **`esfm(dist = "exponential")` with gamma < 0 (A103).** The score
+  integrated exp(-u/|gamma|) for both signs, but for gamma < 0 the documented
+  density -- and the one the likelihood uses -- is the mirror, proportional to
+  exp(-(B - u)/|gamma|) on [0, B]; `Efficiency` was off by up to 0.076. It is
+  now the closed-form E[exp(-u) | w] of a normal truncated to [0, B], and the
+  gamma > 0 branch is closed-form Battese-Coelli instead of numerical
+  integration. Separately, the gamma < 0 log density lost all precision for a
+  residual more than about seven sigma_v above zero, where it came out far
+  too HIGH (-54.0 against an exact -252.5 at w = 20), giving an outlier more
+  likelihood than the model allows. It is now exact there.
+
+* **`predict(type = "efficiency")` now reads the same slots as
+  `efficiency(type = "bc")`**, so it answers for `esfm()` fits (which store
+  `$Efficiency`) instead of refusing them.
+
 * **`efficiency(type = "bc")` returned exp(-E[u|e]) for `ivsfm()` and `selsfm()`
   fits (A102).** They now store E[exp(-u)|e] as `exp_u_hat`; the
   `efficiency` slot is unchanged.

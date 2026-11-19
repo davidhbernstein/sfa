@@ -54,10 +54,20 @@
       B <- a0 * g
       z2 <- w / sigma_v - sigma_v / g
       z1 <- z2 + B / sigma_v
-      ## Written through .log_phi_tilt(z2) so the exp(-w/g) tilt never forms.
-      -log(g) - a0 - log1p(-exp(-a0)) - w^2 / (2 * sigma_v^2) +
-        .log_phi_tilt(z2) +
-        .log_expm1(stats::pnorm(z1, log.p = TRUE) - stats::pnorm(z2, log.p = TRUE))
+      ## f(w) = C exp(sv^2/(2 g^2) - w/g) [Phi(z1) - Phi(z2)]. For z2 <= 0 it is
+      ## written through .log_phi_tilt(z2) so the exp(-w/g) tilt never forms.
+      ## For z2 > 0 both Phi's are near 1 and log Phi(z1) - log Phi(z2)
+      ## cancels to nothing (the density came out 200 log-units too HIGH at
+      ## w = 20, A103b), so the difference is taken in the upper tails,
+      ## Phi(-z2) - Phi(-z1), where it is stable.
+      C <- -log(g) - a0 - log1p(-exp(-a0))
+      out <- numeric(length(w))
+      lo <- z2 <= 0
+      out[lo] <- C - w[lo]^2 / (2 * sigma_v^2) + .log_phi_tilt(z2[lo]) +
+        .log_expm1(stats::pnorm(z1[lo], log.p = TRUE) - stats::pnorm(z2[lo], log.p = TRUE))
+      out[!lo] <- C + sigma_v^2 / (2 * g^2) - w[!lo] / g +
+        .log_phi_diff(-z1[!lo], -z2[!lo])
+      out
     }
   }
 }
@@ -220,20 +230,33 @@ esfm <- function(formula, data, dist = c("halfnormal", "exponential"),
       num / den
     }, numeric(1)))
   }
-  ## Exponential: integrate the posterior directly on its own support.
+  ## Exponential: the posterior is a normal with sd sigma_v truncated to the
+  ## support. gamma > 0: u ~ Exp(g) on [0, Inf), mean -w - sv^2/g, which is
+  ## Battese-Coelli. gamma < 0: the MIRRORED density, prop. to exp(-(B - u)/g)
+  ## = exp(+u/g) on [0, B] -- the one the likelihood uses -- so the mean is
+  ## -w + sv^2/g, truncated to [0, B] (A103a: this integrated exp(-u/g) for
+  ## both signs). Both in closed form.
   g <- abs(gam)
+  if (gam > 0) {
+    return(.te_battese_coelli(-w - sv^2 / g, sv))
+  }
   B <- a0 * g
-  up <- if (gam > 0) Inf else B
-  vapply(seq_along(w), function(i) {
-    ker <- function(u) exp(-u / g) * stats::dnorm((w[i] + u) / sv)
-    num <- tryCatch(stats::integrate(function(u) exp(-u) * ker(u), 0, up,
-      rel.tol = 1e-9
-    )$value, error = function(e) NA_real_)
-    den <- tryCatch(stats::integrate(ker, 0, up, rel.tol = 1e-9)$value,
-      error = function(e) NA_real_
-    )
-    if (!is.finite(den) || den <= 0) NA_real_ else num / den
-  }, numeric(1))
+  mu <- -w + sv^2 / g
+  ## E[exp(-u)] for u ~ N(mu, sv^2) on [0, B]:
+  ## exp(-mu + sv^2/2) [Phi((B-mu)/sv + sv) - Phi(-mu/sv + sv)] / [Phi((B-mu)/sv) - Phi(-mu/sv)]
+  num <- .log_phi_diff2(-mu / sv + sv, (B - mu) / sv + sv)
+  den <- .log_phi_diff2(-mu / sv, (B - mu) / sv)
+  pmin(pmax(exp(-mu + sv^2 / 2 + num - den), 0), 1)
+}
+
+## log[Phi(hi) - Phi(lo)], hi > lo, stable in EITHER tail: reflected into the
+## lower tail when the interval lies above 0.
+.log_phi_diff2 <- function(lo, hi) {
+  up <- lo > 0
+  out <- numeric(length(lo))
+  out[!up] <- .log_phi_diff(lo[!up], hi[!up])
+  out[up] <- .log_phi_diff(-hi[up], -lo[up])
+  out
 }
 
 #' Likelihood ratio test that the composed error is symmetric

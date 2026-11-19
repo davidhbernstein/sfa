@@ -611,7 +611,12 @@ predict.sfareg <- function(object, newdata = NULL,
         call. = FALSE
       )
     }
+    ## The same chain efficiency(type = "bc") walks (A78), so the two
+    ## generics cannot disagree about whether a fit has an efficiency: esfm()
+    ## stores $Efficiency, which this used to miss.
     te <- object$exp_u_hat
+    if (is.null(te)) te <- object$efficiency
+    if (is.null(te)) te <- object$Efficiency
     if (is.null(te)) te <- object$U
     if (is.null(te)) {
       stop("This model (", object$model_name, ") does not return an efficiency ",
