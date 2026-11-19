@@ -105,6 +105,19 @@ wrong result came without an error or a warning.
 
 ### Cost frontiers
 
+* **`psfm()`'s random-effects cost fits now mirror the production fits
+  exactly (A108).** A cost fit of -y should be the production fit of y with
+  the frontier negated. Two things broke that for `"TRE"`, `"TRE_Z"` and
+  `"GTRE_Z"`. The starting values decomposed the residuals as if every
+  frontier were a production one, so on a cost frontier sigma_u collapsed and
+  the intercept moved the wrong way: `"GTRE_Z"` stopped 2.0 log-likelihood
+  units short. And the simulated firm-effect draws entered with a fixed sign,
+  so the cost objective at mirrored parameters was not the production
+  objective -- the same model, but a different finite set of draws. Both now
+  follow the orientation. The three cost fits now match their mirrors to
+  1e-7 in log-likelihood (they were off by 2.0, 0.39 and 0.08). Production
+  fits are unchanged.
+
 * **`sfm(estimator = "cols")` and `"cmle"` scored a cost frontier on the wrongly
   oriented residual (A107).** The estimates were right; `exp_u_hat` was off by
   up to 0.9.
