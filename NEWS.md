@@ -71,14 +71,14 @@ wrong result came without an error or a warning.
 
 ### Panel efficiency scores
 
-* **Panel efficiency scores that disagreed with their own model (A95, A98,
-  A99, A107).** The GTRE family (`"sml"`, `"fiml"`, `GTRE_Z`) and `TFE_WMLE`
+* **Panel efficiency scores that disagreed with their own model.** The GTRE
+  family (`"sml"`, `"fiml"`, `GTRE_Z`) and `TFE_WMLE`
   no longer clamp the residual at zero before the posterior (`U` was off by up
   to 0.38); `psfm("FD")`'s `exp_u_hat` is now E[exp(-u)|e], not exp(-E[u|e]);
   and `psfm("GTRE", inefdec = FALSE)` by `"fiml"` reports the cost frontier's
   intercept with its own sign and scores the correctly oriented residual.
 
-* **`psfm("PL80_MVTN")`: exact likelihood and exact scores (A100).** Every
+* **`psfm("PL80_MVTN")`: exact likelihood and exact scores.** Every
   covariance in the likelihood is equicorrelated, so for rho >= 0 each orthant
   probability is a one-dimensional integral over a common factor, now
   computed by adaptive Gauss-Hermite quadrature to about twelve digits. It was
@@ -92,7 +92,7 @@ wrong result came without an error or a warning.
   T = 6, N = 100 panel.
 
 * **`psfm("TRE")` and `psfm("TRE_Z")` now score the posterior of the model
-  they fit (A96, A97).** `U` is E[exp(-u_it) | e_i], integrating over the
+  they fit.** `U` is E[exp(-u_it) | e_i], integrating over the
   firm effect alpha_i by adaptive Gauss-Hermite quadrature. `"TRE"` used a
   plug-in -- the firm-mean residual plus sqrt(2/pi) sigma_u, then a clamp at
   zero -- and was off by up to 0.16; `"TRE_Z"` left alpha_i out of the residual
@@ -100,7 +100,7 @@ wrong result came without an error or a warning.
   Both now also store `u_hat`, E[u_it | e_i] under the same posterior, so
   `efficiency(type = "jlms")` answers for them instead of refusing.
 
-* **`psfm("GTRE_Z")`'s scores use the likelihood's own sigma_h,i (A101).**
+* **`psfm("GTRE_Z")`'s scores use the likelihood's own sigma_h,i.**
   The likelihood sets each firm's persistent scale to the firm mean of
   sqrt(exp(zp_it'delta_h)); `U` and `H` read `zp` at the firm's first row
   instead. The two agree when `zp` is constant within firm. When it is not,
@@ -134,7 +134,7 @@ wrong result came without an error or a warning.
 ### Cost frontiers
 
 * **`psfm()`'s random-effects cost fits now mirror the production fits
-  exactly (A108).** A cost fit of -y should be the production fit of y with
+  exactly.** A cost fit of -y should be the production fit of y with
   the frontier negated. Two things broke that for `"TRE"`, `"TRE_Z"` and
   `"GTRE_Z"`. The starting values decomposed the residuals as if every
   frontier were a production one, so on a cost frontier sigma_u collapsed and
@@ -147,7 +147,7 @@ wrong result came without an error or a warning.
   fits are unchanged.
 
 * **`sfm(estimator = "cols")` and `"cmle"` scored a cost frontier on the wrongly
-  oriented residual (A107).** The estimates were right; `exp_u_hat` was off by
+  oriented residual.** The estimates were right; `exp_u_hat` was off by
   up to 0.9.
 
 * **`copsfm(inefdec = FALSE)` maximised the density of `v - u` instead of
@@ -571,11 +571,11 @@ wrong result came without an error or a warning.
 
 ### Efficiency prediction
 
-* **`selsfm(model_name = "kts")`'s `jlms` weighted the two regimes equally**
-  (A106). It now uses the mixture weight phi_i the likelihood uses, so it is
+* **`selsfm(model_name = "kts")`'s `jlms` weighted the two regimes
+  equally.** It now uses the mixture weight phi_i the likelihood uses, so it is
   E[u | y, I]; it had been off by up to 0.07.
 
-* **`selsfm(model_name = "greene")`'s scores carried simulation error (A105).**
+* **`selsfm(model_name = "greene")`'s scores carried simulation error.**
   `jlms` and `exp_u_hat` weighted the likelihood's draws from the PRIOR of u,
   which put almost none where the posterior lives for a firm in the tail: at
   the default `Nsim` `jlms` was off by up to 0.68, and by 0.03 on an ordinary
@@ -583,7 +583,7 @@ wrong result came without an error or a warning.
   posterior at the fitted parameters, to about 1e-10. The likelihood is
   unchanged.
 
-* **`esfm(dist = "exponential")` with gamma < 0 (A103).** The score
+* **`esfm(dist = "exponential")` with gamma < 0.** The score
   integrated exp(-u/|gamma|) for both signs, but for gamma < 0 the documented
   density -- and the one the likelihood uses -- is the mirror, proportional to
   exp(-(B - u)/|gamma|) on [0, B]; `Efficiency` was off by up to 0.076. It is
@@ -599,10 +599,10 @@ wrong result came without an error or a warning.
   `$Efficiency`) instead of refusing them.
 
 * **`efficiency(type = "bc")` returned exp(-E[u|e]) for `ivsfm()` and `selsfm()`
-  fits (A102).** They now store E[exp(-u)|e] as `exp_u_hat`; the
+  fits.** They now store E[exp(-u)|e] as `exp_u_hat`; the
   `efficiency` slot is unchanged.
 
-* **`sfma()` averaged -log E[exp(-u)|e] for `"NR"` (A104).** `sfm("NR")` now
+* **`sfma()` averaged -log E[exp(-u)|e] for `"NR"`.** `sfm("NR")` now
   stores E[u|e] as `u_hat`, and `sfma()` drops any candidate that stores no
   E[u|e] instead of substituting.
 
