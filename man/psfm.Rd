@@ -23,7 +23,8 @@
                     antithetics = FALSE, sim_burn = NULL,
                     sim_scrambling = 0L, sim_prime = NULL,
                     uhet = NULL, hhet = NULL, scaling = NULL,
-                    vhet = NULL)}
+                    vhet = NULL, sim_backend = c("R", "torch"),
+                    sim_device = NULL, sim_dtype = NULL)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -92,6 +93,9 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{sim_burn}{Number of leading elements of the sequence discarded. Default \code{NULL}, meaning 1000.}
 \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
 \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
+\item{sim_backend}{Which code evaluates the simulated log-likelihood of \code{"GTRE"} with \code{estimator = "sml"} and of \code{"TRE"}. \code{"R"} (default) is the package's own code and changes nothing. \code{"torch"} evaluates the same likelihood, over the same firm-specific draws, with the \pkg{torch} package, on a GPU when one is available. The optimizer, starting values, draws and standard-error calculation are unchanged; only the arithmetic inside each likelihood evaluation moves. Requires \pkg{torch} and its backend (\code{torch::install_torch()}). Refused for every other \code{model_name}. See \sQuote{GPU evaluation} under \sQuote{Details}. New in 1.3.0.}
+\item{sim_device}{With \code{sim_backend = "torch"}: \code{"cuda"} (an NVIDIA GPU), \code{"mps"} (an Apple-silicon GPU) or \code{"cpu"}. \code{NULL} (default) takes the first available in that order.}
+\item{sim_dtype}{With \code{sim_backend = "torch"}: \code{"float64"} or \code{"float32"}. \code{NULL} (default) is \code{"float64"} except on \code{"mps"}, which has no double precision, where it is \code{"float32"}; asking for \code{"float64"} there is an error.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
 \item{uhet}{Optional one-sided formula for the determinants of \eqn{\sigma_u}, as in \code{uhet = ~ z1 + z2}, for \code{model_name} \code{"TRE_Z"} and \code{"GTRE_Z"}. This is the same block as the formula's first pipe segment and writes the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
 \item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
@@ -207,6 +211,14 @@ correlated within firm.
 
 \subsection{Simulated maximum likelihood (TRE, TRE_Z, GTRE_Z, GTRE with sml)}{
 These models integrate the firm effects by simulation over \code{halton_num} draws per firm, from the sequence \code{sim_type} selects (Filippini and Greene 2016). \code{"TRE_Z"} and \code{"GTRE_Z"} add determinants of the one-sided scales. The simulated log-likelihood depends on the draws: \code{rand.gtre} changes the objective itself, so log-likelihoods from different draws are not comparable. Use \code{\link{simulation_se}} to measure simulation error and raise \code{halton_num} to reduce it. \code{"TRE_Z"} becomes unstable on small panels (below about 60 firms).
+}
+
+\subsection{GPU evaluation (sim_backend = "torch")}{
+For \code{"GTRE"} with \code{estimator = "sml"} and for \code{"TRE"}, the simulated log-likelihood is a calculation over an \eqn{n \times R} array (observations by draws), summed within firm and averaged over draws. \code{sim_backend = "torch"} hands that array to \pkg{torch}, which can run it on a GPU. Each firm keeps its own block of draws, held fixed through the optimization exactly as with the default backend.
+
+In double precision (\code{sim_dtype = "float64"}, on \code{"cpu"} or \code{"cuda"}) the per-firm log-likelihoods agree with the default backend to rounding error, so fits agree to the optimizer's tolerance. In single precision (\code{"float32"}, the only choice on Apple's \code{"mps"}) each firm's log-likelihood carries an error of about \eqn{10^{-6}}. That is negligible for the estimates, but a finite-difference Hessian magnifies it (standard errors moved by up to 16\% in testing). So after a single-precision optimization the reported log-likelihood and the Hessian behind the standard errors are recomputed in double precision, by the default backend over the same draws, at the point the optimizer found. The fit records the evaluator used in \code{$sim_backend}.
+
+Whether a GPU is faster depends on the size of the \eqn{n \times R} array and on the hardware. Below roughly 100,000 cells the overhead of the device dominates and the default backend is faster; on an Apple M4 the GPU was 4 to 6 times faster than the default at 1 to 2 million cells. Time one evaluation on your own hardware (via \code{keep_objective = TRUE}) before committing to a long run. The array is evaluated in blocks of at most \code{getOption("sfa.torch_chunk_cells", 1e6)} cells, accumulated per firm, so peak device memory stays bounded; the block size does not change the likelihood. On Apple silicon the GPU shares system memory, and under memory pressure its timings become erratic. \code{"GTRE_Z"} and \code{"TRE_Z"} are not yet supported.
 }
 
 \subsection{True fixed effects and first differences}{
@@ -372,6 +384,9 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For TRE and TRE_Z models:}
 \item{U}{\eqn{E[\exp(-u_{it}) \mid e_i]}{E[exp(-u_it) | e_i]}: the transient efficiency under the posterior of the fitted model, integrating over the firm effect \eqn{\alpha_i}{alpha_i} (adaptive Gauss-Hermite quadrature, 64 nodes). The residual is \eqn{e_{it} = \alpha_i + v_{it} - u_{it}}{e_it = alpha_i + v_it - u_it}, so the firm effect is not charged to inefficiency.}
 \item{u_hat}{\eqn{E[u_{it} \mid e_i]}{E[u_it | e_i]} under the same posterior, so \code{efficiency(type = "jlms")} is available.}
+
+\bold{For GTRE (sml) and TRE models:}
+\item{sim_backend}{List with \code{backend} (\code{"R"} or \code{"torch"}), \code{device} and \code{dtype}: the evaluator that computed the simulated likelihood.}
 
 \bold{For TFE and TFE_WMLE models:}
 \item{r_hat_m}{Estimated individual-specific fixed effects, named by individual. For \code{"TFE"} these are the maximum-likelihood estimates of \eqn{\alpha_i} directly; for \code{"TFE_WMLE"} they are recovered after estimation from the mean residual plus \eqn{\sqrt{2/\pi}\,\sigma_u}, since the within likelihood does not identify them.}

@@ -48,3 +48,23 @@ test_that("the vectorized and loop likelihoods agree", {
     expect_equal(unname(coef(a)), unname(coef(b)), tolerance = 1e-3, info = m)
   }
 })
+
+test_that("the vectorized TRE likelihood follows the orientation (cost)", {
+  skip_on_cran()
+  ## The TRE draw term follows the orientation (A108). The loop path had it;
+  ## the vectorized path did not, and disagreed by ~0.2 per firm on cost fits.
+  d <- data_gen_p(t = 5, N = 30, rand = 7, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
+                  sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  pd <- plm::pdata.frame(d, index = c("name", "year"))
+  pd$y_tre <- -pd$y_tre
+  on.exit(options(sfa.gtre_vectorized = FALSE), add = TRUE)
+  options(sfa.gtre_vectorized = FALSE)
+  a <- suppressWarnings(psfm(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
+                             inefdec = FALSE, halton_num = 20, rand.gtre = 7L,
+                             keep_objective = TRUE, maxit.bobyqa = 40,
+                             maxit.optim = 1, optHessian = FALSE))
+  x <- a$opt$par
+  l_loop <- a$objective(x, per_obs = TRUE)
+  options(sfa.gtre_vectorized = TRUE)
+  expect_equal(a$objective(x, per_obs = TRUE), l_loop, tolerance = 1e-12)
+})
