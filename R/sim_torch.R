@@ -96,8 +96,20 @@
     gid = torch::torch_tensor(as.integer(gid), dtype = torch::torch_long(), device = dev),
     N = as.integer(N),
     R = ncol(H1),
+    chunks = .sim_torch_chunks(length(yv), ncol(H1)),
     tt = tt
   )
+}
+
+## Row blocks of at most `cells` observation-by-draw cells. The whole n x R
+## array at once fell off a cliff on a 16 GB Apple GPU: at 1e7 cells one
+## evaluation took 26 s against 4 s for the R path, while at 2.5e6 it was 8x
+## faster. Blocks accumulate into the per-firm sums by index_add, so any row
+## split gives the same likelihood. Same idea as SFrontiers.jl's `chunks`.
+.sim_torch_chunks <- function(n, R, cells = getOption("sfa.torch_chunk_cells", 1e6)) {
+  rows <- max(1L, as.integer(floor(cells / R)))
+  starts <- seq.int(1L, n, by = rows)
+  lapply(starts, function(s) c(s, min(n, s + rows - 1L)))
 }
 
 ## log Phi(z), stable in single precision. In double, log(erfc(-z/sqrt 2)/2)
@@ -120,7 +132,14 @@
 ## .gtre_sim_logdens(): E is the n x R matrix of composed errors (u - v
 ## orientation already applied). Returns an N-vector of doubles in R.
 .gtre_sim_logdens_torch <- function(E, lambda, sigma, prep) {
-  single <- identical(prep$setup$dtype_name, "float32")
+  lt <- .torch_log_terms(E, lambda, sigma, identical(prep$setup$dtype_name, "float32"))
+  lp <- torch::torch_zeros(prep$N, prep$R, dtype = prep$setup$dtype, device = prep$setup$device)
+  lp <- lp$index_add(1L, prep$gid, lt)
+  torch::torch_logsumexp(lp, dim = 2L) - log(prep$R)
+}
+
+## log of (2/sigma) phi(E/sigma) Phi(-lambda E/sigma), elementwise.
+.torch_log_terms <- function(E, lambda, sigma, single) {
   C <- .SFA_CONSTANTS
   z1 <- torch::torch_clamp(E / sigma, min = C$CLIP_Z1_LOWER, max = C$CLIP_Z1_UPPER)
   z2 <- torch::torch_clamp(-E * (lambda / sigma), min = C$CLIP_Z2_LOWER, max = C$CLIP_Z2_UPPER)
@@ -128,36 +147,50 @@
   ## converts the scalar to a float32 tensor before the arithmetic, so a
   ## leading R double silently costs a float64 evaluation about 1e-8 per
   ## term. `tensor - scalar` keeps the tensor's precision.
-  lt <- (z1 * z1) * (-0.5) + .torch_log_pnorm(z2, single) +
+  (z1 * z1) * (-0.5) + .torch_log_pnorm(z2, single) +
     (log(2 / sigma) - 0.5 * log(2 * pi))
-  lp <- torch::torch_zeros(prep$N, prep$R, dtype = prep$setup$dtype, device = prep$setup$device)
-  lp <- lp$index_add(1L, prep$gid, lt)
-  torch::torch_logsumexp(lp, dim = 2L) - log(prep$R)
 }
 
 ## The whole stacked likelihood for one parameter vector. Same layout,
 ## orientation and mixture as fn_1_loop() in psfm(): x = (lambda, sigma,
 ## sigma_r[, sigma_h], beta). Returns per-firm log-likelihoods (doubles).
 .gtre_sim_ll_torch <- function(x, prep, model_name, inefdec_n, n_x_vars) {
-  k0 <- if (identical(model_name, "GTRE")) 4L else 3L
+  gtre <- identical(model_name, "GTRE")
+  k0 <- if (gtre) 4L else 3L
   beta <- prep$tt(x[(k0 + 1L):(k0 + n_x_vars)])
   lam <- x[1]
   sig <- x[2]
+  single <- identical(prep$setup$dtype_name, "float32")
+  zeros <- function() torch::torch_zeros(prep$N, prep$R, dtype = prep$setup$dtype,
+                                         device = prep$setup$device)
   ## inefdec_n * (y - X b): the production-oriented residual.
-  base <- (prep$yv - prep$X$matmul(beta)) * inefdec_n
-  base <- base$unsqueeze(2L)
-  if (identical(model_name, "GTRE")) {
-    ## alpha enters as -/+ inefdec_n * sigma_r * draw (both halves of the
-    ## symmetric mixture), h as + sigma_h * |draw|.
-    a <- prep$H1 * (inefdec_n * x[3])
-    h <- prep$H2 * x[4]
-    l1 <- .gtre_sim_logdens_torch(base - a + h, lam, sig, prep)
-    l2 <- .gtre_sim_logdens_torch(base + a + h, lam, sig, prep)
-    ll <- torch::torch_logsumexp(torch::torch_stack(list(l1, l2), dim = 2L), dim = 2L) - log(2)
+  base_all <- (prep$yv - prep$X$matmul(beta)) * inefdec_n
+  lp1 <- zeros()
+  lp2 <- if (gtre) zeros() else NULL
+  for (ch in prep$chunks) {
+    s <- ch[1]
+    e <- ch[2]
+    b <- base_all[s:e]$unsqueeze(2L)
+    g <- prep$gid[s:e]
+    if (gtre) {
+      ## alpha enters as -/+ inefdec_n * sigma_r * draw (both halves of the
+      ## symmetric mixture), h as + sigma_h * |draw|.
+      a <- prep$H1[s:e, ] * (inefdec_n * x[3])
+      h <- prep$H2[s:e, ] * x[4]
+      lp1 <- lp1$index_add(1L, g, .torch_log_terms(b - a + h, lam, sig, single))
+      lp2 <- lp2$index_add(1L, g, .torch_log_terms(b + a + h, lam, sig, single))
+    } else {
+      ## TRE: alpha follows the orientation (A108), so the composed error is
+      ## inefdec_n * (y - X b) - sigma_r * draw.
+      lp1 <- lp1$index_add(1L, g, .torch_log_terms(b - prep$H1[s:e, ] * x[3], lam, sig, single))
+    }
+  }
+  l1 <- torch::torch_logsumexp(lp1, dim = 2L) - log(prep$R)
+  ll <- if (gtre) {
+    l2 <- torch::torch_logsumexp(lp2, dim = 2L) - log(prep$R)
+    torch::torch_logsumexp(torch::torch_stack(list(l1, l2), dim = 2L), dim = 2L) - log(2)
   } else {
-    ## TRE: alpha follows the orientation (A108), so the composed error is
-    ## inefdec_n * (y - X b) - sigma_r * draw.
-    ll <- .gtre_sim_logdens_torch(base - prep$H1 * x[3], lam, sig, prep)
+    l1
   }
   as.numeric(ll$cpu()$to(dtype = torch::torch_float64()))
 }

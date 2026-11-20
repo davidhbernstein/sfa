@@ -506,7 +506,8 @@ wrong result came without an error or a warning.
   the hardware: on an Apple M4 GPU one evaluation was 4 to 6 times faster than
   the default at 1 to 2 million observation-by-draw cells and slower below
   about 100,000, and `torch` on the CPU in double precision was about twice as
-  fast from 1 million cells up.
+  fast from 1 million cells up. The array is evaluated in blocks of about a
+  million cells (`options(sfa.torch_chunk_cells)`) to bound device memory.
   Building this found that the opt-in vectorized likelihood
   (`options(sfa.gtre_vectorized = TRUE)`) evaluated a different simulated
   likelihood from the default for cost-frontier `"TRE"` fits. That path had

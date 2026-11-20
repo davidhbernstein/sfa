@@ -130,3 +130,33 @@ test_that("a float32 fit reports its log-likelihood and Hessian in double", {
                tolerance = 1e-10)
   expect_identical(b$sim_backend$dtype, "float32")
 })
+
+test_that("chunked torch evaluation equals one block, GTRE and TRE", {
+  skip_if_no_torch()
+  skip_on_cran()
+  ## Rows are evaluated in blocks of at most sfa.torch_chunk_cells cells and
+  ## accumulated per firm, so the split must not change the likelihood. 70
+  ## cells at R = 20 gives 3-row blocks, which cut through firms (t = 4).
+  d <- data_gen_p(t = 4, N = 25, rand = 9, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
+                  sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  pd <- plm::pdata.frame(d, index = c("name", "year"))
+  on.exit(options(sfa.torch_chunk_cells = NULL), add = TRUE)
+  for (m in c("GTRE", "TRE")) {
+    f <- if (m == "GTRE") y_gtre ~ x1 + x2 else y_tre ~ x1 + x2
+    fit <- function() {
+      a <- list(f, m, pd, individual = "name", halton_num = 20, rand.gtre = 7L,
+                keep_objective = TRUE, maxit.bobyqa = 20, maxit.optim = 1,
+                optHessian = FALSE, sim_backend = "torch", sim_device = "cpu")
+      if (m == "GTRE") a$estimator <- "sml"
+      suppressWarnings(do.call(psfm, a))
+    }
+    options(sfa.torch_chunk_cells = 1e9)
+    one <- fit()
+    x <- one$opt$par
+    options(sfa.torch_chunk_cells = 70)
+    many <- fit()
+    expect_gt(length(sfa:::.sim_torch_chunks(100, 20, 70)), 30)
+    expect_equal(many$objective(x, per_obs = TRUE), one$objective(x, per_obs = TRUE),
+                 tolerance = 1e-13, info = m)
+  }
+})
