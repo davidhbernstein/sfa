@@ -502,7 +502,11 @@ wrong result came without an error or a warning.
   recomputed in double precision at the optimum, since the finite-difference
   Hessian magnifies that error (standard errors moved by up to 16%). The default
   `sim_backend = "R"` changes nothing, and the fit records which evaluator it
-  used in `$sim_backend`. TIMING_PLACEHOLDER
+  used in `$sim_backend`. Whether it is faster depends on the problem size and
+  the hardware: on an Apple M4 GPU one evaluation was 4 to 6 times faster than
+  the default at 1 to 2 million observation-by-draw cells and slower below
+  about 100,000, and `torch` on the CPU in double precision was about twice as
+  fast from 1 million cells up.
   Building this found that the opt-in vectorized likelihood
   (`options(sfa.gtre_vectorized = TRUE)`) evaluated a different simulated
   likelihood from the default for cost-frontier `"TRE"` fits. That path had

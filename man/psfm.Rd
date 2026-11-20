@@ -218,7 +218,7 @@ For \code{"GTRE"} with \code{estimator = "sml"} and for \code{"TRE"}, the simula
 
 In double precision (\code{sim_dtype = "float64"}, on \code{"cpu"} or \code{"cuda"}) the per-firm log-likelihoods agree with the default backend to rounding error, so fits agree to the optimizer's tolerance. In single precision (\code{"float32"}, the only choice on Apple's \code{"mps"}) each firm's log-likelihood carries an error of about \eqn{10^{-6}}. That is negligible for the estimates, but a finite-difference Hessian magnifies it (standard errors moved by up to 16\% in testing). So after a single-precision optimization the reported log-likelihood and the Hessian behind the standard errors are recomputed in double precision, by the default backend over the same draws, at the point the optimizer found. The fit records the evaluator used in \code{$sim_backend}.
 
-Whether a GPU is faster depends on the size of the array: below roughly a million cells the cost of moving data to the device dominates. \code{"GTRE_Z"} and \code{"TRE_Z"} are not yet supported.
+Whether a GPU is faster depends on the size of the \eqn{n \times R} array and on the hardware. Below roughly 100,000 cells the overhead of the device dominates and the default backend is faster; on an Apple M4 the GPU was 4 to 6 times faster than the default at 1 to 2 million cells. Time one evaluation on your own hardware (via \code{keep_objective = TRUE}) before committing to a long run. \code{"GTRE_Z"} and \code{"TRE_Z"} are not yet supported.
 }
 
 \subsection{True fixed effects and first differences}{
