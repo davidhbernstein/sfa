@@ -731,6 +731,23 @@ psfm <- function(formula,
       opt <- opt00
       st_err <- rep(NA, length(opt$par))
     }
+    ## A single-precision evaluator finds the optimum, but its rounding error
+    ## (~1e-6 per firm) is magnified by the finite-difference Hessian: standard
+    ## errors moved by up to 16% in testing. So the reported log-likelihood and
+    ## the Hessian are re-evaluated in double precision at the same point, by
+    ## the R stacked path over the same draws.
+    if (!is.null(.torch_setup) && identical(.torch_setup$dtype_name, "float32")) {
+      opt$value <- fn_1_vec(opt$par)
+      if (isTRUE(optHessian)) {
+        .h64 <- tryCatch(stats::optimHess(opt$par, fn_1_vec), error = function(e) NULL)
+        opt$hessian <- if (is.null(.h64) || !all(is.finite(.h64))) {
+          matrix(NA_real_, length(opt$par), length(opt$par))
+        } else {
+          .h64
+        }
+      }
+    }
+
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     rownames(out) <- c("par", "st_err", "t-val")
     colnames(out) <- if (model_name == "GTRE") {

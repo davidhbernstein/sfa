@@ -497,7 +497,10 @@ wrong result came without an error or a warning.
   and standard errors are unchanged; only the arithmetic inside each likelihood
   evaluation moves. In double precision the per-firm log-likelihoods agree with
   the default backend to rounding error. Apple's GPU (`"mps"`) has only single
-  precision, where each firm's log-likelihood is off by about 1e-6. The default
+  precision, where each firm's log-likelihood is off by about 1e-6; there the
+  reported log-likelihood and the Hessian behind the standard errors are
+  recomputed in double precision at the optimum, since the finite-difference
+  Hessian magnifies that error (standard errors moved by up to 16%). The default
   `sim_backend = "R"` changes nothing, and the fit records which evaluator it
   used in `$sim_backend`. TIMING_PLACEHOLDER
   Building this found that the opt-in vectorized likelihood

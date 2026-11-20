@@ -106,3 +106,27 @@ test_that("a full double-precision torch fit reproduces the default fit", {
   ## each one's optimum, not where the optimizer lands.
   expect_equal(as.numeric(logLik(a)), as.numeric(logLik(b)), tolerance = 1e-6)
 })
+
+test_that("a float32 fit reports its log-likelihood and Hessian in double", {
+  skip_if_no_torch()
+  skip_on_cran()
+  ## Single-precision rounding, magnified by the finite-difference Hessian,
+  ## moved standard errors by up to 16%. So both are recomputed in double at
+  ## the float32 optimum. Pinned as arithmetic at that point, not as where
+  ## either optimizer lands.
+  d <- data_gen_p(t = 5, N = 40, rand = 5, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
+                  sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  pd <- plm::pdata.frame(d, index = c("name", "year"))
+  args <- list(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
+               halton_num = 20, rand.gtre = 3L, keep_objective = TRUE,
+               maxit.bobyqa = 60, maxit.optim = 20)
+  a <- suppressWarnings(do.call(psfm, args))
+  b <- suppressWarnings(do.call(psfm, c(args, sim_backend = "torch",
+                                        sim_device = "cpu", sim_dtype = "float32")))
+  x <- b$opt$par
+  ## a$objective is the double-precision R objective over the same draws.
+  expect_equal(b$opt$value, a$objective(x), tolerance = 1e-12)
+  expect_equal(unname(b$opt$hessian), unname(stats::optimHess(x, a$objective)),
+               tolerance = 1e-10)
+  expect_identical(b$sim_backend$dtype, "float32")
+})
