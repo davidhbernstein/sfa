@@ -424,6 +424,15 @@ wrong result came without an error or a warning.
 
 ### Estimators and distributions
 
+* **`psfm(integration = "quadrature")`** fits `"TRE"` and `"TRE_Z"` by their
+  exact likelihood. The firm effect is integrated out by adaptive
+  Gauss-Hermite quadrature centred on each firm's mode, in place of the
+  simulated average over `halton_num` draws. It is exact to machine precision,
+  deterministic and faster per evaluation. The default, `"simulate"`, is
+  unchanged. It matters on longer panels: at T = 20 the simulated fit's
+  `sigr` had 38% higher RMSE and 95% Wald coverage of 0.81 (0.93 exact), and
+  its reported log-likelihood was off by up to 8. At T = 5 the two agree.
+
 * **`sfm(estimator = "acols")`** is the alternative corrected OLS of Parmeter
   and Zhao (2023), for `"NHN"` and `"NE"`. It replicates the paper's Monte
   Carlo results.
