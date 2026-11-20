@@ -10,7 +10,7 @@ returned a wrong or irreproducible result without an error or a warning, and
 several fixes change estimates. `NEWS.md` groups them so that a user can see
 what to re-run:
 
-* **Breaking changes** (six items). For example, `ttsfm()` now reports its
+* **Breaking changes** (seven items). For example, `ttsfm()` now reports its
   scales on their natural scale under their own names, and `Method` accepts
   only `"L-BFGS-B"`, because other methods dropped the bounds that keep the
   scales positive.
@@ -20,10 +20,16 @@ what to re-run:
   `log(y) ~ ...` was fitted untransformed; `"NW"` and `"NLN"` are now fitted by
   quadrature instead of simulation; and several fits that stopped short of a
   maximum, or whose result depended on the platform, now reach it.
+  Efficiency scores were checked against the exact posterior implied by each
+  model's own likelihood, at the fit's own parameters, across every fitter and
+  predictor; the ones that disagreed (most in the panel random-effects family)
+  now agree to numerical precision.
 * **New features**, including `sfm(estimator = "acols")` and `"cmle"`,
   `skewness_decomp()`, the `"NGB2"` and `"NB"` specifications, noise
-  distributions for `copsfm()`, and sandwich and clustered covariances from
-  `vcov()`.
+  distributions for `copsfm()`, sandwich and clustered covariances from
+  `vcov()`, heteroskedastic noise (`vhet`) in `ttsfm()`, `zsfm()` and
+  `psfm("FD")`, and variance determinants written as named arguments as well
+  as pipe segments.
 * **Bug fixes** to standard errors, efficiency prediction, failures on valid
   input, and messages.
 
