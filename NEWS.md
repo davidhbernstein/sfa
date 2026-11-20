@@ -490,6 +490,22 @@ wrong result came without an error or a warning.
   `antithetics`, `sim_burn`, `sim_scrambling` and `sim_prime`. The defaults
   reproduce 1.2.0's draws exactly.
 
+* **`psfm()` can evaluate its simulated likelihood on a GPU**, through the
+  optional `torch` package: `sim_backend = "torch"`, with `sim_device`
+  (`"cuda"`, `"mps"` or `"cpu"`) and `sim_dtype` (`"float64"` or `"float32"`).
+  It covers `"GTRE"` with `estimator = "sml"` and `"TRE"`. The draws, optimizer
+  and standard errors are unchanged; only the arithmetic inside each likelihood
+  evaluation moves. In double precision the per-firm log-likelihoods agree with
+  the default backend to rounding error. Apple's GPU (`"mps"`) has only single
+  precision, where each firm's log-likelihood is off by about 1e-6. The default
+  `sim_backend = "R"` changes nothing, and the fit records which evaluator it
+  used in `$sim_backend`. TIMING_PLACEHOLDER
+  Building this found that the opt-in vectorized likelihood
+  (`options(sfa.gtre_vectorized = TRUE)`) evaluated a different simulated
+  likelihood from the default for cost-frontier `"TRE"` fits. That path had
+  missed the fix to the orientation of the TRE draw term (under "Cost
+  frontiers"). It now agrees with the default to rounding error.
+
 * **`data_gen_p()` gains `fd_draw` and `delta_fd`**, to generate a
   first-difference design whose null is genuinely false.
 
@@ -756,6 +772,9 @@ wrong result came without an error or a warning.
 
 * `npsfm(method = "SZ")` runs its DEA step through the `DEA` package, which
   joins `Suggests`. `lpSolve` is no longer used.
+
+* `torch` joins `Suggests`, for `psfm(sim_backend = "torch")` only. Nothing
+  else uses it, and without it every fit is unchanged.
 
 ## Documentation
 
