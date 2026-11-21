@@ -51,7 +51,8 @@ psfm <- function(formula,
                  uhet = NULL,
                  hhet = NULL,
                  scaling = NULL,
-                 vhet = NULL) {
+                 vhet = NULL,
+                 integration = c("simulate", "quadrature")) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -164,6 +165,23 @@ psfm <- function(formula,
       call. = FALSE
     )
   }
+
+  ## How TRE/TRE_Z integrate the firm effect: by simulation over the draws
+  ## (default) or exactly, by adaptive Gauss-Hermite (gap N4). Resolved after
+  ## `estimator`, so a GTRE call is refused under its resolved name.
+  integration <- match.arg(integration)
+  if (identical(integration, "quadrature") && !model_name %in% c("TRE", "TRE_Z")) {
+    stop("integration = \"quadrature\" is implemented for model_name \"TRE\" ",
+      "and \"TRE_Z\" only, not ", dQuote(model_name), ". ",
+      if (model_name %in% c("GTRE", "GTRE_Z")) {
+        "GTRE's firm effects are two-dimensional; estimator = \"fiml\" is its exact route."
+      } else {
+        "Only the simulated-likelihood models integrate a firm effect."
+      },
+      call. = FALSE
+    )
+  }
+  .gh_quad <- if (identical(integration, "quadrature")) .gauss_hermite_nodes(24L) else NULL
 
   ## The meaning of model_name = "TFE" CHANGED in sfa 1.1.3.
   if (identical(model_name, "TFE")) {
@@ -645,7 +663,21 @@ psfm <- function(formula,
       -sum(ll[is.finite(ll)])
     }
 
+    ## integration = "quadrature" (TRE only): the exact likelihood, the same
+    ## integral as fn_1_vec without the draws.
+    fn_1_quad <- function(x, per_obs = FALSE) {
+      if (!all(is.finite(x)) || x[2] <= 0) {
+        return(if (isTRUE(per_obs)) rep(-sqrt(.SFA_CONSTANTS$MAX_VALUE), N) else sqrt(.SFA_CONSTANTS$MAX_VALUE))
+      }
+      e <- inefdec_n * (.yv - as.vector(.Xall %*% x[4:as.numeric(n_x_vars + 3)]))
+      ll <- .tre_quad_loglik(e, .gid, N, x[1], x[2], x[3], .gh_quad)
+      if (isTRUE(per_obs)) return(ll)
+      ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
+      -sum(ll)
+    }
+
     fn_1 <- function(x, per_obs = FALSE) {
+      if (!is.null(.gh_quad)) return(fn_1_quad(x, per_obs))
       if (isTRUE(getOption("sfa.gtre_vectorized", FALSE))) fn_1_vec(x, per_obs) else fn_1_loop(x, per_obs)
     }
 
@@ -810,6 +842,7 @@ psfm <- function(formula,
     ## other than the optimum -- which is what a profile in sigh needs.
     if (isTRUE(keep_objective)) results$objective <- fn_1
     if (isTRUE(keep_objective)) results$n_units <- N
+    if (model_name == "TRE") results$integration <- integration
 
     return(results)
   }
@@ -1725,6 +1758,26 @@ psfm <- function(formula,
       return(sum(fn1_apply[is.finite(fn1_apply)]))
     }
 
+    ## integration = "quadrature": the exact likelihood, sigma_u per row.
+    if (!is.null(.gh_quad)) {
+      .yz <- unlist(lapply(data_i, function(d) d[, y_var]))
+      .Xz <- do.call(rbind, data_i_vars)
+      .Zz <- do.call(rbind, data_z_vars)
+      .gz <- rep(seq_len(N), times = t)
+      fn_sim <- fn
+      fn <- function(x, per_obs = FALSE) {
+        if (!all(is.finite(x)) || x[1] <= 0) {
+          return(if (isTRUE(per_obs)) rep(-(.SFA_CONSTANTS$MAX_VALUE)^.1, N) else (.SFA_CONSTANTS$MAX_VALUE)^.1)
+        }
+        e <- inefdec_n * (.yz - as.vector(.Xz %*% x[3:as.numeric(n_x_vars + 2)]))
+        su <- sqrt(exp(as.vector(.Zz %*% x[(n_x_vars + 3):(n_x_vars + 2 + n_z_vars)])))
+        ll <- .tre_quad_loglik(e, .gz, N, su / x[1], sqrt(x[1]^2 + su^2), x[2], .gh_quad)
+        if (isTRUE(per_obs)) return(ll)
+        ll[!is.finite(ll)] <- -(.SFA_CONSTANTS$MAX_VALUE)^.1
+        -sum(ll)
+      }
+    }
+
     Start.Time <- start.time()
 
     ## sigma_v and sigma_r are floored here, not left at -Inf. This is the
@@ -1838,6 +1891,7 @@ psfm <- function(formula,
     ## VARIANCE, sigma_u = sqrt(exp(z'delta)) -- the opposite of sfm()'s
     ## default; see C1 and sfm()'s z_link.
     results$z_spec <- .psfm_z_spec(data, z_vars, out["par", ], "halfnormal")
+    results$integration <- integration
 
     if (isTRUE(keep_objective)) results$objective <- fn
     if (isTRUE(keep_objective)) results$n_units <- N
