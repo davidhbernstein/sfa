@@ -40,7 +40,8 @@ test_that("psfm() passes the draw controls to the simulated-ML fits", {
   fit <- function(...) {
     suppressWarnings(psfm(y_tre ~ x1 + x2, model_name = "TRE", data = d,
                           individual = "name", halton_num = 30, rand.gtre = 4,
-                          maxit.bobyqa = 100, maxit.optim = 50, ...))
+                          maxit.bobyqa = 100, maxit.optim = 50,
+                          integration = "simulate", ...))
   }
   default <- fit()
   explicit <- fit(sim_type = "halton", antithetics = FALSE, sim_burn = 1000)

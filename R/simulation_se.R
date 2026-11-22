@@ -24,7 +24,10 @@
     sfm = if (m %in% c("NLN", "NW") && !identical(object$integration, "quadrature")) {
       "sim_seed"
     },
-    psfm = if (m %in% c("GTRE", "TRE", "TRE_Z", "GTRE_Z")) "rand.gtre" else NULL,
+    psfm = if (m %in% c("GTRE", "GTRE_Z") ||
+      (m %in% c("TRE", "TRE_Z") && !identical(object$integration, "quadrature"))) {
+      "rand.gtre"
+    },
     selsfm = "seed",
     NULL
   )
@@ -48,7 +51,8 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
       if (is.null(object$model_name)) "unknown" else object$model_name,
       "\" is not estimated by simulation, so it has no simulation variance. ",
       "This diagnostic applies to sfm(\"NLN\"/\"NW\") with ",
-      "integration = \"simulate\", psfm(\"GTRE\"/\"TRE\") and selsfm().",
+      "integration = \"simulate\", psfm(\"GTRE\"/\"GTRE_Z\"), psfm(\"TRE\"/\"TRE_Z\") ",
+      "with integration = \"simulate\", and selsfm().",
       call. = FALSE
     )
   }
@@ -73,6 +77,11 @@ simulation_se <- function(object, K = 10, seeds = NULL, quiet = FALSE,
     cl[[arg]] <- seeds[k]
     ## A fit saved before sfm() gained `integration` was simulated; refit it so.
     if (identical(arg, "sim_seed")) cl$integration <- "simulate"
+    ## Likewise psfm("TRE"/"TRE_Z"), whose default became quadrature in 1.3.0:
+    ## a refit from the stored call would otherwise drop the draws entirely.
+    if (identical(arg, "rand.gtre") && object$model_name %in% c("TRE", "TRE_Z")) {
+      cl$integration <- "simulate"
+    }
     fit <- tryCatch(suppressWarnings(eval(cl, envir = envir)),
       error = function(e) NULL
     )

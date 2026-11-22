@@ -257,6 +257,22 @@ wrong result came without an error or a warning.
 
 ### `psfm()`
 
+* **`"TRE"` and `"TRE_Z"` are now fitted by their exact likelihood.** The
+  firm effect is integrated out by adaptive Gauss-Hermite quadrature centred
+  on each firm's mode (new argument `integration`, default `"quadrature"`),
+  in place of the simulated average over `halton_num` draws. That is exact to
+  machine precision, deterministic, and three to four times faster per fit, on
+  balanced and unbalanced panels alike. Every TRE and TRE_Z fit moves by the
+  simulation error it used to carry. That error is small on short panels and
+  not on long ones: at T = 20 the simulated fit's `sigr` had 38% higher RMSE
+  and 95% Wald coverage of 0.81 against 0.93 exact, and its reported
+  log-likelihood was off by up to 8. At T = 5 the two agree. `halton_num`,
+  `rand.gtre` and the `sim_*` arguments no longer affect these fits;
+  `integration = "simulate"` reproduces earlier results. `simulation_se()`
+  refits a simulated TRE fit by simulation and refuses a quadrature one, which
+  has no simulation variance. `psfm_bootstrap()` refits with the integration
+  the fit used.
+
 * **`"GTRE"` with the default `estimator = "fiml"` predicted the wrong
   quantity as transient efficiency.** It applied the two-component
   normal--half normal posterior to the raw residual, which in this model still
@@ -493,7 +509,9 @@ wrong result came without an error or a warning.
 * **`psfm()` can evaluate its simulated likelihood on a GPU**, through the
   optional `torch` package: `sim_backend = "torch"`, with `sim_device`
   (`"cuda"`, `"mps"` or `"cpu"`) and `sim_dtype` (`"float64"` or `"float32"`).
-  It covers `"GTRE"` with `estimator = "sml"` and `"TRE"`. The draws, optimizer
+  It covers `"GTRE"` with `estimator = "sml"`, and `"TRE"` with
+  `integration = "simulate"` (TRE's default is now its exact likelihood,
+  which uses no draws; see "Changes that alter results"). The draws, optimizer
   and standard errors are unchanged; only the arithmetic inside each likelihood
   evaluation moves. In double precision the per-firm log-likelihoods agree with
   the default backend to rounding error. Apple's GPU (`"mps"`) has only single

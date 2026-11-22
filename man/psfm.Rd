@@ -24,7 +24,8 @@
                     sim_scrambling = 0L, sim_prime = NULL,
                     uhet = NULL, hhet = NULL, scaling = NULL,
                     vhet = NULL, sim_backend = c("R", "torch"),
-                    sim_device = NULL, sim_dtype = NULL)}
+                    sim_device = NULL, sim_dtype = NULL,
+                    integration = c("quadrature", "simulate"))}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -93,7 +94,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{sim_burn}{Number of leading elements of the sequence discarded. Default \code{NULL}, meaning 1000.}
 \item{sim_scrambling}{Integer 0--3, \code{sim_type = "sobol"} only, passed to \code{randtoolbox::sobol}.}
 \item{sim_prime}{Prime for \code{sim_type = "torus"}. Default \code{NULL} uses the generator's own choice.}
-\item{sim_backend}{Which code evaluates the simulated log-likelihood of \code{"GTRE"} with \code{estimator = "sml"} and of \code{"TRE"}. \code{"R"} (default) is the package's own code and changes nothing. \code{"torch"} evaluates the same likelihood, over the same firm-specific draws, with the \pkg{torch} package, on a GPU when one is available. The optimizer, starting values, draws and standard-error calculation are unchanged; only the arithmetic inside each likelihood evaluation moves. Requires \pkg{torch} and its backend (\code{torch::install_torch()}). Refused for every other \code{model_name}. See \sQuote{GPU evaluation} under \sQuote{Details}. New in 1.3.0.}
+\item{sim_backend}{Which code evaluates the simulated log-likelihood of \code{"GTRE"} with \code{estimator = "sml"} and of \code{"TRE"}. \code{"R"} (default) is the package's own code and changes nothing. \code{"torch"} evaluates the same likelihood, over the same firm-specific draws, with the \pkg{torch} package, on a GPU when one is available. The optimizer, starting values, draws and standard-error calculation are unchanged; only the arithmetic inside each likelihood evaluation moves. Requires \pkg{torch} and its backend (\code{torch::install_torch()}). For \code{"TRE"} it needs \code{integration = "simulate"}, since TRE's default is its exact likelihood, which uses no draws. Refused for every other \code{model_name}. See \sQuote{GPU evaluation} under \sQuote{Details}. New in 1.3.0.}
 \item{sim_device}{With \code{sim_backend = "torch"}: \code{"cuda"} (an NVIDIA GPU), \code{"mps"} (an Apple-silicon GPU) or \code{"cpu"}. \code{NULL} (default) takes the first available in that order.}
 \item{sim_dtype}{With \code{sim_backend = "torch"}: \code{"float64"} or \code{"float32"}. \code{NULL} (default) is \code{"float64"} except on \code{"mps"}, which has no double precision, where it is \code{"float32"}; asking for \code{"float64"} there is an error.}
 \item{mundlak}{Mundlak adjustment terms: a formula naming the regressors whose \bold{within-firm means} should be added to the frontier, or \code{~ .} for every frontier regressor. \code{NULL} (the default) adds nothing. Only for models that treat the firm effect as random; \code{"TFE"}, \code{"TFE_WMLE"}, \code{"FD"} and \code{"SSFE"} refuse it, because they have already removed the effect. See \sQuote{Details}.}
@@ -101,6 +102,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{hhet}{Optional one-sided formula for the determinants of \eqn{\sigma_h}, the PERSISTENT inefficiency scale, for \code{model_name = "GTRE_Z"}. The same block as the formula's second pipe segment. New in 1.3.0.}
 \item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
 \item{vhet}{Optional one-sided formula for the determinants of the NOISE variance, as in \code{vhet = ~ zv}, for \code{model_name = "FD"} only. A different block from \code{scaling}, which drives inefficiency, and usable beside it. First-differencing turns the noise into \eqn{\mathrm{Var}(D v_i) = D\,\mathrm{diag}(\sigma_{v,it}^2)\,D'}, a tridiagonal matrix rather than \eqn{\sigma_v^2} times a fixed one; with \eqn{\sigma_v} constant that is exactly the homoskedastic matrix. The predictor is on the log VARIANCE scale, \eqn{\sigma_{v,it}^2 = \exp(z_v'\delta_v)}, matching the \code{sig_v2} slot it replaces and \pkg{sfa}'s panel convention. The other \code{model_name}s are refused: the simulated-ML families have no closed form once the noise varies within a firm, and the moment-based and fixed-effects estimators have no \eqn{\sigma_v} in an objective. With \code{vhet} given the \code{sig_v2} row becomes coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
+\item{integration}{How \code{"TRE"} and \code{"TRE_Z"} integrate the firm effect out of the likelihood. \code{"quadrature"} (default since 1.3.0) evaluates the integral exactly, by adaptive Gauss-Hermite quadrature (24 nodes) centred on each firm's mode, so \code{halton_num}, \code{rand.gtre} and the \code{sim_*} arguments do not affect the fit. Balanced and unbalanced panels alike. \code{"simulate"} averages over \code{halton_num} draws per firm, which was the only method before 1.3.0; use it to reproduce an earlier fit. Ignored by every other \code{model_name}, and an explicit \code{"quadrature"} is refused there; GTRE's exact route is \code{estimator = "fiml"}. See \sQuote{Simulated maximum likelihood} under \sQuote{Details}. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
@@ -211,6 +213,8 @@ correlated within firm.
 
 \subsection{Simulated maximum likelihood (TRE, TRE_Z, GTRE_Z, GTRE with sml)}{
 These models integrate the firm effects by simulation over \code{halton_num} draws per firm, from the sequence \code{sim_type} selects (Filippini and Greene 2016). \code{"TRE_Z"} and \code{"GTRE_Z"} add determinants of the one-sided scales. The simulated log-likelihood depends on the draws: \code{rand.gtre} changes the objective itself, so log-likelihoods from different draws are not comparable. Use \code{\link{simulation_se}} to measure simulation error and raise \code{halton_num} to reduce it. \code{"TRE_Z"} becomes unstable on small panels (below about 60 firms).
+
+For \code{"TRE"} and \code{"TRE_Z"} the firm effect is one-dimensional, so by default (\code{integration = "quadrature"}) they are not simulated at all: adaptive Gauss-Hermite quadrature replaces the simulation: exact to machine precision, deterministic, and faster per evaluation than the default draws. It matters most on longer panels. With \eqn{T = 20}, \eqn{\sigma_r = 0.5} and 200 firms, the simulated fit's \eqn{\sigma_r} had 38\% higher RMSE and 95\% Wald coverage of 0.81, against 0.93 for the exact fit, and its reported log-likelihood was off by up to 8. At \eqn{T = 5} the two agreed. The efficiency scores are computed by quadrature under either setting. \code{\link{simulation_se}} applies only to a fit with \code{integration = "simulate"}, and \code{\link{psfm_bootstrap}} refits with the integration the fit used.
 }
 
 \subsection{GPU evaluation (sim_backend = "torch")}{
@@ -384,6 +388,7 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 \bold{For TRE and TRE_Z models:}
 \item{U}{\eqn{E[\exp(-u_{it}) \mid e_i]}{E[exp(-u_it) | e_i]}: the transient efficiency under the posterior of the fitted model, integrating over the firm effect \eqn{\alpha_i}{alpha_i} (adaptive Gauss-Hermite quadrature, 64 nodes). The residual is \eqn{e_{it} = \alpha_i + v_{it} - u_{it}}{e_it = alpha_i + v_it - u_it}, so the firm effect is not charged to inefficiency.}
 \item{u_hat}{\eqn{E[u_{it} \mid e_i]}{E[u_it | e_i]} under the same posterior, so \code{efficiency(type = "jlms")} is available.}
+\item{integration}{\code{"simulate"} or \code{"quadrature"}: how the likelihood integrated the firm effect.}
 
 \bold{For GTRE (sml) and TRE models:}
 \item{sim_backend}{List with \code{backend} (\code{"R"} or \code{"torch"}), \code{device} and \code{dtype}: the evaluator that computed the simulated likelihood.}

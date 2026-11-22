@@ -72,8 +72,10 @@ test_that("opt.optim keeps a better stage-2 point instead of discarding it", {
     t = 5, N = 40, rand = 2008, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
     sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5
   ))
+  ## The regime this pins is the simulated surface's; TRE_Z defaults to
+  ## quadrature since 1.3.0.
   fit <- suppressWarnings(psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
-    data = d, individual = "name"
+    data = d, individual = "name", integration = "simulate"
   ))
   ## Before the guard this reported 294.1174926; stage 2 had reached
   ## 293.9555300 and optim() ended above it.

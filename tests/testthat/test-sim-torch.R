@@ -69,7 +69,7 @@ test_that("per-firm log-likelihoods agree across backends, both orientations", {
     a <- list(f, m, pd, individual = "name", halton_num = 30, rand.gtre = 7L,
               keep_objective = TRUE, inefdec = prod, maxit.bobyqa = 40,
               maxit.optim = 1, optHessian = FALSE, ...)
-    if (m == "GTRE") a$estimator <- "sml"
+    if (m == "GTRE") a$estimator <- "sml" else a$integration <- "simulate"
     suppressWarnings(do.call(psfm, a))
   }
   for (m in c("GTRE", "TRE")) for (prod in c(TRUE, FALSE)) {
@@ -97,10 +97,10 @@ test_that("a full double-precision torch fit reproduces the default fit", {
   ## Same RNG state for both, so psoptim's swarm is the same in each.
   set.seed(42)
   a <- suppressWarnings(psfm(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
-                             halton_num = 30, rand.gtre = 7L))
+                             halton_num = 30, rand.gtre = 7L, integration = "simulate"))
   set.seed(42)
   b <- suppressWarnings(psfm(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
-                             halton_num = 30, rand.gtre = 7L,
+                             halton_num = 30, rand.gtre = 7L, integration = "simulate",
                              sim_backend = "torch", sim_device = "cpu"))
   ## Same objective to rounding error: the invariant is the log-likelihood at
   ## each one's optimum, not where the optimizer lands.
@@ -119,7 +119,7 @@ test_that("a float32 fit reports its log-likelihood and Hessian in double", {
   pd <- plm::pdata.frame(d, index = c("name", "year"))
   args <- list(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
                halton_num = 20, rand.gtre = 3L, keep_objective = TRUE,
-               maxit.bobyqa = 60, maxit.optim = 20)
+               maxit.bobyqa = 60, maxit.optim = 20, integration = "simulate")
   a <- suppressWarnings(do.call(psfm, args))
   b <- suppressWarnings(do.call(psfm, c(args, sim_backend = "torch",
                                         sim_device = "cpu", sim_dtype = "float32")))
@@ -147,7 +147,7 @@ test_that("chunked torch evaluation equals one block, GTRE and TRE", {
       a <- list(f, m, pd, individual = "name", halton_num = 20, rand.gtre = 7L,
                 keep_objective = TRUE, maxit.bobyqa = 20, maxit.optim = 1,
                 optHessian = FALSE, sim_backend = "torch", sim_device = "cpu")
-      if (m == "GTRE") a$estimator <- "sml"
+      if (m == "GTRE") a$estimator <- "sml" else a$integration <- "simulate"
       suppressWarnings(do.call(psfm, a))
     }
     options(sfa.torch_chunk_cells = 1e9)
@@ -159,4 +159,14 @@ test_that("chunked torch evaluation equals one block, GTRE and TRE", {
     expect_equal(many$objective(x, per_obs = TRUE), one$objective(x, per_obs = TRUE),
                  tolerance = 1e-13, info = m)
   }
+})
+
+test_that("torch on TRE needs integration = 'simulate', since TRE defaults to exact", {
+  d <- data_gen_p(t = 4, N = 20, rand = 3, sig_u = 1, sig_v = 0.3, sig_r = 0.2,
+                  sig_h = 0.4, cons = 0.5, beta1 = 0.5, beta2 = 0.5)
+  pd <- plm::pdata.frame(d, index = c("name", "year"))
+  ## Checked before torch is looked for, so this runs without it installed.
+  expect_error(suppressWarnings(psfm(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
+                                     sim_backend = "torch")),
+               "Pass integration = \"simulate\" to use torch")
 })

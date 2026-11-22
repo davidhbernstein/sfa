@@ -115,6 +115,12 @@ psfm_bootstrap <- function(psfm_object,
   }
 
   model_name <- psfm_object$model_name
+  ## Refit with the likelihood the fit used. TRE/TRE_Z default to quadrature
+  ## since 1.3.0; a fit without the field predates it and was simulated.
+  ## NULL for every other model, which then never sees the argument.
+  integration_use <- if (model_name %in% c("TRE", "TRE_Z")) {
+    if (identical(psfm_object$integration, "quadrature")) "quadrature" else "simulate"
+  }
   supported_models <- c("GTRE_Z", "TRE_Z", "GTRE", "GTRE_FML", "TRE", "TFE", "TFE_WMLE", "FD")
   if (!(model_name %in% supported_models)) {
     stop("psfm_bootstrap() does not support model_name = '", model_name, "'. ",
@@ -485,7 +491,7 @@ psfm_bootstrap <- function(psfm_object,
     data_b[[y_name]] <- simulate_dgp(b)
 
     MOD <- tryCatch(
-      sfa::psfm(
+      do.call(sfa::psfm, c(list(
         formula       = form,
         model_name    = model_name,
         data          = data_b,
@@ -499,7 +505,7 @@ psfm_bootstrap <- function(psfm_object,
         rand.gtre     = rand.gtre,
         rand.psoptim  = rand.psoptim,
         start_val     = out[, 1]
-      ),
+      ), if (!is.null(integration_use)) list(integration = integration_use))),
       error = function(e) e
     )
 
@@ -568,7 +574,8 @@ psfm_bootstrap <- function(psfm_object,
       "H_available", "U_field", "scale_row", "degenerate_scale_floor", "PSopt_use",
       "timez", "uniq_ids", "ids", "n_id", "n_obs", "n_h",
       "y_name", "individual", "maxit.psoptim", "seed_offset", "seed_stride",
-      "maxit.bobyqa", "maxit.optim", "inefdec", "rand.gtre", "rand.psoptim"
+      "maxit.bobyqa", "maxit.optim", "inefdec", "rand.gtre", "rand.psoptim",
+      "integration_use"
     ),
     envir = environment()
   )
