@@ -249,6 +249,19 @@
 ## optimizer evaluates -- a silent failure, not an error.
 .GL_ALPHA <- c(0.05, 20)
 
+## Student-t noise (gap N5): scale delta_v, degrees of freedom nu_v, so
+## v = delta_v * T_nu and Var(v) = delta_v^2 nu / (nu - 2). nu_v is held in
+## [2.05, 200]. The lower end keeps a finite variance, which the moment start
+## and skewness_decomp() both need; the upper end is where t is the normal to
+## within the quadrature tolerance, and a fit that ends there is reporting
+## "no evidence of heavy tails" rather than an estimate of nu (sfm()'s tHN
+## warns in the same situation).
+.T_NU <- c(2.05, 200)
+.T_NU0 <- 10
+## The shape slot `av` carries alpha_v for the generalized logistic and nu_v
+## for the t; its bounds by noise family.
+.cop_av_bounds <- function(vdist) if (identical(vdist, "t")) .T_NU else .GL_ALPHA
+
 ## (log density, CDF) of each marginal. Both take the SCALE parameter; the
 ## shape argument is ignored except by the generalized logistic.
 .cop_u_ld <- function(u, su, udist) {
@@ -284,6 +297,7 @@
   switch(vdist,
     normal = stats::dnorm(v, 0, sv, log = TRUE),
     laplace = -log(2 * sv) - abs(v) / sv,
+    t = stats::dt(v / sv, df = av, log = TRUE) - log(sv),
     .gl_ld(v, av, sv)
   )
 }
@@ -291,11 +305,14 @@
 ## (F_V, 1 - F_V), likewise: the smaller tail is computed, the other is its
 ## complement.
 .cop_v_pq <- function(v, sv, av, vdist) {
-  if (!(vdist %in% c("normal", "laplace"))) {
+  if (!(vdist %in% c("normal", "laplace", "t"))) {
     lp <- .gl_lp(v, av, sv)
     return(list(p = exp(lp), q = -expm1(lp)))
   }
-  r <- if (identical(vdist, "normal")) stats::pnorm(-abs(v) / sv) else 0.5 * exp(-abs(v) / sv)
+  r <- switch(vdist,
+    normal = stats::pnorm(-abs(v) / sv),
+    t = stats::pt(-abs(v) / sv, df = av),
+    0.5 * exp(-abs(v) / sv))
   p <- r; q <- 1 - r
   up <- which(v > 0)
   p[up] <- q[up]; q[up] <- r[up]
@@ -310,7 +327,8 @@
 .cop_u_k3 <- function(udist) if (identical(udist, "exponential")) -2 else sqrt(2 / pi) * (1 - 4 / pi)
 .cop_u_v2 <- function(udist) if (identical(udist, "exponential")) 1 else 1 - 2 / pi
 .cop_u_m1 <- function(udist) if (identical(udist, "exponential")) 1 else sqrt(2 / pi)
-.cop_v_v2 <- function(vdist) switch(vdist, normal = 1, laplace = 2, pi^2 / 3)
+.cop_v_v2 <- function(vdist, av = .T_NU0) switch(vdist, normal = 1, laplace = 2,
+  t = av / (av - 2), pi^2 / 3)
 
 ## Starting sigma_v from the moments, or half the residual SD where they do
 ## not identify Var(v). notes/code_history/copsfm.md (A90).
@@ -350,6 +368,7 @@
 .cop_v_lo <- function(v, sv, av, vdist) {
   switch(vdist,
     normal = stats::pnorm(v / sv, log.p = TRUE) - stats::pnorm(-v / sv, log.p = TRUE),
+    t = stats::pt(v / sv, df = av, log.p = TRUE) - stats::pt(-v / sv, df = av, log.p = TRUE),
     laplace = {
       x <- -abs(v) / sv
       sign(v) * (log1p(-0.5 * exp(x)) - log(0.5) - x)
@@ -383,6 +402,7 @@
   lp <- stats::plogis(b, log.p = TRUE); lq <- stats::plogis(-b, log.p = TRUE)
   switch(vdist,
     normal = sv * ifelse(b < 0, stats::qnorm(lp, log.p = TRUE), -stats::qnorm(lq, log.p = TRUE)),
+    t = sv * ifelse(b < 0, stats::qt(lp, df = av, log.p = TRUE), -stats::qt(lq, df = av, log.p = TRUE)),
     laplace = sv * ifelse(b < 0, log(2) + lp, ifelse(b == 0, 0, -(log(2) + lq))),
     {
       x <- -lp / av
@@ -564,7 +584,7 @@ copsfm <- function(formula,
                               "independent"),
                    inefdec = TRUE,
                    udist = c("hnormal", "exponential"),
-                   vdist = c("normal", "logistic", "glogistic", "laplace"),
+                   vdist = c("normal", "logistic", "glogistic", "laplace", "t"),
                    n_nodes = 128,
                    maxit.bobyqa = 10000,
                    maxit.psoptim = 1000,
@@ -613,7 +633,7 @@ copsfm <- function(formula,
   X <- stats::model.matrix(stats::terms(mf), mf)
   n <- length(y)
   k <- ncol(X)
-  np <- k + 2L + (vdist == "glogistic") + has_cop
+  np <- k + 2L + (vdist %in% c("glogistic", "t")) + has_cop
   if (n <= np) {
     stop("copsfm(): ", n, " observations cannot identify ", np,
       " parameters.",
@@ -671,6 +691,13 @@ copsfm <- function(formula,
     par_names <- c(par_names, "alpha_v")
     lower1 <- c(lower1, log(.GL_ALPHA[1L])); upper1 <- c(upper1, log(.GL_ALPHA[2L]))
   }
+  if (identical(vdist, "t")) {
+    i_av <- length(start_v) + 1L
+    start_v <- c(start_v, log(.T_NU0))          # moderately heavy tails
+    par_names <- c(par_names, "nu_v")
+    lower1 <- c(lower1, log(.T_NU[1L])); upper1 <- c(upper1, log(.T_NU[2L]))
+  }
+  av_lim <- log(.cop_av_bounds(vdist))
   if (has_cop) {
     i_c <- length(start_v) + 1L
     start_v <- c(start_v, cs$par0)
@@ -702,7 +729,7 @@ copsfm <- function(formula,
     ## at the bound is how the final optim() stage aborts with a non-finite
     ## finite-difference value, which is exactly what it did.
     av <- if (is.na(i_av)) 1 else {
-      exp(min(max(th[i_av], log(.GL_ALPHA[1L])), log(.GL_ALPHA[2L])))
+      exp(min(max(th[i_av], av_lim[1L]), av_lim[2L]))
     }
     ## CLAMPED, not rejected -- the same reasoning as alpha_v above, and it
     ## matters more here because a dependence parameter routinely ENDS UP on
