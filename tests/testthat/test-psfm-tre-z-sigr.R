@@ -26,7 +26,8 @@ test_that("TRE_Z never reports a negative sigma_r", {
     sig_v = 0.3, sig_r = 0.2, sig_h = 0.4, cons = 0.5, beta1 = 0.5,
     beta2 = 0.5))
   f <- suppressWarnings(psfm(y_tre_z ~ x1 + x2 | z_gtre, model_name = "TRE_Z",
-    data = d, individual = "name", keep_objective = TRUE))
+    data = d, individual = "name", keep_objective = TRUE,
+    integration = "simulate"))
 
   sigr <- unname(coef(f)[2])
   expect_true(is.finite(sigr))

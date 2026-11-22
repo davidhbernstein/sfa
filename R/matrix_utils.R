@@ -3791,6 +3791,65 @@
 }
 
 
+## Exact per-firm log-likelihood of the true random-effects frontier (TRE,
+## TRE_Z), integration = "quadrature" (gap N4). With d ~ N(0, 1) the
+## standardised firm effect, alpha = sig_r d,
+##   L_i = INT phi(d) prod_t (2/sig_t) phi(z_t) Phi(-lam_t z_t) dd,
+##   z_t = (e_t - sig_r d) / sig_t,
+## the integral the simulated likelihood averages over draws of d. The log
+## integrand is concave, so: damped Newton to each firm's mode, vectorised over
+## firms (as in .equi_log_orthant()), then Gauss-Hermite at the mode scaled by
+## the curvature there. 24 nodes reach machine precision against integrate().
+##
+##   e         residuals inefdec_n * (y - X b), stacked; gid firm (1..N) per row
+##   lam, sig  scalars (TRE) or one per row (TRE_Z); sig_r scalar
+.tre_quad_loglik <- function(e, gid, N, lam, sig, sig_r, gh) {
+  n <- length(e)
+  lam <- rep_len(as.numeric(lam), n)
+  sig <- rep_len(as.numeric(sig), n)
+  sig_r <- abs(as.numeric(sig_r))     # alpha's sign is not identified
+  cc <- sig_r / sig
+  lconst <- log(2 / sig)
+  rs <- function(v) unname(rowsum(v, gid, reorder = FALSE)[, 1])
+  g <- function(d) {
+    z1 <- (e - sig_r * d[gid]) / sig
+    -d^2 / 2 + rs(lconst + dnorm(z1, log = TRUE) + pnorm(-lam * z1, log.p = TRUE))
+  }
+  curv <- function(d) {
+    z1 <- (e - sig_r * d[gid]) / sig
+    z2 <- -lam * z1
+    M <- exp(dnorm(z2, log = TRUE) - pnorm(z2, log.p = TRUE))   # Mills ratio
+    list(g1 = -d + rs(cc * (z1 + lam * M)),
+         g2 = -1 - rs(cc^2 * (1 + lam^2 * M * (z2 + M))))
+  }
+  d <- rep(0, N)
+  gd <- g(d)
+  for (it in 1:100) {
+    k <- curv(d)
+    step <- -k$g1 / k$g2
+    step[!is.finite(step)] <- 0
+    for (h in 1:40) {                  # damped: never step downhill
+      dn <- d + step
+      gn <- g(dn)
+      bad <- !(gn >= gd - 1e-12 * abs(gd))
+      bad[is.na(bad)] <- TRUE
+      if (!any(bad)) break
+      step[bad] <- step[bad] / 2
+    }
+    d <- dn
+    gd <- gn
+    if (max(abs(step)) < 1e-10) break
+  }
+  sd_d <- 1 / sqrt(-curv(d)$g2)
+  L <- vapply(seq_along(gh$nodes), function(k)
+    g(d + sqrt(2) * sd_d * gh$nodes[k]) + gh$nodes[k]^2 + log(gh$weights[k]),
+    numeric(N))
+  if (!is.matrix(L)) L <- matrix(L, nrow = N)
+  mx <- apply(L, 1L, max)
+  mx + log(rowSums(exp(L - mx))) + log(sqrt(2) * sd_d) - 0.5 * log(2 * pi)
+}
+
+
 ## Transient efficiency for the true random-effects frontier (TRE, TRE_Z):
 ## E[exp(-u_it) | e_i] and E[u_it | e_i] under y_it = x'b + alpha_i + v_it - u_it,
 ## alpha_i ~ N(0, sig_r^2), v ~ N(0, sig_v^2), u_it ~ N+(0, sig_u,it^2) (A96, A97).

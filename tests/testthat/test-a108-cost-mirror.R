@@ -23,7 +23,9 @@ test_that("TRE, TRE_Z and GTRE_Z cost fits mirror the production fits (A108)", {
     list("TRE_Z", y_tre ~ x1 + x2 | z_gtre, "y_tre", fr = c("(Intercept x)", "x1", "x2")),
     list("GTRE_Z", y_gtre_z ~ x1 + x2 | z_gtre | zp_gtre, "y_gtre_z", fr = c("(Intercept x)", "x1", "x2")))
   for (k in cases) {
-    m <- .mirror(k[[1]], k[[2]], d, k[[3]], halton_num = 30)
+    ## A108 is about the simulated draws, so pin simulation (TRE/TRE_Z default
+    ## to quadrature since 1.3.0, where the mirror is exact by construction).
+    m <- .mirror(k[[1]], k[[2]], d, k[[3]], halton_num = 30, integration = "simulate")
     bp <- m$p$out[, "par"]; bc <- m$c$out[, "par"]
     expect_equal(unname(bc[k$fr]), unname(-bp[k$fr]), tolerance = 1e-5, info = k[[1]])
     sc <- setdiff(names(bp), k$fr)

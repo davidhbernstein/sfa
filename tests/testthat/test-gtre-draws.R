@@ -39,10 +39,12 @@ test_that("the vectorized and loop likelihoods agree", {
     est <- if (identical(m, "GTRE")) "sml" else "fiml"
     options(sfa.gtre_vectorized = FALSE)
     a <- suppressWarnings(psfm(f, m, pd, individual = "name", halton_num = 30,
-                               rand.gtre = 7L, estimator = est))
+                               rand.gtre = 7L, estimator = est,
+                               integration = "simulate"))
     options(sfa.gtre_vectorized = TRUE)
     b <- suppressWarnings(psfm(f, m, pd, individual = "name", halton_num = 30,
-                               rand.gtre = 7L, estimator = est))
+                               rand.gtre = 7L, estimator = est,
+                               integration = "simulate"))
     expect_equal(as.numeric(logLik(a)), as.numeric(logLik(b)),
       tolerance = 1e-6, info = m)
     expect_equal(unname(coef(a)), unname(coef(b)), tolerance = 1e-3, info = m)
@@ -62,7 +64,8 @@ test_that("the vectorized TRE likelihood follows the orientation (cost)", {
   a <- suppressWarnings(psfm(y_tre ~ x1 + x2, "TRE", pd, individual = "name",
                              inefdec = FALSE, halton_num = 20, rand.gtre = 7L,
                              keep_objective = TRUE, maxit.bobyqa = 40,
-                             maxit.optim = 1, optHessian = FALSE))
+                             maxit.optim = 1, optHessian = FALSE,
+                             integration = "simulate"))
   x <- a$opt$par
   l_loop <- a$objective(x, per_obs = TRUE)
   options(sfa.gtre_vectorized = TRUE)
