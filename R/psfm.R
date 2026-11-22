@@ -51,7 +51,10 @@ psfm <- function(formula,
                  uhet = NULL,
                  hhet = NULL,
                  scaling = NULL,
-                 vhet = NULL) {
+                 vhet = NULL,
+                 sim_backend = c("R", "torch"),
+                 sim_device = NULL,
+                 sim_dtype = NULL) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -164,6 +167,12 @@ psfm <- function(formula,
       call. = FALSE
     )
   }
+
+  ## Optional torch evaluator for the stacked simulated likelihood (GTRE by
+  ## "sml", and TRE). Resolved here, after `estimator` has fixed model_name, so
+  ## an inapplicable model is refused before any work is done.
+  sim_backend <- match.arg(sim_backend)
+  .torch_setup <- .sim_torch_setup(sim_backend, sim_device, sim_dtype, model_name)
 
   ## The meaning of model_name = "TFE" CHANGED in sfa 1.1.3.
   if (identical(model_name, "TFE")) {
@@ -629,7 +638,12 @@ psfm <- function(formula,
       ## `base` is length n and the draw matrices are n x R, so adding them
       ## recycles down each column -- which is the observation-wise pairing
       ## wanted, and replaces the outer() that assumed shared draws.
-      c_pos <- if (model_name == "GTRE") -x[3] * .H1 + x[4] * .H2 * inefdec_n else -x[3] * .H1
+      ## TRE's draw term follows the orientation, as in fn_1_loop() (A108):
+      ## after the final `* inefdec_n` the error is inefdec_n * (y - X b) -
+      ## sigma_r * draw. This read `-x[3] * .H1`, which A108 fixed in the loop
+      ## but not here, so the two paths disagreed on every cost-frontier TRE
+      ## fit (by about 0.2 per firm at R = 40).
+      c_pos <- if (model_name == "GTRE") -x[3] * .H1 + x[4] * .H2 * inefdec_n else -inefdec_n * x[3] * .H1
       ll <- .gtre_sim_logdens((base + c_pos) * inefdec_n, lam, sig, .gid, N)
 
       if (model_name == "GTRE") {
@@ -645,7 +659,24 @@ psfm <- function(formula,
       -sum(ll[is.finite(ll)])
     }
 
+    ## torch: the same stacked likelihood as fn_1_vec, evaluated on the device
+    ## chosen by .sim_torch_setup(). The draws are moved there once, here.
+    if (!is.null(.torch_setup)) {
+      .tprep <- .sim_torch_prep(.torch_setup, .yv, .Xall, .H1,
+        if (model_name == "GTRE") .H2 else NULL, .gid, N)
+      fn_1_torch <- function(x, per_obs = FALSE) {
+        if (!all(is.finite(x)) || x[2] <= 0) {
+          return(if (isTRUE(per_obs)) rep(-sqrt(.SFA_CONSTANTS$MAX_VALUE), N) else sqrt(.SFA_CONSTANTS$MAX_VALUE))
+        }
+        ll <- .gtre_sim_ll_torch(x, .tprep, model_name, inefdec_n, n_x_vars)
+        if (isTRUE(per_obs)) return(ll)
+        ll[!is.finite(ll)] <- -sqrt(.SFA_CONSTANTS$MAX_VALUE / length(x))
+        -sum(ll)
+      }
+    }
+
     fn_1 <- function(x, per_obs = FALSE) {
+      if (!is.null(.torch_setup)) return(fn_1_torch(x, per_obs))
       if (isTRUE(getOption("sfa.gtre_vectorized", FALSE))) fn_1_vec(x, per_obs) else fn_1_loop(x, per_obs)
     }
 
@@ -700,6 +731,23 @@ psfm <- function(formula,
       opt <- opt00
       st_err <- rep(NA, length(opt$par))
     }
+    ## A single-precision evaluator finds the optimum, but its rounding error
+    ## (~1e-6 per firm) is magnified by the finite-difference Hessian: standard
+    ## errors moved by up to 16% in testing. So the reported log-likelihood and
+    ## the Hessian are re-evaluated in double precision at the same point, by
+    ## the R stacked path over the same draws.
+    if (!is.null(.torch_setup) && identical(.torch_setup$dtype_name, "float32")) {
+      opt$value <- fn_1_vec(opt$par)
+      if (isTRUE(optHessian)) {
+        .h64 <- tryCatch(stats::optimHess(opt$par, fn_1_vec), error = function(e) NULL)
+        opt$hessian <- if (is.null(.h64) || !all(is.finite(.h64))) {
+          matrix(NA_real_, length(opt$par), length(opt$par))
+        } else {
+          .h64
+        }
+      }
+    }
+
     out <- matrix(0, nrow = 3, ncol = length(start_v))
     rownames(out) <- c("par", "st_err", "t-val")
     colnames(out) <- if (model_name == "GTRE") {
@@ -810,6 +858,13 @@ psfm <- function(formula,
     ## other than the optimum -- which is what a profile in sigh needs.
     if (isTRUE(keep_objective)) results$objective <- fn_1
     if (isTRUE(keep_objective)) results$n_units <- N
+    ## Which evaluator produced the fit, so a single-precision GPU fit is
+    ## never mistaken for a double-precision one.
+    results$sim_backend <- if (is.null(.torch_setup)) {
+      list(backend = "R", device = "cpu", dtype = "float64")
+    } else {
+      list(backend = "torch", device = .torch_setup$device, dtype = .torch_setup$dtype_name)
+    }
 
     return(results)
   }
