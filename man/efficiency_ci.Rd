@@ -35,6 +35,14 @@ as the sample grows: they measure the irreducible difficulty of splitting a
 single residual into noise and inefficiency, not estimation uncertainty. Read a
 wide interval as a warning against reading much into that unit's rank.
 
+Ignoring parameter uncertainty costs \code{"NTN"} the most. In simulation
+(200 replications, 95\% intervals, each model fitted to data drawn from it), coverage of the
+true \eqn{u_i} at \eqn{n = 500} was about 94\% for \code{"NHN"} and \code{"NE"}
+but 88.5\% for \code{"NTN"}, rising to 94.5\% by \eqn{n = 4000}. Almost all of
+the shortfall is in the lower tail: with \code{mu} estimated, the interval sits
+too high. At small \eqn{n}, read an \code{"NTN"} interval's stated level as
+optimistic.
+
 Available for the models whose posterior really is a truncated normal:
 \code{"NHN"}, \code{"NHN_Z"}, \code{"NE"} and \code{"NTN"}. Every other
 \code{model_name} has a posterior of a different shape, for which these
