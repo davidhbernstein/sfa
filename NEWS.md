@@ -532,6 +532,17 @@ wrong result came without an error or a warning.
   missed the fix to the orientation of the TRE draw term (under "Cost
   frontiers"). It now agrees with the default to rounding error.
 
+* **Exact derivatives and a Newton optimizer for the torch-evaluated simulated
+  likelihoods.** With `sim_backend = "torch"` (double precision), `psfm()`
+  gains `derivatives = "autograd"`, which computes the gradient and Hessian by
+  automatic differentiation over the fit's own draws. The final `optim()` stage
+  gets the exact gradient, and the Hessian behind the standard errors replaces
+  the finite-difference one, which it matches to about 1e-4. It also gains
+  `optimizer = "newton"`, a multistart Newton fit (`nlminb()` from six starts
+  for `"GTRE"`, three for `"TRE"`) in place of the bobyqa -> psoptim -> optim
+  pipeline. The starts are recorded in `$newton`. Both are opt-in, and the
+  defaults (`"numeric"`, `"pipeline"`) change nothing.
+
 * **`data_gen_p()` gains `fd_draw` and `delta_fd`**, to generate a
   first-difference design whose null is genuinely false.
 

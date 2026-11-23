@@ -55,7 +55,9 @@ psfm <- function(formula,
                  sim_backend = c("R", "torch"),
                  sim_device = NULL,
                  sim_dtype = NULL,
-                 integration = c("quadrature", "simulate")) {
+                 integration = c("quadrature", "simulate"),
+                 derivatives = c("numeric", "autograd"),
+                 optimizer = c("pipeline", "newton")) {
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
@@ -210,6 +212,32 @@ psfm <- function(formula,
     )
   }
   .torch_setup <- .sim_torch_setup(sim_backend, sim_device, sim_dtype, model_name)
+
+  ## Exact derivatives by autograd through the torch evaluator, and the
+  ## multistart Newton optimizer they make possible (gap N3). Both opt-in.
+  derivatives <- match.arg(derivatives)
+  optimizer <- match.arg(optimizer)
+  if (identical(derivatives, "autograd")) {
+    if (is.null(.torch_setup)) {
+      stop("derivatives = \"autograd\" differentiates the torch evaluator, so it ",
+        "needs sim_backend = \"torch\" (implemented for \"GTRE\" with estimator = ",
+        "\"sml\" and for \"TRE\" with integration = \"simulate\").",
+        call. = FALSE
+      )
+    }
+    if (!identical(.torch_setup$dtype_name, "float64")) {
+      stop("derivatives = \"autograd\" needs double precision: use sim_dtype = ",
+        "\"float64\" (sim_device = \"cpu\" or \"cuda\"; Apple's \"mps\" has no float64).",
+        call. = FALSE
+      )
+    }
+  }
+  if (identical(optimizer, "newton") && !identical(derivatives, "autograd")) {
+    stop("optimizer = \"newton\" uses exact gradients and Hessians: pass ",
+      "derivatives = \"autograd\" (with sim_backend = \"torch\") as well.",
+      call. = FALSE
+    )
+  }
 
   ## The meaning of model_name = "TFE" CHANGED in sfa 1.1.3.
   if (identical(model_name, "TFE")) {
@@ -746,41 +774,70 @@ psfm <- function(formula,
       )
     }
 
-    Lower.Start <- lower.start(start_v, model_name, differ = 3)
-    Opt.Bobyqa <- opt.bobyqa(fn = fn_1, start_v = start_v, lower.bobyqa = Lower.Start$lower1, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
-    start_v <- Opt.Bobyqa$start_v
-    start_feval <- Opt.Bobyqa$start_feval
-    bob1 <- Opt.Bobyqa$bob1
-
-    Lower.Start <- lower.start(start_v, model_name, differ = 2)
-    Opt.Psoptim <- opt.psoptim(
-      fn = fn_1, start_v = start_v, lower.psoptim = Lower.Start$lower1,
-      rand.psoptim = rand.psoptim, upper.psoptim = Lower.Start$upper1, maxit.psoptim, psopt.TF = PSopt,
-      verbose = verbose
-    )
-    start_v <- Opt.Psoptim$start_v
-    start_feval <- Opt.Psoptim$start_feval
-    opt00 <- Opt.Psoptim$opt00
-
-    Lower.Start <- lower.start(start_v, model_name, differ = 0.5)
-    Opt.Optim <- opt.optim(
-      fn = fn_1, start_v = start_v, lower.optim = Lower.Start$lower1, upper.optim = Lower.Start$upper1_open,
-      maxit.optim = maxit.optim, opt.TF = optHessian, method = Method, optHessian = optHessian, verbose = verbose
-    )
-    start_v <- Opt.Optim$start_v
-    start_feval <- Opt.Optim$start_feval
-    opt <- Opt.Optim$opt
-
-    End.Time <- end.time(Start.Time)
-
-    if (optHessian == FALSE & PSopt == FALSE) {
-      opt <- .as_optim(bob1)
-      st_err <- rep(NA, length(opt$par))
+    ## Exact gradient and Hessian of fn_1 by autograd (derivatives = "autograd").
+    .ad <- if (identical(derivatives, "autograd")) {
+      .sim_torch_autograd(.tprep, model_name, inefdec_n, n_x_vars)
+    } else {
+      NULL
     }
+    .newton <- NULL
 
-    if (optHessian == FALSE & PSopt == TRUE) {
-      opt <- opt00
-      st_err <- rep(NA, length(opt$par))
+    if (identical(optimizer, "newton")) {
+      ## Multistart Newton in place of the three-stage pipeline. Only the
+      ## scales are bounded (at the same floor as lower.start()).
+      .k0 <- if (model_name == "GTRE") 4L else 3L
+      .lo <- c(rep(.0000001, .k0), rep(-Inf, length(start_v) - .k0))
+      .newton <- .sfa_newton_multistart(fn_1, .ad$gr, .ad$he,
+        starts = .sfa_newton_starts_panel(start_v, model_name),
+        lower = .lo, maxit = maxit.nlminb, optHessian = optHessian
+      )
+      if (is.null(.newton)) {
+        stop("optimizer = \"newton\": no starting point gave a finite objective. ",
+          "Try optimizer = \"pipeline\" (the default).",
+          call. = FALSE
+        )
+      }
+      opt <- .newton$opt
+      start_feval <- opt$value
+      End.Time <- end.time(Start.Time)
+    } else {
+      Lower.Start <- lower.start(start_v, model_name, differ = 3)
+      Opt.Bobyqa <- opt.bobyqa(fn = fn_1, start_v = start_v, lower.bobyqa = Lower.Start$lower1, maxit.bobyqa = maxit.bobyqa, bob.TF = TRUE, verbose = verbose)
+      start_v <- Opt.Bobyqa$start_v
+      start_feval <- Opt.Bobyqa$start_feval
+      bob1 <- Opt.Bobyqa$bob1
+
+      Lower.Start <- lower.start(start_v, model_name, differ = 2)
+      Opt.Psoptim <- opt.psoptim(
+        fn = fn_1, start_v = start_v, lower.psoptim = Lower.Start$lower1,
+        rand.psoptim = rand.psoptim, upper.psoptim = Lower.Start$upper1, maxit.psoptim, psopt.TF = PSopt,
+        verbose = verbose
+      )
+      start_v <- Opt.Psoptim$start_v
+      start_feval <- Opt.Psoptim$start_feval
+      opt00 <- Opt.Psoptim$opt00
+
+      Lower.Start <- lower.start(start_v, model_name, differ = 0.5)
+      Opt.Optim <- opt.optim(
+        fn = fn_1, start_v = start_v, lower.optim = Lower.Start$lower1, upper.optim = Lower.Start$upper1_open,
+        maxit.optim = maxit.optim, opt.TF = optHessian, method = Method, optHessian = optHessian, verbose = verbose,
+        gr = .ad$gr, hess_fn = .ad$he
+      )
+      start_v <- Opt.Optim$start_v
+      start_feval <- Opt.Optim$start_feval
+      opt <- Opt.Optim$opt
+
+      End.Time <- end.time(Start.Time)
+
+      if (optHessian == FALSE & PSopt == FALSE) {
+        opt <- .as_optim(bob1)
+        st_err <- rep(NA, length(opt$par))
+      }
+
+      if (optHessian == FALSE & PSopt == TRUE) {
+        opt <- opt00
+        st_err <- rep(NA, length(opt$par))
+      }
     }
     ## A single-precision evaluator finds the optimum, but its rounding error
     ## (~1e-6 per firm) is magnified by the finite-difference Hessian: standard
@@ -917,6 +974,12 @@ psfm <- function(formula,
       list(backend = "torch", device = .torch_setup$device, dtype = .torch_setup$dtype_name)
     }
     if (model_name == "TRE") results$integration <- integration
+    results$derivatives <- derivatives
+    results$optimizer <- optimizer
+    if (!is.null(.newton)) {
+      results$newton <- list(starts = .newton$starts, chosen = .newton$chosen,
+                             start_points = .newton$start_points)
+    }
 
     return(results)
   }
