@@ -815,6 +815,9 @@ wrong result came without an error or a warning.
   `vignette("sfa_numerical_notes")`.
 * `?psfm` explains that `rand.gtre` changes the simulated likelihood, so it is
   not a multistart. To measure the resulting variation, use `simulation_se()`.
+* `?efficiency_ci` says that ignoring parameter uncertainty costs `"NTN"` the
+  most: at small `n` its intervals cover the true `u` below the stated level,
+  almost all of the shortfall in the lower tail.
 * `?ttsfm` documents the `"TTHN"` boundary, where `sigma_v` collapses when
   `sigma_u` and `sigma_w` are close.
 * `?endogeneity_test` gives a size and power table, from n = 500 to 4000.
