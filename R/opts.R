@@ -178,7 +178,11 @@ opt.bobyqa <- function(fn, start_v, lower.bobyqa, upper.bobyqa = Inf, maxit.boby
 ## +3.6e17. L-BFGS-B is a descent method; when it ends above its own start, that
 ## is evidence about the START, not about the search. See
 ## test-ttsfm-numerics.R, which pins this.
-opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose = verbose) {
+## `gr` and `hess_fn` are optional exact derivatives (psfm()'s derivatives =
+## "autograd", gap N3): gr goes to optim(), and hess_fn replaces the
+## finite-difference Hessian, at the returned point and at an A42 substitute.
+opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF, method, optHessian, trace, verbose = verbose,
+                      gr = NULL, hess_fn = NULL) {
   ## This function always hands optim() bounds, so the method must be one that
   ## honours them (gap A57).
   .check_optim_method(method)
@@ -192,6 +196,7 @@ opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF
         optim(
           par = start_v,
           fn = fn,
+          gr = gr,
           lower = lower.optim,
           upper = upper.optim,
           hessian = use_hessian,
@@ -210,7 +215,11 @@ opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF
       )
     }
 
-    opt <- run_optim(optHessian)
+    opt <- run_optim(isTRUE(optHessian) && is.null(hess_fn))
+    if (!is.null(opt) && isTRUE(optHessian) && !is.null(hess_fn) &&
+      is.numeric(opt$value) && is.finite(opt$value)) {
+      opt$hessian <- tryCatch(hess_fn(opt$par), error = function(e) NULL)
+    }
 
     ## optim() threw, or stopped at a point the objective cannot evaluate.
     if (!is.null(opt) && (!is.numeric(opt$value) || !is.finite(opt$value))) {
@@ -266,7 +275,9 @@ opt.optim <- function(fn, start_v, lower.optim, upper.optim, maxit.optim, opt.TF
       is.numeric(opt$value) && is.finite(opt$value) &&
       opt$value > start_feval + 1e-10 &&
       .sfa_point_credible(fn, start_v, start_feval, lower.optim, upper.optim)) {
-      h <- if (isTRUE(optHessian)) {
+      h <- if (isTRUE(optHessian) && !is.null(hess_fn)) {
+        tryCatch(hess_fn(start_v), error = function(e) NULL)
+      } else if (isTRUE(optHessian)) {
         .sfa_substitute_hessian(fn, start_v, ref = opt)
       } else {
         NULL
@@ -329,4 +340,75 @@ opt.psoptim <- function(fn, start_v, lower.psoptim, upper.psoptim = NA, maxit.ps
   results <- list(start_v, start_feval, opt00)
   names(results) <- c("start_v", "start_feval", "opt00")
   return(results)
+}
+
+## Multistart Newton with exact derivatives, the alternative to the bobyqa ->
+## psoptim -> optim pipeline (psfm(optimizer = "newton"), gap N3). nlminb()
+## from every start with the exact gradient and Hessian; the lowest objective
+## wins. Several starts because one is not enough: on GTRE the likelihood has
+## a second mode where sigma_h collapses to 0, and a single Newton run from a
+## naive start found it (notes/code_history/opts.md). Returns an optim-shaped
+## `opt`, or NULL if no start produced a finite objective.
+.sfa_newton_multistart <- function(fn, gr, he, starts, lower, maxit, optHessian) {
+  runs <- lapply(starts, function(s0) {
+    tryCatch(
+      suppressWarnings(stats::nlminb(pmax(s0, lower), function(x) fn(x), gr, he,
+        lower = lower, control = list(iter.max = maxit, eval.max = 2L * maxit)
+      )),
+      error = function(e) NULL
+    )
+  })
+  obj <- vapply(runs, function(r) {
+    if (is.null(r) || !is.numeric(r$objective) || !is.finite(r$objective)) NA_real_ else r$objective
+  }, numeric(1))
+  tab <- data.frame(
+    start = seq_along(starts), objective = obj,
+    convergence = vapply(runs, function(r) if (is.null(r)) NA_integer_ else as.integer(r$convergence), integer(1)),
+    iterations = vapply(runs, function(r) if (is.null(r)) NA_integer_ else as.integer(r$iterations), integer(1))
+  )
+  if (all(is.na(obj))) return(NULL)
+  b <- which.min(obj)
+  r <- runs[[b]]
+  np <- length(r$par)
+  h <- NULL
+  if (isTRUE(optHessian)) {
+    h <- tryCatch(he(r$par), error = function(e) NULL)
+    if (is.null(h) || !all(is.finite(h))) h <- matrix(NA_real_, np, np)
+  }
+  list(
+    opt = list(
+      par = r$par, value = r$objective,
+      counts = c(`function` = unname(r$evaluations[1]), gradient = unname(r$evaluations[2])),
+      convergence = as.integer(r$convergence), message = r$message, hessian = h
+    ),
+    starts = tab, chosen = b, start_points = do.call(rbind, starts)
+  )
+}
+
+## Starting points for .sfa_newton_multistart() on GTRE/TRE: the package's own
+## random-effects start first, then the persistent scale spread over its
+## split (GTRE: sigma_r vs sigma_h at three angles and two sizes) or over its
+## size (TRE). Layout (lambda, sigma, sigma_r[, sigma_h], beta).
+.sfa_newton_starts_panel <- function(start_v, model_name) {
+  sv <- start_v
+  sig <- if (is.finite(sv[2]) && sv[2] > 0) sv[2] else 1
+  if (identical(model_name, "GTRE")) {
+    s <- sqrt(sv[3]^2 + sv[4]^2)
+    if (!is.finite(s) || s < 0.05 * sig) s <- 0.25 * sig
+    grid <- list(c(1, 1), c(1, 2), c(1, 3), c(0.5, 2), c(2, 2))
+    alt <- lapply(grid, function(a) {
+      x <- sv
+      x[3] <- a[1] * s * cos(a[2] * pi / 8)
+      x[4] <- a[1] * s * sin(a[2] * pi / 8)
+      x
+    })
+  } else {
+    s <- if (is.finite(sv[3]) && sv[3] > 0.05 * sig) sv[3] else 0.25 * sig
+    alt <- lapply(c(0.5, 2), function(m) {
+      x <- sv
+      x[3] <- m * s
+      x
+    })
+  }
+  c(list(sv), alt)
 }

@@ -147,17 +147,33 @@
   ## converts the scalar to a float32 tensor before the arithmetic, so a
   ## leading R double silently costs a float64 evaluation about 1e-8 per
   ## term. `tensor - scalar` keeps the tensor's precision.
-  (z1 * z1) * (-0.5) + .torch_log_pnorm(z2, single) +
-    (log(2 / sigma) - 0.5 * log(2 * pi))
+  ## sigma is an R double on the plain path and a tensor under autograd; the
+  ## plain path keeps its constant in R double precision, as before.
+  lc <- if (inherits(sigma, "torch_tensor")) {
+    torch::torch_log(sigma$reciprocal() * 2) - 0.5 * log(2 * pi)
+  } else {
+    log(2 / sigma) - 0.5 * log(2 * pi)
+  }
+  (z1 * z1) * (-0.5) + .torch_log_pnorm(z2, single) + lc
 }
 
 ## The whole stacked likelihood for one parameter vector. Same layout,
 ## orientation and mixture as fn_1_loop() in psfm(): x = (lambda, sigma,
 ## sigma_r[, sigma_h], beta). Returns per-firm log-likelihoods (doubles).
 .gtre_sim_ll_torch <- function(x, prep, model_name, inefdec_n, n_x_vars) {
+  ll <- torch::with_no_grad(.gtre_sim_ll_core(x, prep, model_name, inefdec_n, n_x_vars))
+  as.numeric(ll$cpu()$to(dtype = torch::torch_float64()))
+}
+
+## The same calculation returning the per-firm TENSOR. x is either an R
+## numeric vector (the plain path) or a parameter tensor that autograd
+## differentiates through (.sim_torch_autograd()).
+.gtre_sim_ll_core <- function(x, prep, model_name, inefdec_n, n_x_vars) {
   gtre <- identical(model_name, "GTRE")
   k0 <- if (gtre) 4L else 3L
-  beta <- prep$tt(x[(k0 + 1L):(k0 + n_x_vars)])
+  is_t <- inherits(x, "torch_tensor")
+  bidx <- (k0 + 1L):(k0 + n_x_vars)
+  beta <- if (is_t) x[bidx] else prep$tt(x[bidx])
   lam <- x[1]
   sig <- x[2]
   single <- identical(prep$setup$dtype_name, "float32")
@@ -175,7 +191,7 @@
     if (gtre) {
       ## alpha enters as -/+ inefdec_n * sigma_r * draw (both halves of the
       ## symmetric mixture), h as + sigma_h * |draw|.
-      a <- prep$H1[s:e, ] * (inefdec_n * x[3])
+      a <- prep$H1[s:e, ] * (x[3] * inefdec_n)
       h <- prep$H2[s:e, ] * x[4]
       lp1 <- lp1$index_add(1L, g, .torch_log_terms(b - a + h, lam, sig, single))
       lp2 <- lp2$index_add(1L, g, .torch_log_terms(b + a + h, lam, sig, single))
@@ -192,5 +208,37 @@
   } else {
     l1
   }
-  as.numeric(ll$cpu()$to(dtype = torch::torch_float64()))
+  ll
+}
+
+## Exact derivatives of the negative summed simulated log-likelihood, by
+## reverse-mode automatic differentiation through .gtre_sim_ll_core() over the
+## fit's own draws (gap N3). Double precision only: psfm() refuses
+## derivatives = "autograd" with float32. Returns gr(x) and he(x); either gives
+## NA on a non-finite result, which the callers already degrade on. The clamps
+## in .torch_log_terms() are differentiated as written, so the derivatives are
+## those of the objective the optimizer actually sees.
+.sim_torch_autograd <- function(prep, model_name, inefdec_n, n_x_vars) {
+  leaf <- function(x) {
+    torch::torch_tensor(as.numeric(x), dtype = prep$setup$dtype,
+                        device = prep$setup$device, requires_grad = TRUE)
+  }
+  negll <- function(xt) -(.gtre_sim_ll_core(xt, prep, model_name, inefdec_n, n_x_vars)$sum())
+  gr <- function(x) {
+    xt <- leaf(x)
+    g <- as.numeric(torch::autograd_grad(negll(xt), xt)[[1]]$cpu())
+    if (all(is.finite(g))) g else rep(NA_real_, length(x))
+  }
+  he <- function(x) {
+    p <- length(x)
+    xt <- leaf(x)
+    g <- torch::autograd_grad(negll(xt), xt, create_graph = TRUE)[[1]]
+    H <- matrix(NA_real_, p, p)
+    for (i in seq_len(p)) {
+      H[i, ] <- as.numeric(torch::autograd_grad(g[i], xt, retain_graph = TRUE)[[1]]$cpu())
+    }
+    if (!all(is.finite(H))) return(matrix(NA_real_, p, p))
+    (H + t(H)) / 2
+  }
+  list(gr = gr, he = he)
 }

@@ -25,7 +25,9 @@
                     uhet = NULL, hhet = NULL, scaling = NULL,
                     vhet = NULL, sim_backend = c("R", "torch"),
                     sim_device = NULL, sim_dtype = NULL,
-                    integration = c("quadrature", "simulate"))}
+                    integration = c("quadrature", "simulate"),
+                    derivatives = c("numeric", "autograd"),
+                    optimizer = c("pipeline", "newton"))}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -103,6 +105,8 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{scaling}{Optional one-sided formula for the scaling function \eqn{h(z'\delta)} of Wang and Ho (2010), for \code{model_name = "FD"}. The same block as that model's pipe segment. New in 1.3.0.}
 \item{vhet}{Optional one-sided formula for the determinants of the NOISE variance, as in \code{vhet = ~ zv}, for \code{model_name = "FD"} only. A different block from \code{scaling}, which drives inefficiency, and usable beside it. First-differencing turns the noise into \eqn{\mathrm{Var}(D v_i) = D\,\mathrm{diag}(\sigma_{v,it}^2)\,D'}, a tridiagonal matrix rather than \eqn{\sigma_v^2} times a fixed one; with \eqn{\sigma_v} constant that is exactly the homoskedastic matrix. The predictor is on the log VARIANCE scale, \eqn{\sigma_{v,it}^2 = \exp(z_v'\delta_v)}, matching the \code{sig_v2} slot it replaces and \pkg{sfa}'s panel convention. The other \code{model_name}s are refused: the simulated-ML families have no closed form once the noise varies within a firm, and the moment-based and fixed-effects estimators have no \eqn{\sigma_v} in an objective. With \code{vhet} given the \code{sig_v2} row becomes coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
 \item{integration}{How \code{"TRE"} and \code{"TRE_Z"} integrate the firm effect out of the likelihood. \code{"quadrature"} (default since 1.3.0) evaluates the integral exactly, by adaptive Gauss-Hermite quadrature (24 nodes) centred on each firm's mode, so \code{halton_num}, \code{rand.gtre} and the \code{sim_*} arguments do not affect the fit. Balanced and unbalanced panels alike. \code{"simulate"} averages over \code{halton_num} draws per firm, which was the only method before 1.3.0; use it to reproduce an earlier fit. Ignored by every other \code{model_name}, and an explicit \code{"quadrature"} is refused there; GTRE's exact route is \code{estimator = "fiml"}. See \sQuote{Simulated maximum likelihood} under \sQuote{Details}. New in 1.3.0.}
+\item{derivatives}{\code{"numeric"} (default) uses finite differences for the gradient and for the Hessian behind the standard errors, as before. \code{"autograd"} computes both exactly, by automatic differentiation through the \pkg{torch} evaluator over the fit's own draws: the final \code{optim()} stage gets the exact gradient, and the standard errors come from the exact Hessian. Needs \code{sim_backend = "torch"} in double precision (\code{sim_dtype = "float64"}), so it applies to \code{"GTRE"} with \code{estimator = "sml"} and \code{"TRE"} with \code{integration = "simulate"}. See \sQuote{Exact derivatives and the Newton optimizer} under \sQuote{Details}. New in 1.3.0.}
+\item{optimizer}{\code{"pipeline"} (default) is the three-stage bobyqa, psoptim, optim search used by every likelihood in the package. \code{"newton"} replaces it with a multistart Newton search: \code{nlminb()} with the exact gradient and Hessian, run from several starting points, keeping the best. Needs \code{derivatives = "autograd"}. \code{maxit.nlminb} caps the iterations of each start. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 
@@ -223,6 +227,12 @@ For \code{"GTRE"} with \code{estimator = "sml"} and for \code{"TRE"}, the simula
 In double precision (\code{sim_dtype = "float64"}, on \code{"cpu"} or \code{"cuda"}) the per-firm log-likelihoods agree with the default backend to rounding error, so fits agree to the optimizer's tolerance. In single precision (\code{"float32"}, the only choice on Apple's \code{"mps"}) each firm's log-likelihood carries an error of about \eqn{10^{-6}}. That is negligible for the estimates, but a finite-difference Hessian magnifies it (standard errors moved by up to 16\% in testing). So after a single-precision optimization the reported log-likelihood and the Hessian behind the standard errors are recomputed in double precision, by the default backend over the same draws, at the point the optimizer found. The fit records the evaluator used in \code{$sim_backend}.
 
 Whether a GPU is faster depends on the size of the \eqn{n \times R} array and on the hardware. Below roughly 100,000 cells the overhead of the device dominates and the default backend is faster; on an Apple M4 the GPU was 4 to 6 times faster than the default at 1 to 2 million cells. Time one evaluation on your own hardware (via \code{keep_objective = TRUE}) before committing to a long run. The array is evaluated in blocks of at most \code{getOption("sfa.torch_chunk_cells", 1e6)} cells, accumulated per firm, so peak device memory stays bounded; the block size does not change the likelihood. On Apple silicon the GPU shares system memory, and under memory pressure its timings become erratic. \code{"GTRE_Z"} and \code{"TRE_Z"} are not yet supported.
+}
+
+\subsection{Exact derivatives and the Newton optimizer}{
+With \code{sim_backend = "torch"}, the simulated log-likelihood of \code{"GTRE"} (\code{estimator = "sml"}) and of \code{"TRE"} (\code{integration = "simulate"}) is a smooth function of the parameters for fixed draws, so \pkg{torch} can differentiate it exactly. \code{derivatives = "autograd"} does that. The gradient costs a small multiple of one likelihood evaluation, and the Hessian one gradient per parameter, against \eqn{2p} evaluations for a finite-difference gradient and many more for \code{optimHess()}. The standard errors are not more accurate, because the draws are fixed during the fit and so the finite differences carry no simulation noise. In testing the two agreed to about \eqn{10^{-4}} relative. What changes is speed.
+
+The speed matters more with \code{optimizer = "newton"}. An exact Hessian makes a plain Newton search reliable near a maximum, but not from any start: the GTRE likelihood can have a second mode where \eqn{\sigma_h} collapses to zero. So the search runs from the package's usual random-effects start and from five more (GTRE: the persistent scale split between \eqn{\sigma_r} and \eqn{\sigma_h} at three angles and two sizes; TRE: \eqn{\sigma_r} halved and doubled), and keeps the best. \code{$newton$starts} lists each start's objective, convergence code and iterations, \code{$newton$chosen} the one reported. The default remains \code{"pipeline"} until the two have been compared by simulation.
 }
 
 \subsection{True fixed effects and first differences}{
@@ -392,6 +402,8 @@ An object of class \code{"sfareg"} containing components that vary by model. All
 
 \bold{For GTRE (sml) and TRE models:}
 \item{sim_backend}{List with \code{backend} (\code{"R"} or \code{"torch"}), \code{device} and \code{dtype}: the evaluator that computed the simulated likelihood.}
+\item{derivatives, optimizer}{The values of those arguments used for the fit.}
+\item{newton}{With \code{optimizer = "newton"} only: a list with \code{starts} (a data frame of each start's \code{objective}, \code{convergence} and \code{iterations}), \code{chosen} (the row reported) and \code{start_points} (one row per start).}
 
 \bold{For TFE and TFE_WMLE models:}
 \item{r_hat_m}{Estimated individual-specific fixed effects, named by individual. For \code{"TFE"} these are the maximum-likelihood estimates of \eqn{\alpha_i} directly; for \code{"TFE_WMLE"} they are recovered after estimation from the mean residual plus \eqn{\sqrt{2/\pi}\,\sigma_u}, since the within likelihood does not identify them.}
