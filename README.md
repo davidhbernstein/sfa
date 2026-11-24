@@ -21,6 +21,9 @@ whether the chosen specification is defensible -- see
 
 Written by David H. Bernstein, Christopher F. Parmeter and Alexander D. Stead.
 
+Common questions, about installation, panel data, convergence, standard errors
+and efficiency scores, are answered in the [FAQ (PDF)](faq/sfa_faq.pdf).
+
 ## Installation
 
 The released version from CRAN:
