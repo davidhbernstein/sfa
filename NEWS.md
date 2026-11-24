@@ -702,6 +702,14 @@ wrong result came without an error or a warning.
 
 ### Errors and failures
 
+* **Arguments from `sfaR` and `frontier` now get the `sfa` spelling instead of
+  R's bare "unused argument".** `sfm()`, `psfm()`, `zsfm()` and `lcsfm()` answer
+  `udist = "hnormal"` with `model_name = "NHN"`, `S = -1` and
+  `ineffDecrease = FALSE` with `inefdec = FALSE`, `timeEffect = TRUE` with
+  `psfm(..., model_name = "BC92")`, and so on; a distribution name passed as
+  `model_name` (`"hnormal"`, `"half-normal"`) names the model. These four
+  functions now take `...` for this purpose only. Any other unknown argument
+  is still an error.
 * **`plot(fit, which = 1)` stopped instead of drawing when the stored Hessian
   was all zeros.** The Hessian-spectrum panel uses `log = "y"`, which has no
   positive range when every eigenvalue is 0, so the diagnostic was unavailable

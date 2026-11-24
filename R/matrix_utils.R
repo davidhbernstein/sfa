@@ -2475,7 +2475,7 @@
 
 
 ## Case-insensitive matching for model / estimator names.
-.match_model_name <- function(x, choices, arg = "model_name") {
+.match_model_name <- function(x, choices, arg = "model_name", aliases = NULL) {
   if (missing(x) || is.null(x) || !length(x)) {
     return(choices[1])
   }
@@ -2501,6 +2501,17 @@
   p <- pmatch(tolower(x), lo)
   if (!is.na(p)) {
     return(choices[p])
+  }
+
+  ## A distribution name ("hnormal", "half-normal", ...) where a model name
+  ## belongs: name the model.
+  a <- if (is.function(aliases)) aliases(x) else NA_character_
+  if (!is.na(a) && a %in% choices) {
+    stop("'", arg, "' = \"", x, "\" names a distribution, not an sfa model. ",
+      "In sfa write ", arg, " = \"", a, "\" (normal noise, ", .SFA_DIST_LABEL[[a]],
+      " inefficiency).\n  Valid choices (case does not matter): ", paste(choices, collapse = ", "),
+      call. = FALSE
+    )
   }
 
   ## Rank suggestions by edit distance and offer at most two.

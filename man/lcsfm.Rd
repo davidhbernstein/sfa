@@ -14,7 +14,7 @@ data, n_class = 2, maxit.bobyqa = 10000, maxit.psoptim = 1000,
 maxit.optim = 1000, REPORT = 1, trace = 0, pgtol = 0, 
 start_val = FALSE, PSopt = FALSE, optHessian = TRUE, 
 inefdec = TRUE, penalty_c = 0, upper = NA, Method = "L-BFGS-B", 
-verbose = FALSE, keep_objective = FALSE, rand.psoptim = NULL, classhet = NULL)}
+verbose = FALSE, keep_objective = FALSE, rand.psoptim = NULL, classhet = NULL, ...)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. For \code{"LCM_Z"} a second part gives the covariates driving class membership: \code{y ~ x1 + x2 | z1}.}
 \item{model_name}{\code{"LCM"}, \code{"LCM_Z"} or \code{"LCM_CN"}; see \sQuote{Description}. Matching ignores case, so \code{"lcm"} and \code{"LCM"} are the same choice.}
@@ -38,6 +38,7 @@ them.}
 \item{keep_objective}{Logical. Retain the likelihood closure on the fitted object as \code{$objective}, so the score-based tools can difference it: \code{vcov(type = "bhhh")} (OPG/BHHH standard errors), \code{\link{influence_sfa}}, the \pkg{sandwich} methods, \code{\link{TIC}} and \code{vuong}. New in 1.3.0. The per-observation contributions are those of the mixture likelihood, \eqn{\log \sum_j p_j f_j(y_i)}, not of any one class. With \code{penalty_c > 0} they are \emph{unpenalised} -- a penalty on the class probabilities is not a per-observation quantity -- so the OPG is that of the unpenalised likelihood; at the default \code{penalty_c = 0} the two coincide. \code{FALSE} by default, because a closure carries its enclosing environment.}
 \item{rand.psoptim}{Integer. Seed for replication of psoptim. Defaults to \code{NULL}.}
 \item{classhet}{Optional one-sided formula for the covariates driving class membership, for \code{model_name = "LCM_Z"}, as in \code{classhet = ~ z1}. The same block as the formula's pipe segment, writing the same model; give it one way or the other, not both. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
+\item{\dots}{Not used. An argument that belongs to another R frontier package is rejected with its \pkg{sfa} equivalent: \pkg{sfaR}'s \code{udist} and \code{S} become \code{model_name} and \code{inefdec}, \pkg{frontier}'s \code{ineffDecrease}, \code{truncNorm} and \code{timeEffect} become \code{inefdec} and \code{model_name}, and so on. Any other unrecognised argument is an error, as it would be without \code{...}. New in 1.3.0.}
 }
 \details{
 \subsection{The latent class frontier (\code{"LCM"}, \code{"LCM_Z"})}{

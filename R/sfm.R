@@ -45,11 +45,15 @@ sfm <- function(formula,
                 estimator = c("mle", "cols", "mols", "acols", "cmle"),
                 cols_boot = 0,
                 rand.cols = NULL,
-                integration = c("quadrature", "simulate")) {
+                integration = c("quadrature", "simulate"),
+                ...) {
+  .sfa_reject_dots(match.call(expand.dots = FALSE)$..., "sfm", parent.frame())
   ## call/model_name resolution moved ahead of .check_model_formula_pipes().
   call <- match.call()
   data_supplied <- if (!missing(data)) data
-  model_name <- .match_model_name(model_name, eval(formals()$model_name))
+  model_name <- .match_model_name(model_name, eval(formals()$model_name),
+    aliases = .sfa_dist_alias
+  )
   robust <- match.arg(robust)
   estimator <- match.arg(estimator)
   ## Defaults reproduce the previous behaviour exactly -- Halton, no
