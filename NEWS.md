@@ -69,6 +69,13 @@ results**.
 Each fix below changes estimates on at least some data. Before the fix, the
 wrong result came without an error or a warning.
 
+* **`marginal_effects()` reports a discrete change for a dummy determinant**,
+  E[u | z_k = 1] - E[u | z_k = 0] per observation (and the same for Var[u]),
+  instead of a derivative. Columns are named `DeltaE_u.<z>`. The new
+  `discrete` argument also gives a named ordinal the change per unit across its
+  range, and switches a factor's dummies as a group. `discrete = NULL` restores
+  the earlier all-derivative output.
+
 ### Panel efficiency scores
 
 * **Panel efficiency scores that disagreed with their own model.** The GTRE

@@ -5,7 +5,9 @@
 For a model whose inefficiency scale depends on covariates (the \code{_Z}
 models), the marginal effects of those covariates on the mean and variance of
 the inefficiency term, \eqn{\partial E[u]/\partial z_k} and
-\eqn{\partial \mathrm{Var}[u]/\partial z_k}.
+\eqn{\partial \mathrm{Var}[u]/\partial z_k}. A dummy or categorical
+determinant gets a discrete change instead, \eqn{E[u \mid z_k = 1] - E[u \mid z_k = 0]}
+(see \code{discrete}).
 
 \tabular{lll}{
   \strong{Fit} \tab \strong{Link on \eqn{\sigma_u}} \tab \strong{Covariates reported} \cr
@@ -16,7 +18,8 @@ the inefficiency term, \eqn{\partial E[u]/\partial z_k} and
 }
 }
 \usage{
-marginal_effects(object, average = FALSE, component = c("u", "h"))
+marginal_effects(object, average = FALSE, component = c("u", "h"),
+                 discrete = "auto")
 }
 \arguments{
   \item{object}{an object of class \code{"sfareg"} from \code{\link{sfm}}
@@ -31,6 +34,15 @@ marginal_effects(object, average = FALSE, component = c("u", "h"))
     parameterized by the third formula segment \code{y ~ x | z | zp}. The
     output columns are named after the component, so a table cannot be misread
     once separated from the call that produced it.}
+  \item{discrete}{which determinants get a discrete change rather than a
+    derivative. \code{"auto"} (the default) treats every 0/1 column of the
+    design as a dummy. A character vector names columns instead: a named 0/1
+    column is a dummy, and a named column with more values (an ordinal such as
+    an age class coded 1, 2, 3, entering the index linearly) gets the change
+    per unit across its observed range. Include \code{"auto"} in the vector to
+    add the 0/1 columns as well, e.g. \code{discrete = c("auto", "Age")}.
+    \code{NULL} (or \code{FALSE}) reports derivatives throughout, which is
+    the output of releases before 1.3.0. See \sQuote{Discrete determinants}.}
   \item{average}{if \code{TRUE}, return only the named vector of average
     marginal effects. Default \code{FALSE}, which returns the full
     per-observation table with that vector attached as the \code{"average"}
@@ -116,6 +128,33 @@ Effects are per observation, because \eqn{\sigma_u} varies with \eqn{z}.
 Constant columns of the \eqn{z} design are dropped: the derivative with
 respect to an intercept is not a marginal effect.
 
+\strong{Discrete determinants.} A derivative with respect to a dummy describes
+a change that cannot happen. For a 0/1 column the reported effect is the
+first difference
+
+\deqn{\Delta E[u]_i = E[u \mid z_{ik} = 1, z_{i,-k}] - E[u \mid z_{ik} = 0, z_{i,-k}],}
+
+per observation, with every other determinant at its observed value, and the
+same for \eqn{\mathrm{Var}[u]}; \code{average = TRUE} averages it over
+observations. Both moments are recomputed from the full formula at each value,
+through every design the column appears in. For the truncated normal that
+moves \eqn{\mu} and \eqn{\sigma_u} together, a column in the \eqn{\mu}
+design alone included; under the scaling property it moves \eqn{h(z)}. For a
+named ordinal column \eqn{z_k} with observed range \eqn{[a, b]} the effect is
+\eqn{(E[u \mid z_k = b] - E[u \mid z_k = a]) / (b - a)}, the average change
+for a one-unit step, computed for every observation. For a class coded 1 to 3
+this is \eqn{(E[u \mid 3] - E[u \mid 1])/2}.
+
+When the design records that several dummies come from one \code{factor()}
+(designs built from \code{uhet}, \code{muhet} or \code{scaling}), each level
+is compared with the reference level, with that factor's other dummies held at
+zero, so no impossible combination is evaluated. A pipe segment's design
+(\code{y ~ x | z}) does not keep that information, and each 0/1 column is
+then switched on its own, holding the others at their observed values.
+Discrete columns are named \code{DeltaE_u.<z>} and \code{DeltaVar_u.<z>}
+rather than \code{dE_u.d<z>}, and the \code{"effect_type"} attribute says
+which kind each column is.
+
 Standard errors are deliberately not reported. The effect is a nonlinear
 function of both \eqn{\delta} and \eqn{z}, so its sampling distribution
 requires the delta method through the full covariance matrix or a bootstrap;
@@ -124,11 +163,16 @@ a number printed without one would be read as inference.
 \value{
 With \code{average = FALSE}, a data frame with one row per observation:
 \code{sigma_u}, \code{E_u}, \code{Var_u}, then one \code{dE_u.d<z>} and one
-\code{dVar_u.d<z>} column per non-constant variance determinant. With
+\code{dVar_u.d<z>} column per non-constant variance determinant, or, for a
+discrete determinant, one \code{DeltaE_u.<z>} and one \code{DeltaVar_u.<z>}
+column. With
 \code{component = "h"} the same columns are named \code{sigma_h},
 \code{E_h}, \code{Var_h}, \code{dE_h.d<z>} and \code{dVar_h.d<z>}.
 Attributes \code{"average"} (the average marginal effects), \code{"link"},
-\code{"family"} and \code{"component"} record the convention used.
+\code{"family"} and \code{"component"} record the convention used, and
+\code{"effect_type"} gives each effect column's kind: \code{"derivative"},
+\code{"discrete"} (a 0/1 dummy), \code{"one step"} (a named ordinal) or
+\code{"factor level"}.
 
 With \code{average = TRUE}, just the named vector of average marginal effects.
 }
