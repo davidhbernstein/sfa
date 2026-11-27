@@ -69,6 +69,18 @@ results**.
 Each fix below changes estimates on at least some data. Before the fix, the
 wrong result came without an error or a warning.
 
+* **`spec_test()`'s bootstrap p-value is equal-tailed.** It used to count
+  bootstrap draws with |z*| >= |z|, which is valid only if the null
+  distribution of z is symmetric about zero. It is not: under a correct
+  normal/half-normal pair z is shifted and skewed to the left, so a statistic
+  pushed to the right by a wrong pair was judged against the long left tail,
+  and power could fall BELOW size. Against half-normal data with a quarter of
+  the units given exponential inefficiency, rejection at 5% fell from 0.043 at
+  n = 250 to 0.019 at n = 2000; it now rises from 0.097 to 0.584 (1000
+  replications, `B = 199`). The p-value is now
+  2 min(P(z* >= z), P(z* <= z)), so the smallest attainable value is
+  2 / (B + 1).
+
 * **`marginal_effects()` reports a discrete change for a dummy determinant**,
   E[u | z_k = 1] - E[u | z_k = 0] per observation (and the same for Var[u]),
   instead of a derivative. Columns are named `DeltaE_u.<z>`. The new
@@ -830,6 +842,12 @@ wrong result came without an error or a warning.
 
 ## Documentation
 
+* `?gof_test` no longer calls the asymptotic chi-square p-value
+  conservative. With the MLE plugged in, the statistic's null distribution lies
+  between chi2(k - 1 - m) and chi2(k - 1) (Chernoff and Lehmann 1954), so the
+  chi2(k - 1 - m) reference it uses is liberal: measured over 500 replications,
+  n = 250 to 2000, it rejected 5.4% to 8.8% of the time at a nominal 5%. The
+  bootstrap is the one to use.
 * `optHessian = FALSE` is now documented as also skipping the final `optim()`
   stage, so the estimates are the previous stage's, in all seven entry points
   that take it.

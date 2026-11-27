@@ -213,9 +213,12 @@ spec_test <- function(object,
         call. = FALSE
       )
     }
-    ## Two-sided, on the studentised statistic so the bootstrap corrects the
-    ## variance estimate rather than merely relocating it.
-    p <- (1 + sum(abs(boot) >= abs(stat))) / (length(boot) + 1)
+    ## Two-sided and EQUAL-TAILED, on the studentised statistic. Not
+    ## |boot| >= |stat|: under the null z is shifted and skewed, so a symmetric
+    ## rule lets the long tail answer for the short one and power falls below
+    ## size. See notes/code_history/spec_test.md.
+    nb <- length(boot)
+    p <- min(1, 2 * min(1 + sum(boot >= stat), 1 + sum(boot <= stat)) / (nb + 1))
   }
 
   out <- list(

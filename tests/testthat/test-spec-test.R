@@ -145,9 +145,9 @@ test_that("it takes a fit as well as a vector, and refuses what it cannot use", 
 
 test_that("the bootstrap null is calibrated where the asymptotic one is not", {
   skip_on_cran()
-  ## The asymptotic p-value rejects 18.7% of the time at a nominal 5% averaged
-  ## over 24 correctly-specified designs, and up to 37% when u is exponential;
-  ## the bootstrap rejects 5.7%. The cause is the 8th moment, which a
+  ## The asymptotic p-value rejects 19.4% of the time at a nominal 5% averaged
+  ## over 24 correctly-specified designs, and up to 42% when u is exponential;
+  ## the bootstrap rejects 5.9% (re-measured 2026-11-26). The cause is the 8th moment, which a
   ## heavy-tailed u estimates far too imprecisely at these n. Not re-measured
   ## here -- that study is in the notes -- but the mechanism is asserted: the
   ## two nulls must actually differ on such a sample.
@@ -168,6 +168,22 @@ test_that("the bootstrap null is calibrated where the asymptotic one is not", {
   expect_equal(unname(a$statistic), unname(b$statistic))
   ## A bootstrap p-value can never be below 1/(B+1).
   expect_gte(b$p.value, 1 / (length(b$boot) + 1))
+})
+
+test_that("the bootstrap p-value is equal-tailed, not symmetric in |z|", {
+  skip_on_cran()
+  ## Under a half-normal null z is shifted and skewed, so |boot| >= |z| lets
+  ## the long tail answer for the short one and power fell BELOW size (N6
+  ## size/power suite, SPEC_hn). The rule is pinned on the returned draws.
+  set.seed(3)
+  e <- rnorm(800, 0, 0.5) - abs(rnorm(800))
+  b <- spec_test(e, noise = "normal", inefficiency = "halfnormal",
+    B = 199, seed = 1
+  )
+  z <- unname(b$statistic); bs <- b$boot; nb <- length(bs)
+  expect_equal(b$p.value,
+    min(1, 2 * min(1 + sum(bs >= z), 1 + sum(bs <= z)) / (nb + 1)))
+  expect_lte(b$p.value, 1)
 })
 
 test_that("a seeded bootstrap is reproducible and leaves the RNG alone", {
