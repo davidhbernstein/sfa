@@ -17,7 +17,7 @@ spec_test_all(object, level = 0.05)}
 \item{object}{An \code{"sfareg"} fit, whose \bold{OLS} residuals are used, or a numeric vector of residuals.}
 \item{noise}{Assumed distribution of \eqn{v}. Only its excess kurtosis enters, so any symmetric distribution with the same value behaves identically -- testing for Logistic noise is indistinguishable from testing for \eqn{t(9)}.}
 \item{inefficiency}{Assumed distribution of \eqn{u}.}
-\item{null}{How to get the p-value. \code{"bootstrap"} (the default) simulates from the assumed pair; \code{"asymptotic"} uses the delta-method normal approximation, which is badly over-sized for heavy-tailed \eqn{u} -- see \sQuote{Details}.}
+\item{null}{How to get the p-value. \code{"bootstrap"} (the default) simulates from the assumed pair; \code{"asymptotic"} uses the delta-method normal approximation, which is over-sized for every \eqn{u} and badly so for heavy-tailed \eqn{u} -- see \sQuote{Details}.}
 \item{B}{Bootstrap replications. Cheap here: nothing is fitted, so each replicate is \eqn{n} draws and eight moments.}
 \item{level}{Size used for the reported verdict.}
 \item{seed}{Optional seed for the bootstrap. The RNG state is saved and restored.}
@@ -36,18 +36,21 @@ With both distributions assumed, \eqn{\gamma_1(u)}, \eqn{\gamma_2(u)} and \eqn{\
 
 which is zero when the assumed pair is right. Its variance comes from the delta method applied to the central moments \eqn{(m_2, m_3, m_4)}, which needs moments up to the eighth.
 
-\bold{Why the default null is a bootstrap.} The delta-method p-value is not reliable at usual sample sizes, and the failure is systematic rather than marginal. Rejection rates under \emph{correct} specification, 300 replications per cell:
+\bold{Why the default null is a bootstrap.} The delta-method p-value is not reliable at usual sample sizes, and the failure is systematic rather than marginal. Rejection rates at a nominal 5\% under \emph{correct} specification and normal noise, 500 replications per cell, \code{B = 499}:
 
 \tabular{lllll}{
  \eqn{u} \tab \eqn{n} \tab SNR \tab asymptotic \tab bootstrap \cr
- half-normal \tab 2000 \tab 1 \tab 0.087 \tab 0.050 \cr
- half-normal \tab 2000 \tab 2 \tab 0.103 \tab 0.057 \cr
- exponential \tab 2000 \tab 1 \tab 0.207 \tab 0.077 \cr
- exponential \tab 500 \tab 2 \tab \bold{0.357} \tab 0.083 \cr
- exponential \tab 2000 \tab 2 \tab 0.307 \tab 0.060
+ half-normal \tab 500 \tab 1 \tab 0.130 \tab 0.046 \cr
+ half-normal \tab 2000 \tab 1 \tab 0.078 \tab 0.046 \cr
+ half-normal \tab 2000 \tab 2 \tab 0.082 \tab 0.046 \cr
+ exponential \tab 2000 \tab 1 \tab 0.172 \tab 0.058 \cr
+ exponential \tab 500 \tab 2 \tab \bold{0.416} \tab 0.084 \cr
+ exponential \tab 2000 \tab 2 \tab 0.264 \tab 0.046
 }
 
-Across all 24 cells the asymptotic null rejects \bold{18.7\%} of the time at a nominal 5\%; the bootstrap rejects \bold{5.7\%}. The cause is the eighth moment: for a heavy-tailed \eqn{u} it is estimated far too imprecisely at these sample sizes, and the variance comes out too small. The bootstrap studentises against the same statistic computed under the assumed pair, so it corrects the variance rather than merely relocating the statistic. Power is unaffected -- against wrong pairs at \eqn{n = 2000} it runs 0.93 to 1.00.
+Across all 24 cells (normal, logistic and Laplace noise; half-normal and exponential \eqn{u}; SNR 1 and 2; \eqn{n} = 500 and 2000) the asymptotic null rejects \bold{19.4\%} of the time at a nominal 5\%; the bootstrap rejects \bold{5.9\%}. The cause is the eighth moment: for a heavy-tailed \eqn{u} it is estimated far too imprecisely at these sample sizes, and the variance comes out too small. The bootstrap studentises against the same statistic computed under the assumed pair, so it corrects the variance rather than merely relocating the statistic.
+
+\bold{The bootstrap p-value is equal-tailed}, \eqn{2\min\{P(z^* \ge z), P(z^* \le z)\}}, because under the null \eqn{z} is neither centred at zero nor symmetric: for a half-normal \eqn{u} it is shifted left with a long left tail. Before 1.3.0 the p-value counted \eqn{|z^*| \ge |z|}, which judged a statistic pushed to the right against the long left tail, and power could fall below size. The smallest attainable p-value is \eqn{2/(B+1)}, so take \code{B} of at least 199 for a 1\% test. Against half-normal data with a share \eqn{\delta} of units given exponential inefficiency (normal noise, half-normal scale \eqn{\sigma_u = 1} and \eqn{\sigma_v = 0.5}, 1000 replications, \code{B = 199}), rejection at 5\% at \eqn{\delta} = 0.25, 0.5 and 1 is 0.10, 0.21 and 0.33 at \eqn{n = 250}, and 0.58, 0.88 and 0.95 at \eqn{n = 2000}.
 
 \bold{Type II failure.} If \eqn{R > 1} the residuals are more skewed than the assumed \eqn{u} can be -- for instance \eqn{|\gamma_1| > 0.9953} under a half-normal. The pair is then refuted by the skewness alone, and \code{spec_test} says so instead of reporting a p-value that would suggest the question was close.
 

@@ -45,9 +45,13 @@ at \eqn{\hat\theta}, which changes their null distributions. The default
 replication draws a composed error from the fitted model, rebuilds the
 response, \emph{refits}, forms its own residuals, and recomputes the
 statistic. \code{"asymptotic"} returns a \eqn{\chi^2(k-1-m)} p-value for the
-chi-square statistic, which the authors note is \bold{conservative} when
-evaluated at the MLE -- that reference distribution belongs to the
-minimum-chi-square estimator. There is no asymptotic KS p-value here: with
+chi-square statistic. That reference belongs to the minimum-chi-square
+estimator; with \eqn{\theta} the MLE from the ungrouped data the statistic's
+null distribution lies between \eqn{\chi^2(k-1-m)} and \eqn{\chi^2(k-1)}
+(Chernoff and Lehmann 1954), so this p-value is \bold{liberal}. Measured over
+500 replications of half-normal data fitted as half-normal, \eqn{n} = 250 to
+2000, \code{cells = 10}, it rejected 5.4\% to 8.8\% of the time at a nominal
+5\% and 11.4\% to 15.6\% at 10\%. Prefer the bootstrap. There is no asymptotic KS p-value here: with
 \eqn{\theta} estimated the Kolmogorov distribution does not apply, and Bai's
 (2003) martingale transformation is not implemented, so \code{NA} is returned
 rather than a number that would look valid.
@@ -80,6 +84,10 @@ tests as mildly conservative. That reading was an artifact of the attainable
 p-value grid described under \code{B}, not a property of either test.
 }
 \references{
+Chernoff, H. and Lehmann, E. L. (1954). The use of maximum likelihood
+estimates in \eqn{\chi^2} tests for goodness of fit. \emph{Annals of
+Mathematical Statistics} \bold{25}, 579--586.
+
 Wang, W. S., Amsler, C. and Schmidt, P. (2011). Goodness of fit tests in
 stochastic frontier models. \emph{Journal of Productivity Analysis}
 \bold{35}, 95--118.
