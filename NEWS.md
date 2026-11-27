@@ -476,6 +476,9 @@ wrong result came without an error or a warning.
   quadrature matches it to about 1e-14. `?copsfm` corrects two of the paper's
   moment formulas.
 
+* **`copsfm(vdist = "t")`**: Student-t noise with its degrees of freedom
+  estimated (`nu_v`, bounded to [2.05, 200]), under any copula.
+
 ### Inference and diagnostics
 
 * **`vcov()` gains `type = "sandwich"` and `type = "clustered"`**, and a

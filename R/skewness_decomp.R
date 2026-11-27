@@ -33,6 +33,7 @@
   switch(vdist,
     normal = sv * stats::qnorm(b),
     laplace = ifelse(b < 0.5, sv * log(2 * b), -sv * log(2 * (1 - b))),
+    t = sv * stats::qt(b, df = av),
     .gl_q(b, av, sv)
   )
 }
@@ -46,7 +47,7 @@
   )
 }
 .sd_v_moments <- function(sv, av, vdist) {
-  m3 <- if (vdist %in% c("normal", "laplace")) 0 else {
+  m3 <- if (vdist %in% c("normal", "laplace", "t")) 0 else {
     sv^3 * (psigamma(av, 2L) - psigamma(1, 2L))
   }
   ## NOT .cop_v_v2(), which is the ORDINARY logistic constant pi^2/3 and holds
@@ -55,6 +56,7 @@
   vr <- switch(vdist,
     normal = sv^2,
     laplace = 2 * sv^2,
+    t = sv^2 * av / (av - 2),
     sv^2 * (trigamma(av) + trigamma(1))
   )
   list(mean = 0, var = vr, m3 = m3)
@@ -135,7 +137,7 @@ skewness_decomp <- function(object, nodes = 160L) {
     vdist <- object$vdist
     su <- unname(p[["sigma_u"]])
     sv <- unname(p[[if (identical(vdist, "normal")) "sigma_v" else "delta_v"]])
-    av <- if (identical(vdist, "glogistic")) unname(object$alpha_v) else 1
+    av <- if (vdist %in% c("glogistic", "t")) unname(object$alpha_v) else 1
     cop <- object$copula
     cpar <- object$copula_par
   } else if (mn %in% c("NHN", "NE")) {

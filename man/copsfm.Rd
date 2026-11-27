@@ -15,7 +15,7 @@ copsfm(formula, data,
                   "joe", "joe90", "joe180", "joe270", "independent"),
        inefdec = TRUE,
        udist = c("hnormal", "exponential"),
-       vdist = c("normal", "logistic", "glogistic", "laplace"),
+       vdist = c("normal", "logistic", "glogistic", "laplace", "t"),
        n_nodes = 128, maxit.bobyqa = 10000, maxit.psoptim = 1000,
        maxit.optim = 1000, start_val = FALSE, PSopt = FALSE,
        optHessian = TRUE, Method = "L-BFGS-B", verbose = FALSE,
@@ -73,7 +73,16 @@ copsfm(formula, data,
   normal. Its scale is also reported as \code{delta_v}: the standard deviation
   is \eqn{\sqrt{2}\,\delta_v}. New in 1.3.0. Do not confuse it with
   \code{sfm(model_name = "TSL")}, where the skew-Laplace is the distribution
-  of the \emph{inefficiency}.}
+  of the \emph{inefficiency}.
+
+  \code{"t"} is Student-\eqn{t} noise, \eqn{v = \delta_v T_{\nu_v}}, with the
+  degrees of freedom \eqn{\nu_v} estimated (row \code{nu_v}) and bounded to
+  \eqn{[2.05, 200]}, so the variance \eqn{\delta_v^2 \nu_v/(\nu_v - 2)} is
+  always finite. It is symmetric, so it gives the heavy tails of the
+  Laplace with the tail weight estimated instead of fixed. A fit that ends at
+  the upper bound is reporting no evidence of heavy tails rather than an
+  estimate of \eqn{\nu_v}. The shape is stored in \code{$alpha_v}, as the
+  generalized logistic's is. New in 1.3.0.}
 \item{n_nodes}{Accuracy of the integral over \eqn{u}. The nodes are placed
   per observation (see Details); \code{n_nodes} sets the target error in
   \eqn{\log f}: about \eqn{10^{-10}} at the default 128, ten times looser for
