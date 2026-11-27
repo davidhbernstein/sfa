@@ -18,7 +18,9 @@ lcsfm <- function(formula,
                   verbose = FALSE,
                   keep_objective = FALSE,
                   rand.psoptim = NULL,
-                  classhet = NULL) {
+                  classhet = NULL,
+                  ...) {
+  .sfa_reject_dots(match.call(expand.dots = FALSE)$..., "lcsfm", parent.frame())
   ## call/model_name resolution ahead of .check_model_formula_pipes() -- see
   ## sfm.R's identical fix for why.
   call <- match.call()

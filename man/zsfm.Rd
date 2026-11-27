@@ -14,7 +14,7 @@ REPORT = 1, trace = 0, pgtol = 0,start_val = FALSE,PSopt = FALSE,
 optHessian = TRUE, inefdec = TRUE, upper = NA, 
 Method = "L-BFGS-B",logit = TRUE,verbose=FALSE,
 keep_objective = FALSE,rand.psoptim = NULL, ghet = NULL,
-                   vhet = NULL)}
+                   vhet = NULL, ...)}
 \arguments{
 \item{formula}{A symbolic description of the frontier, \code{y ~ x1 + x2}. For \code{"ZISF_Z"} a second part gives the covariates of the probability of full efficiency: \code{y ~ x1 + x2 | z1}.}
 \item{model_name}{\code{"ZISF"} or \code{"ZISF_Z"}; see \sQuote{Description}. Matching ignores case, so \code{"zisf"} and \code{"ZISF"} are the same choice.}
@@ -38,6 +38,7 @@ them.}
 \item{rand.psoptim}{Integer. Seed for replication of psoptim. Defaults to \code{NULL}.}
 \item{ghet}{Optional one-sided formula for the determinants of the mixing probability's linear predictor \eqn{z'\gamma}, for \code{model_name = "ZISF_Z"}, as in \code{ghet = ~ z1}. The same block as the formula's pipe segment, writing the same model; give it one way or the other, not both. Named for \eqn{\gamma} rather than for a variance, because what \eqn{z} parameterizes here is the probability of full efficiency and not a scale. New in 1.3.0; see \sQuote{Pipes or named arguments}.}
 \item{vhet}{Optional one-sided formula for the determinants of \eqn{\sigma_v}, the NOISE scale, as in \code{vhet = ~ zv}, for both \code{model_name}s. A different block from \code{ghet} and usable beside it: \code{ghet} parameterizes the PROBABILITY of full efficiency and \code{vhet} the noise scale within the frontier regime. The predictor is on the log standard-deviation scale, \eqn{\sigma_{v,i} = \exp(z_v'\delta_v)}. With \code{vhet} given the single \code{sigv} row becomes coefficients named \code{Zv.}, and the fitted per-observation scale is returned as \code{$sigma_v}. New in 1.3.0.}
+\item{\dots}{Not used. An argument that belongs to another R frontier package is rejected with its \pkg{sfa} equivalent: \pkg{sfaR}'s \code{udist} and \code{S} become \code{model_name} and \code{inefdec}, \pkg{frontier}'s \code{ineffDecrease}, \code{truncNorm} and \code{timeEffect} become \code{inefdec} and \code{model_name}, and so on. Any other unrecognised argument is an error, as it would be without \code{...}. New in 1.3.0.}
 }
 \details{
 \subsection{The model}{

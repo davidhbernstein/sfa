@@ -17,7 +17,7 @@
     sim_scrambling = 0L, sim_prime = NULL, sim_seed = NULL,
     rand.psoptim = NULL, keep_objective = FALSE, estimator = c("mle",
     "cols", "mols", "acols", "cmle"), cols_boot = 0, rand.cols = NULL,
-    integration = c("quadrature", "simulate"))
+    integration = c("quadrature", "simulate"), ...)
 }
 \arguments{
 \item{formula}{a symbolic description for the model to be estimated}
@@ -102,6 +102,7 @@ See \sQuote{Details}.}
   \item{cols_boot}{Integer. Number of nonparametric bootstrap resamples used for standard errors under \code{estimator = "cols"} or \code{"acols"}. Zero (the default) skips the bootstrap: only the OLS slope standard errors are reported, and the scale parameters and corrected intercept carry \code{NA}. Ignored when \code{estimator = "mle"}.}
   \item{rand.cols}{Integer. Seed for the COLS bootstrap, for reproducibility. The caller's random-number stream is restored afterwards. Default \code{NULL}.}
   \item{integration}{How \code{"NLN"} and \code{"NW"} integrate \eqn{u} out of the composed density. \code{"quadrature"} (the default) is deterministic composite Gauss--Legendre, accurate to about \eqn{10^{-12}} in each observation's log-density. \code{"simulate"} is the simulated maximum likelihood these models used before version 1.3.0, controlled by \code{Nsim} and the \code{sim_*} arguments, and is kept so earlier results can be reproduced. Ignored by every other model. See \sQuote{Details}.}
+\item{\dots}{Not used. An argument that belongs to another R frontier package is rejected with its \pkg{sfa} equivalent: \pkg{sfaR}'s \code{udist} and \code{S} become \code{model_name} and \code{inefdec}, \pkg{frontier}'s \code{ineffDecrease}, \code{truncNorm} and \code{timeEffect} become \code{inefdec} and \code{model_name}, and so on. Any other unrecognised argument is an error, as it would be without \code{...}. New in 1.3.0.}
 }
 \details{\code{sfm()} fits a cross-sectional frontier \eqn{y = x'\beta + v - u} (production; \eqn{+u} for a cost frontier) by maximum likelihood unless stated otherwise. Choose the distributions of the noise \eqn{v} and the inefficiency \eqn{u \ge 0}:
 

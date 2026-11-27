@@ -27,7 +27,7 @@
                     sim_device = NULL, sim_dtype = NULL,
                     integration = c("quadrature", "simulate"),
                     derivatives = c("numeric", "autograd"),
-                    optimizer = c("pipeline", "newton"))}
+                    optimizer = c("pipeline", "newton"), ...)}
 \arguments{
   \item{formula}{a symbolic description for the model to be estimated}
   \item{model_name}{Which panel estimator to fit. All are described in \sQuote{Details}; in brief:
@@ -107,6 +107,7 @@ On an \bold{unbalanced} panel \code{"fiml"} cannot be fitted. If you took the de
 \item{integration}{How \code{"TRE"} and \code{"TRE_Z"} integrate the firm effect out of the likelihood. \code{"quadrature"} (default since 1.3.0) evaluates the integral exactly, by adaptive Gauss-Hermite quadrature (24 nodes) centred on each firm's mode, so \code{halton_num}, \code{rand.gtre} and the \code{sim_*} arguments do not affect the fit. Balanced and unbalanced panels alike. \code{"simulate"} averages over \code{halton_num} draws per firm, which was the only method before 1.3.0; use it to reproduce an earlier fit. Ignored by every other \code{model_name}, and an explicit \code{"quadrature"} is refused there; GTRE's exact route is \code{estimator = "fiml"}. See \sQuote{Simulated maximum likelihood} under \sQuote{Details}. New in 1.3.0.}
 \item{derivatives}{\code{"numeric"} (default) uses finite differences for the gradient and for the Hessian behind the standard errors, as before. \code{"autograd"} computes both exactly, by automatic differentiation through the \pkg{torch} evaluator over the fit's own draws: the final \code{optim()} stage gets the exact gradient, and the standard errors come from the exact Hessian. Needs \code{sim_backend = "torch"} in double precision (\code{sim_dtype = "float64"}), so it applies to \code{"GTRE"} with \code{estimator = "sml"} and \code{"TRE"} with \code{integration = "simulate"}. See \sQuote{Exact derivatives and the Newton optimizer} under \sQuote{Details}. New in 1.3.0.}
 \item{optimizer}{\code{"pipeline"} (default) is the three-stage bobyqa, psoptim, optim search used by every likelihood in the package. \code{"newton"} replaces it with a multistart Newton search: \code{nlminb()} with the exact gradient and Hessian, run from several starting points, keeping the best. Needs \code{derivatives = "autograd"}. \code{maxit.nlminb} caps the iterations of each start. New in 1.3.0.}
+\item{\dots}{Not used. An argument that belongs to another R frontier package is rejected with its \pkg{sfa} equivalent: \pkg{sfaR}'s \code{udist} and \code{S} become \code{model_name} and \code{inefdec}, \pkg{frontier}'s \code{ineffDecrease}, \code{truncNorm} and \code{timeEffect} become \code{inefdec} and \code{model_name}, and so on. Any other unrecognised argument is an error, as it would be without \code{...}. New in 1.3.0.}
 }
 \details{\code{psfm()} fits panel frontiers. Choose the estimator with \code{model_name}:
 

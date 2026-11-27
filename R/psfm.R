@@ -57,7 +57,9 @@ psfm <- function(formula,
                  sim_dtype = NULL,
                  integration = c("quadrature", "simulate"),
                  derivatives = c("numeric", "autograd"),
-                 optimizer = c("pipeline", "newton")) {
+                 optimizer = c("pipeline", "newton"),
+                 ...) {
+  .sfa_reject_dots(match.call(expand.dots = FALSE)$..., "psfm", parent.frame())
   ## call/model_name resolution moved ahead of .check_model_formula_pipes() --
   ## see sfm.R's identical fix for why.
   call <- match.call()
